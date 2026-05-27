@@ -8,20 +8,6 @@ The Runtime layer is the core of the Spectres personal assistant system. Built o
 - The business is stateful (persisted in databases), but Runtime instances themselves remain stateless to enable horizontal scaling.
 - Within Runtime, `user_id` is trusted; authentication is handled by the Gateway.
 
-## Submodules
-
-| Submodule | Responsibility |
-|---|---|
-| Session Manager | Manages sessions scoped by `(user_id, conversation_id)` |
-| Agent Registry | Maintains all agents defined as Python classes |
-| AgentFactory | Instantiates agents on demand, injecting user context |
-| Team Orchestrator | Orchestrates multi-agent collaboration via Agno `Team` (route / coordinate / collaborate) |
-| Tool Registry | Registers built-in tools and MCP tools |
-| Memory Service | Short-term conversational memory + long-term semantic memory; all reads/writes require `user_id` |
-| Profile Service | Incremental maintenance of user profiles |
-| LLM Provider Pool | Unified LLM invocation with multi-provider routing and retries |
-| Event Publisher | Publishes events to the Event Bus interface at key checkpoints |
-
 ## Agent Model
 
 - Each agent is defined as a Python class in code, **not relying on pure prompts**.
@@ -35,32 +21,6 @@ The Runtime layer is the core of the Spectres personal assistant system. Built o
 - All interfaces of Memory Service and Profile Service mandatorily require a `user_id` parameter.
 - An agent instance operates only within the context of a single user.
 
-## Communication Contracts
-
-### Interfaces Exposed to the Gateway (Python abstractions; in-process initially)
-
-```
-class RuntimeAPI:
-    async def chat_stream(user_id, conversation_id, message, agent_hint=None)
-        -> AsyncIterator[Event]
-    async def list_agents(user_id) -> List[AgentMeta]
-    async def list_sessions(user_id) -> List[SessionMeta]
-    async def get_memory(user_id, query=None) -> List[MemoryItem]
-    async def get_profile(user_id) -> UserProfile
-```
-
-### Events Published to the Event Bus
-
-```
-conversation.started    {user_id, conversation_id, agent_id}
-conversation.message    {user_id, conversation_id, role, content}
-conversation.ended      {user_id, conversation_id}
-agent.tool_called       {user_id, tool, args, result}
-agent.proactive_msg     {user_id, content}
-```
-
-During the MVP phase, subscribers may be no-op implementations; the event interface is reserved in advance.
-
 ## Storage
 
 | Storage | Purpose |
@@ -69,8 +29,14 @@ During the MVP phase, subscribers may be no-op implementations; the event interf
 | Redis | Session window cache, future asynchronous queues |
 | Object Store | Attachments and media files |
 
-## Extension Points (Reserved in Architecture, Not Implemented in MVP)
+## Agno Documentation References
 
-- **Evolution Worker**: Subscribes to events such as `conversation.ended` to perform memory extraction, profile updates, and skill consolidation.
-- **Memory Service write interface** reserves a `source` field (`manual` / `auto`) for future automated writes.
-- **Profile Service** reserves the incremental interface `merge_profile(user_id, partial_traits)`.
+The Runtime is built on the [Agno](https://agno.com) framework. Two resources are wired in for use by both humans and coding agents working on this repository:
+
+- **MCP server (preferred for AI coding agents)**: `https://docs.agno.com/mcp`
+  Pre-configured for opencode in `.opencode/opencode.json` under the `agno-docs` server. Restart opencode after cloning so the MCP tools become available.
+- **Docs index (`llms.txt`)**: `https://docs.agno.com/llms.txt`
+  A compact, link-rich table of contents listing every documentation page with a one-line description. Useful for targeted lookups when MCP is unavailable.
+- **Full docs (`llms-full.txt`)**: `https://docs.agno.com/llms-full.txt`
+  Concatenated full content of every page (~10 MB). Avoid loading wholesale into an LLM context; prefer the MCP server or per-page `.md` URLs derived from the index.
+
