@@ -1,3 +1,8 @@
+# ---------------------------------------------------------------------------
+# Project metadata (PEP 621). Drives PyPI display, wheel build, and tooling
+# defaults. Field order follows the order recommended by the PEP.
+# ---------------------------------------------------------------------------
+
 [project]
 name = "spectres-runtime"
 version = "0.1.0"
@@ -6,8 +11,11 @@ readme = "README.md"
 authors = [
     { name = "Dennis Gu", email = "longkerdandy@gmail.com" }
 ]
+# SPDX expression (PEP 639). A LICENSE file ships separately at the repo root.
 license = "Apache-2.0"
 keywords = ["spectres", "agno", "agentos", "agents", "runtime", "assistant"]
+# Trove classifiers (https://pypi.org/classifiers/) — informational; affect PyPI
+# search/filter facets but not install behavior.
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
@@ -17,16 +25,40 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Typing :: Typed",
 ]
+# Upper bound locked deliberately: 3.13 wheel coverage for some native deps
+# (pgvector drivers, embedding libs) is not yet uniform. Bump when ready.
 requires-python = ">=3.12,<3.13"
+# Runtime dependencies. Lower bounds reflect what was current at `uv add` time;
+# the exact resolved set lives in uv.lock.
 dependencies = [
     "agno>=2.6.9",
     "fastapi>=0.136.3",
     "uvicorn[standard]>=0.48.0",
 ]
 
+# ---------------------------------------------------------------------------
+# Build backend. `hatchling` is uv init's "hatch" option — actively maintained,
+# zero-config for a standard src/ layout, no Setuptools baggage.
+# ---------------------------------------------------------------------------
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# ---------------------------------------------------------------------------
+# Dependency groups (PEP 735). Distinct from `[project.optional-dependencies]`:
+# these are *not* shipped to downstream consumers; they exist solely for local
+# dev and CI. uv treats `dev` as the default group, so `uv sync` (no flags)
+# installs the full developer environment in one command.
+#
+# Group layout rationale:
+#   - `lint` kept to ruff alone so the CI lint job stays sub-second.
+#   - `test` carries only pytest + its plugins.
+#   - `dev` adds heavier dev-only tools (mypy, pre-commit) and includes the
+#     other two via `include-group` so developers get everything in one go.
+# CI uses `uv sync --frozen --only-group <name>` to install just what each job
+# needs; production images use `uv sync --frozen --no-dev`.
+# ---------------------------------------------------------------------------
 
 [dependency-groups]
 lint = [
@@ -43,3 +75,103 @@ dev = [
     { include-group = "lint" },
     { include-group = "test" },
 ]
+
+# ---------------------------------------------------------------------------
+# Tooling configuration — all code-quality tools live in this file.
+# ---------------------------------------------------------------------------
+
+# Ruff handles lint, formatting, and import ordering in a single Rust binary.
+# It replaces flake8 + isort + black + pyupgrade + bugbear + several other
+# flake8 plugins. Sole entry in the `lint` dependency group.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Belt-and-suspenders: ruff already skips .gitignore'd paths, but listing the
+# common ones makes the intent explicit and survives any future config drift.
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+# Rule sets, kept intentionally small. Expand only when a concrete need appears.
+# This selection is the consensus modern-Python baseline (FastAPI / httpx /
+# pydantic use a very similar set):
+#   E, W  — pycodestyle errors / warnings (PEP 8)
+#   F     — pyflakes (unused imports, undefined names, ...)
+#   I     — isort (import ordering)
+#   B     — flake8-bugbear (likely bugs)
+#   UP    — pyupgrade (modernize syntax for the target Python)
+#   SIM   — flake8-simplify (code simplifications)
+#   RUF   — Ruff-specific rules
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are allowed to use `assert` (S101 is in the `S` security set; harmless
+# here because pytest's whole model is built on `assert`).
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.format]
+# Match Black's defaults: double quotes, spaces for indent, LF line endings.
+# Picking these explicitly keeps cross-platform diffs (CRLF on Windows) stable.
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# Mypy in strict mode. The strict flag bundles ~10 individual checks (no
+# implicit Any, no untyped defs, etc.); we keep it on so type drift fails fast.
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+# Show error codes so we can selectively silence with `# type: ignore[code]`
+# instead of a blanket ignore.
+show_error_codes = true
+pretty = true
+# Forbid implicit `Any` returns and re-exports — keep the typing surface honest.
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+
+# Tests live outside the public typing surface; let untyped third-party pytest
+# fixtures (parametrize, fixture) pass without forcing stubs.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_decorators = false
+
+# Pytest is the test runner. `--strict-markers` / `--strict-config` make
+# typos in markers or config fail loudly rather than be silently ignored.
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",                          # show short summary for all non-pass outcomes
+    "--strict-markers",             # unknown @pytest.mark.* is an error
+    "--strict-config",              # unknown ini keys are an error
+    "--cov=spectres_runtime",       # measure coverage of our package
+    "--cov-report=term-missing",    # surface uncovered lines in the terminal
+    "--cov-fail-under=80",          # fail the suite below this threshold
+]
+filterwarnings = [
+    # Suppress Starlette's TestClient nudge toward httpx2 — it is environmental
+    # and unrelated to our code.
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
+# Auto mode lets us write `async def test_foo()` without per-test markers.
+asyncio_mode = "auto"
+
+# Coverage.py settings consumed by pytest-cov. We scope measurement to our
+# package source (not tests) and enable branch coverage so e.g. an `if`
+# without an else still requires both paths to be exercised.
+[tool.coverage.run]
+source = ["src/spectres_runtime"]
+branch = true
+
+[tool.coverage.report]
+# Lines matching any of these regexes are not counted toward coverage.
+# Keep this list short and well-justified.
+exclude_lines = [
+    "pragma: no cover",              # explicit, per-line opt-out
+    "if __name__ == .__main__.:",    # script entry guard — not testable in unit tests
+    "raise NotImplementedError",     # abstract / placeholder branches
+]
+show_missing = true
+skip_covered = false

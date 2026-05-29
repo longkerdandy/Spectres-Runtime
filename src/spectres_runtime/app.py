@@ -29,7 +29,7 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover - thin uvicorn wrapper, exercised manually
     """Run the app with uvicorn for local development.
 
     Production deployments should invoke ``uvicorn spectres_runtime.app:app``
