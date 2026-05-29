@@ -1,0 +1,44 @@
+# Validate that PR titles follow Conventional Commits. Under trunk-based
+# branching, PRs are optional but Dependabot (§8) opens them; keeping
+# titles conventional means the merged-squash commit message stays valid
+# without manual rewriting.
+#
+# Direct-to-main commits are already validated by the commit-msg hook
+# (§4); this workflow only protects the PR path.
+name: pr-title
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint:
+    name: validate title
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Conventional Commits check
+        uses: amannn/action-semantic-pull-request@v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Mirror the type whitelist from .pre-commit-config.yaml and
+          # CONTRIBUTING.md. Keep these three in sync when adding a type.
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          # Subject case enforcement off; "lowercase subject" is a project
+          # convention, not machine-enforced (matches the commit-msg hook).
+          subjectPattern: ^.+$
