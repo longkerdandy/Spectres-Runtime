@@ -32,3 +32,36 @@ chore(deps): bump fastapi to 0.137.0
 
 Only the type/shape/non-empty-subject rules are machine-enforced; the rest
 are project conventions — honour them so `git log` stays readable.
+
+## Branching
+
+**Trunk-based.** A single long-lived branch — `main`. All work lands on
+`main` directly. Short-lived topic branches are optional, used only when an
+experiment is large enough to want isolation; merge back via fast-forward
+or squash.
+
+- **Releases:** annotated tags on `main`.
+  `git tag -a v0.1.0 -m "v0.1.0" && git push --tags`. No `release/*` branch.
+- **Hotfixes:** normal commits on `main`, tagged with a new patch version.
+  No `hotfix/*` branch.
+- **`main` protection (minimal):** force-push forbidden, deletion forbidden,
+  direct push allowed, no required reviewers. CI runs on every push and tag
+  but is not a merge blocker.
+
+### Why not Git Flow
+
+Git Flow assumes multiple contributors, parallel maintained versions,
+scheduled release windows, and mandatory peer review. None hold for a
+single-developer pre-alpha repo whose second contributor is an AI coding
+assistant. The cost of `develop` / `release/*` / `hotfix/*` / forced PR
+review exceeds the benefit at this stage.
+
+### When to revisit
+
+Adopt Git Flow (or GitHub Flow) once **any** of the following is true:
+
+- A second permanent human contributor joins the repo.
+- A production deployment exists and must be maintained separately from
+  `main`'s in-progress work (a real reason for `develop`).
+- Two or more versions must be supported in parallel (a real reason for
+  `hotfix/*`).
