@@ -1,0 +1,53 @@
+# Pre-commit hooks — local automation that mirrors CI's static checks.
+#
+# Setup (one-time, per clone):
+#   uv run pre-commit install               # install the git pre-commit hook
+#   uv run pre-commit install --hook-type commit-msg   # enable commit-msg check
+#
+# Manual full-repo run:
+#   uv run pre-commit run --all-files
+#
+# Versions are pinned (`rev:` tags). Bump them with:
+#   uv run pre-commit autoupdate
+
+repos:
+  # Generic file hygiene from the official pre-commit project.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]   # reject anything > 1 MB by default
+
+  # Ruff — lint + auto-fix + format. Single source of truth for style.
+  # Pinned to the same major as the dev-group ruff to avoid behavior drift.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.15
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+      - id: ruff-format
+
+  # Mypy — strict type check, scoped to src/ so pre-commit stays snappy.
+  # CI runs the full mypy invocation (src + tests) for completeness.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.1.0
+    hooks:
+      - id: mypy
+        files: ^src/
+        additional_dependencies:
+          - "fastapi>=0.136.3"
+          - "uvicorn[standard]>=0.48.0"
+          - "agno>=2.6.9"
+
+  # Conventional Commits — validate commit messages on the commit-msg stage.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.3.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: []   # default allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
