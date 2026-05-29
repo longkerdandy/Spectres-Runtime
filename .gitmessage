@@ -1,0 +1,38 @@
+# <type>(<scope>): <subject>
+#
+# <body>
+#
+# <footer>
+#
+# ─── Conventional Commits 1.0 ────────────────────────────────────────────────
+#
+# type   Required. One of:
+#          feat      a new feature for the user
+#          fix       a bug fix for the user
+#          docs      documentation only
+#          style     formatting; no code change
+#          refactor  code change that neither fixes a bug nor adds a feature
+#          perf      performance improvement
+#          test      add or fix tests
+#          build     build system or external dependencies (pyproject, uv.lock)
+#          ci        CI configuration (GitHub Actions, etc.)
+#          chore     other maintenance (no src or test changes)
+#          revert    reverts a previous commit
+#
+# scope  Optional. Lowercase module / area name. Examples:
+#          agent, memory, knowledge, edge, auth, ci, deps, docs
+#
+# subject  Required. Imperative mood, lowercase, no trailing period.
+#          Max ~50 chars. Examples:
+#            ✓ feat(agent): add agentfactory contract
+#            ✓ fix(memory): handle empty session payload
+#            ✗ Added some agent code.
+#
+# body   Optional. Wrap at ~72 chars. Explain WHAT and WHY, not HOW.
+#        Separate from subject with a blank line.
+#
+# footer Optional. Wrap at ~72 chars. Used for:
+#          - Breaking changes:   BREAKING CHANGE: <description>
+#          - Issue references:   Refs: #123 / Closes: #123
+#
+# Lines starting with '#' are stripped by git.

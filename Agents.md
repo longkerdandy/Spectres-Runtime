@@ -155,3 +155,27 @@ For both humans and coding agents working on this repository:
 - **MCP server** (preferred for AI coding agents): `https://docs.agno.com/mcp` — pre-configured for opencode in `.opencode/opencode.json` under the `agno-docs` server. Restart opencode after cloning.
 - **Docs index** (`https://docs.agno.com/llms.txt`) — compact table of contents for targeted lookups when MCP is unavailable.
 - **Full docs** (`https://docs.agno.com/llms-full.txt`, ~10 MB) — full content of every page. Do not load wholesale into an LLM context; prefer the MCP server or per-page `.md` URLs.
+
+## Working Agreements for Coding Agents
+
+This section collects rules that coding agents (and human contributors using
+agents) must honour. It is the single place to look when asking "what does
+this project require of me before I commit code?". Architectural sections
+above describe *what the system is*; this section describes *how to work on
+it*.
+
+### Commit messages
+
+This repository uses **Conventional Commits 1.0**. Before composing any
+commit message, read `.gitmessage` at the repo root — it is the source of
+truth for:
+
+- allowed `type` values (`feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
+  `test`, `build`, `ci`, `chore`, `revert`)
+- recommended `scope` names (lowercase module / area, optional)
+- `subject` style (imperative, lowercase, no trailing period, ≤ ~50 chars)
+- `body` and `footer` (`BREAKING CHANGE`, `Refs`, `Closes`) usage
+
+Enforcement: the `commit-msg` pre-commit hook
+(`compilerla/conventional-pre-commit`) rejects non-conforming messages
+locally. PR titles are validated by GitHub Actions (planned, see v0.1 §7).
