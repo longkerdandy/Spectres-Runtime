@@ -160,9 +160,11 @@ For both humans and coding agents working on this repository:
 
 Working conventions for anyone making changes to this repository —
 commit-message format, branching, code style, and similar **how-to-work**
-rules — live in [`CONTRIBUTING.md`](./CONTRIBUTING.md). **Coding
-assistants (Claude Code, opencode, Cursor, etc.) working in this
-repository must read `CONTRIBUTING.md` before making changes.**
+rules — live in [`CONTRIBUTING.md`](./CONTRIBUTING.md). Local environment
+setup, daily commands, and troubleshooting live in
+[`docs/environment.md`](./docs/environment.md). **Coding assistants
+(Claude Code, opencode, Cursor, etc.) working in this repository must
+read both before making changes.**
 
 The sections above this one describe *what the system builds* (Agno
 agents, the Runtime services). `CONTRIBUTING.md` describes *how to work
