@@ -1,0 +1,48 @@
+# Dependabot version-update configuration.
+#
+# Security updates (CVE-driven) run independently and need no config —
+# they are on by default for public repositories.
+#
+# Two ecosystems tracked:
+#   - pip: uv.lock is natively supported; updates runtime + dev groups
+#   - github-actions: pinned action versions in .github/workflows/*.yml
+#
+# Cadence: weekly. Daily is noisy; monthly risks missing security fixes
+# that fall outside the CVE database (e.g. behaviour-only regressions).
+#
+# Commit prefix is set to chore(deps) / chore(deps-dev) to match the
+# Conventional Commits examples in CONTRIBUTING.md. The commit-msg hook
+# (§4) and pr-title workflow (§7) both accept `chore` as a valid type.
+
+version: 2
+updates:
+  # Python runtime + dev dependencies. Dependabot reads pyproject.toml
+  # and uv.lock; no extra `package-manager` field needed.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 5
+
+  # Versions referenced in .github/workflows/*.yml via @vX.Y.Z tags.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    open-pull-requests-limit: 5

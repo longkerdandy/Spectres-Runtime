@@ -93,6 +93,13 @@ there.**
 - **`uvicorn: command not found`** — always prefix with `uv run`.
 - **`commit-msg` hook does not fire** — install the second stage:
   `uv run pre-commit install --hook-type commit-msg`.
+- **`git push` rejected by push protection** — GitHub detected a secret
+  in the pushed commits. Do not bypass blindly. Either rewrite history to
+  remove the secret (`git rebase -i` + force-push is blocked on `main`;
+  reset the offending commit before pushing) or, if the match is a known
+  false positive, follow the unblock URL in the error message to allow it
+  with a recorded reason. Rotate any real secret that has already left
+  your machine, even if the push was blocked.
 
 ## Reset
 

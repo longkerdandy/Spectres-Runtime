@@ -1,0 +1,41 @@
+# Block PRs that introduce dependencies with known vulnerabilities.
+# Complements Dependabot: Dependabot upgrades EXISTING deps, this gate
+# catches NEW deps at PR time.
+#
+# Runs only on pull_request. Direct-to-main commits skip this gate —
+# acceptable under trunk-based + single-developer; tighten if a real
+# review process emerges.
+name: dependency-review
+
+on:
+  pull_request:
+
+concurrency:
+  group: dep-review-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Lets the action post a summary comment on the PR.
+  pull-requests: write
+
+jobs:
+  review:
+    name: review new dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          # Block on any vulnerability of moderate severity or higher.
+          # `low` would be noisy; `high` lets through too much for an
+          # auth/data-handling codebase.
+          fail-on-severity: moderate
+          # Block GPL-family licenses early — the project ships under
+          # Apache-2.0 and must stay permissive-compatible.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
+          comment-summary-in-pr: on-failure

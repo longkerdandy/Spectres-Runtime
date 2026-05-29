@@ -1,0 +1,53 @@
+# GitHub-native static analysis (SAST) via CodeQL. Public-repo free tier.
+# Advanced setup (workflow file in the repo) instead of default setup so
+# version pinning and triggers stay under source control, consistent with
+# ci.yml / pr-title.yml.
+#
+# Results land in Security -> Code scanning alerts. Not a merge blocker
+# under the trunk-based model (no required status checks on main).
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly rescan picks up new CodeQL queries even when code is unchanged.
+  schedule:
+    - cron: "27 6 * * 1"   # Mondays 06:27 UTC; off-peak
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Required to upload SARIF results to the Security tab.
+  security-events: write
+  # Required by the CodeQL action when reading workflow metadata.
+  actions: read
+
+jobs:
+  analyze:
+    name: analyze (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4.36.0
+        with:
+          languages: ${{ matrix.language }}
+          # Python is interpreted; no compile step is needed. `none` skips
+          # the autobuild attempt and goes straight to source analysis.
+          build-mode: none
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4.36.0
+        with:
+          category: "/language:${{ matrix.language }}"
