@@ -4,6 +4,9 @@ The Runtime tier of the Spectres personal assistant — agent orchestration,
 memory, knowledge, and capability exposure built on Agno's AgentOS.
 
 Architectural overview lives in [`Agents.md`](./Agents.md).
+Contribution conventions (commit-message format, hook setup, branching)
+live in [`CONTRIBUTING.md`](./CONTRIBUTING.md) — read it before opening
+a PR.
 
 > **Status: pre-alpha.** v0.1 ships only the engineering baseline; no agents,
 > no database, no auth wiring yet.
@@ -23,10 +26,7 @@ uv sync
 uv run pre-commit install
 uv run pre-commit install --hook-type commit-msg
 
-# 4. enable the commit-message template (one-time per clone)
-git config --local commit.template .gitmessage
-
-# 5. smoke check
+# 4. smoke check
 uv run pytest
 uv run uvicorn spectres_runtime.app:app --reload
 # → http://127.0.0.1:8000/healthz
