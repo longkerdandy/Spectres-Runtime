@@ -1,0 +1,19 @@
+"""Smoke test for the v0.1 skeleton.
+
+Verifies that the FastAPI app boots and ``/healthz`` returns the expected
+payload. Exercised in CI; intentionally trivial.
+"""
+
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from spectres_runtime.app import app
+
+client = TestClient(app)
+
+
+def test_healthz_returns_ok() -> None:
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
