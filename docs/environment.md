@@ -57,7 +57,7 @@ OpenAPI: `/openapi.json`; Swagger UI: `/docs`.
 | Format | `uv run ruff format .` |
 | Type check | `uv run mypy` |
 | Run tests | `uv run pytest` |
-| Run a single test | `uv run pytest tests/test_healthz.py::test_healthz_ok` |
+| Run a single test | `uv run pytest tests/test_healthz.py::test_healthz_returns_ok` |
 | Coverage HTML | `uv run pytest --cov-report=html` → `htmlcov/index.html` |
 | Run all hooks | `uv run pre-commit run --all-files` |
 | Update hook versions | `uv run pre-commit autoupdate` |
