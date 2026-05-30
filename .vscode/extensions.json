@@ -1,0 +1,14 @@
+{
+  // Recommended extensions for working on Spectres-Runtime. VS Code
+  // will surface a prompt when the workspace is first opened. None of
+  // these are required; CI does not depend on them.
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "ms-python.mypy-type-checker",
+    "tamasfe.even-better-toml",
+    "redhat.vscode-yaml",
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github"
+  ]
+}

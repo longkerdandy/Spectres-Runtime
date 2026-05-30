@@ -30,7 +30,13 @@ ENV/
 
 # IDE / Editor
 .idea/
-.vscode/
+# .vscode/ holds a few committed, project-wide recommendations
+# (extensions, formatter, debug config). Everything else under it is
+# user-local and stays out of git.
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
 *.swp
 *.swo
 .DS_Store

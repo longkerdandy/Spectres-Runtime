@@ -1,0 +1,37 @@
+{
+  // Debug launch configurations. Optional convenience — same flows
+  // work from the terminal via `uv run uvicorn ...` / `uv run pytest`.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Launch the FastAPI app under uvicorn with auto-reload.
+      // Uses the uv-managed interpreter from settings.json.
+      "name": "FastAPI: uvicorn --reload",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "spectres_runtime.app:app",
+        "--reload",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "jinja": false,
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    },
+    {
+      // Run the full pytest suite under the debugger so breakpoints
+      // hit inside tests and source code alike.
+      "name": "Pytest: all tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests"],
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    }
+  ]
+}

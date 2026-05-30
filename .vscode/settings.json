@@ -1,0 +1,61 @@
+{
+  // Workspace settings shared by every contributor. Anything user-
+  // specific (window layout, color theme, telemetry) belongs in user
+  // settings, not here.
+
+  // ---- Python interpreter ----
+  // Point at the uv-managed virtualenv created by `uv sync`. Falls
+  // back to system Python only if .venv has not been created yet.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+
+  // ---- Formatting ----
+  // Ruff is the single source of truth for both lint and format.
+  // `editor.formatOnSave` triggers `ruff format`; `codeActionsOnSave`
+  // runs import-sort + safe autofixes so the file lands on disk in
+  // the same shape pre-commit would produce.
+  "editor.formatOnSave": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+
+  // ---- Type checking ----
+  // Delegate to the mypy extension; it reads mypy config from
+  // pyproject.toml (strict mode, python_version=3.12).
+  "mypy-type-checker.importStrategy": "fromEnvironment",
+  // Disable the bundled Pylance type checker so we have one
+  // authoritative type-error stream (mypy) instead of two.
+  "python.analysis.typeCheckingMode": "off",
+
+  // ---- Testing ----
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  // ---- File hygiene ----
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.trimFinalNewlines": true,
+
+  // ---- Explorer noise reduction ----
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true,
+    "**/.pytest_cache": true,
+    "**/*.egg-info": true
+  },
+  "search.exclude": {
+    "**/.venv": true,
+    "**/uv.lock": true,
+    "**/__pycache__": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true,
+    "**/.pytest_cache": true
+  }
+}
