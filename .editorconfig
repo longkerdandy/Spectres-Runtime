@@ -1,0 +1,27 @@
+# EditorConfig — unified indentation, line endings, and encoding across
+# editors. Mirrors the ruff formatter (4-space indent, LF, double quotes)
+# and the pre-commit file-hygiene hooks (final newline, no trailing
+# whitespace). https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.{json,jsonc,yaml,yml,toml}]
+indent_size = 2
+
+[*.md]
+# Markdown uses trailing whitespace for hard line breaks; leave it alone.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
