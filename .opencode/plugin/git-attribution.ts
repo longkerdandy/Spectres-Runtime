@@ -5,8 +5,15 @@ import type { Plugin } from "@opencode-ai/plugin"
  *
  * Marks every commit opencode makes (via its bash tool) with two trailers:
  *
- *   Co-authored-by: opencode <opencode@users.noreply.github.com>
+ *   Co-authored-by: opencode <noreply@opencode.ai>
  *   Opencode-Model: <providerID>/<model id>
+ *
+ * The email is deliberately NOT in GitHub's `@users.noreply.github.com`
+ * namespace: GitHub resolves that namespace to real usernames, so
+ * `opencode@users.noreply.github.com` would mis-link to the unrelated account
+ * github.com/OpenCode. A plain-domain noreply (same pattern as Claude Code's
+ * `noreply@anthropic.com`) renders as a plain-text co-author with no false
+ * profile link.
  *
  * The model is captured dynamically from the `chat.params` hook (fired before
  * every LLM request, where `model` is always present), so the trailer always
@@ -48,7 +55,7 @@ export const GitAttribution: Plugin = async () => {
         }
 
         const trailers = [
-          `--trailer "Co-authored-by: opencode <opencode@users.noreply.github.com>"`,
+          `--trailer "Co-authored-by: opencode <noreply@opencode.ai>"`,
           model ? `--trailer "Opencode-Model: ${model}"` : "",
         ]
           .filter(Boolean)
