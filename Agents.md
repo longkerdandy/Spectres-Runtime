@@ -46,7 +46,7 @@ The Runtime is realized as a single **[AgentOS](https://docs.agno.com/agent-os/i
 
 Spectres targets one household with multiple users. There is **no multi-tenant / multi-household isolation**; the data model only distinguishes users and their permissions.
 
-- All session / memory / profile data is scoped by `user_id`.
+- All session / memory / profile data is scoped by `user_id`; Profile Management adds a **household** grouping as an aggregation over its member users.
 - Authentication is **self-hosted**: Spectres issues its own accounts and signs its own JWTs.
 - `user_id` (and `session_id`) are extracted from the JWT by AgentOS's JWT middleware and injected automatically into endpoints and agent runs. Verified middleware values take precedence over request-body values.
 - Past the middleware boundary, `user_id` is treated as trusted.
@@ -81,13 +81,21 @@ The Edge tier exists because the cloud Runtime cannot directly reach household-l
 
 ## Memory & Profile
 
-Agno splits long-term per-user state into two stores; Spectres adopts both:
+Long-term per-user state is split by shape and ownership:
 
-| Store | Shape | Purpose |
-|---|---|---|
-| **User Profile Store** | Structured (name, preferred name, custom dataclass fields) | Stable identity and preferences. Maintained in `always` or `agentic` mode. |
-| **User Memory Store** | Unstructured observations | Preferences, behaviors, context that don't fit a fixed schema. Long-lived, optionally curated. |
-| **Session history** | Per `session_id` message log | "What did we just discuss?" — distinct from memory. |
+| Store | Shape | Owner | Purpose |
+|---|---|---|---|
+| **Profile Management** | Structured facts — key-value (current state) and time-series (measurements), per user and household | Spectres (Runtime-level component) | Stable identity, preferences, constraints, and health metrics. Shared across agents; agents are consumers. |
+| **User Memory Store** | Unstructured observations | Agno | Preferences, behaviors, context that don't fit a fixed schema. Long-lived, optionally curated. |
+| **Session history** | Per `session_id` message log | Agno | "What did we just discuss?" — distinct from memory. |
+
+**Profile Management is a Spectres-owned, Runtime-level shared component**, not
+Agno's per-user `UserProfile` store. The rationale — cross-agent reuse,
+household-first modeling, key-value + time-series data shapes, and framework-neutral
+consumption (deterministic `dependencies` injection + function tools) — and its
+full design live in its component doc
+[`docs/design/user-profile-management.md`](./docs/design/user-profile-management.md).
+Unstructured soft preferences stay in Agno's User Memory Store.
 
 ## Knowledge / RAG
 
@@ -99,7 +107,7 @@ Agno splits long-term per-user state into two stores; Spectres adopts both:
 
 | Storage | Purpose |
 |---|---|
-| Postgres + pgvector | Sessions, messages, user profile, user memory, knowledge vectors, traces — single source of truth for all persistent Runtime state. |
+| Postgres + pgvector | Sessions, messages, profile & household data, user memory, knowledge vectors, traces — single source of truth for all persistent Runtime state. |
 | Object Store | Attachments and media. Required once media flows are implemented; provider deferred (S3-compatible). |
 
 Additional infrastructure (cache, message broker, task queue) is not adopted up-front; introduced only when a concrete need appears.
@@ -126,8 +134,8 @@ The Runtime is containerized and intended for deployment to a Chinese public clo
 To be resolved during implementation.
 
 **Runtime**
-- Concrete user-profile schema (custom dataclass fields).
-- Memory maintenance mode: `always` extraction vs. `agentic` updates vs. hybrid.
+- Profile Management schema, storage, and API surface — deferred to its component design ([`docs/design/user-profile-management.md`](./docs/design/user-profile-management.md)).
+- User Memory maintenance mode: `always` extraction vs. `agentic` updates vs. hybrid. (Profile Management auto-extraction is deferred separately, in its component design.)
 - Default RAG strategy per agent (traditional auto-injection vs. agentic search-as-tool).
 - Agent construction split: static Python / `AgentFactory` / directory-driven — likely a mix.
 - Event surface for Edge-originated and other asynchronous triggers: AgentOS Hooks, an external event bus, or both.
