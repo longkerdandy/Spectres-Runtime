@@ -1,7 +1,7 @@
-"""Smoke test for the v0.1 skeleton.
+"""Smoke test for the app skeleton.
 
 Verifies that the FastAPI app boots and ``/healthz`` returns the expected
-payload. Exercised in CI; intentionally trivial.
+payload. Intentionally trivial.
 """
 
 from __future__ import annotations

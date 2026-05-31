@@ -56,13 +56,27 @@ or an MCP server — the transport is hidden behind the interface.
 The internal model every source normalizes into. Core fields:
 
 - `id`, `name`, `aliases`
-- `category` / `cuisine` tags
-- **structured `ingredients`** — a list of `{name, quantity, unit, role}` where
-  `role ∈ {main, aux, seasoning}`. Structured from day one (not a free-text
-  blob), which enables portion scaling and downstream filtering.
-- `steps` — ordered list
-- `servings`, optional `difficulty`, optional `time`
-- `source` provenance — which `RecipeSource`, original ref/URL
+- `description` and `images` — a human-readable summary and cover/display
+  images. `description` is **Markdown**; `images` are runtime-resolvable
+  references (local path or served URL), populated at ingestion rather than the
+  upstream address.
+- `category` tags
+- **structured `ingredients`** — a list of `{name, quantity, unit, role,
+  optional}` where `role ∈ {main, supporting, seasoning}` and `optional` flags an
+  ingredient the cook may leave out. Structured from day one (not a free-text
+  blob), which enables portion scaling and downstream filtering. `quantity` is a
+  raw string so ranges (e.g. `10-15`) survive losslessly; the `unit` is a
+  separate field.
+- `steps` — **Markdown**, keeping the source's structure (phase headings,
+  ordering, emphasis) rather than a split list, since nothing consumes steps one
+  at a time.
+- `servings` (int), `difficulty` (ordinal 1-5), `time` (hours) — all optional.
+- `provenance` — which `RecipeSource` the recipe was normalized from, plus the
+  original ref/URL within that source.
+
+**Free-text fields hold Markdown by contract** (`description`, `steps`): sources
+that are not natively Markdown are converted during normalization, so consumers
+always render one format.
 
 ---
 
@@ -139,8 +153,7 @@ lookups. The two primary interactions:
 2. **Adjust an existing plan conversationally** — e.g. "The kid wants steak —
    change tonight's plan." The agent revises an already-generated plan *in place*:
    swap or add dishes for a specific day or member request, while keeping the rest
-   of the plan and the plan and the
-   household constraints intact.
+   of the plan and the household constraints intact.
 
 Both operate over the household (§4) and over a **meal plan** that spans days and
 meals, rather than a single dish. Further journeys — shopping lists, nutrition

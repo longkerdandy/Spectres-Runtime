@@ -84,7 +84,7 @@ dev = [
 # It replaces flake8 + isort + black + pyupgrade + bugbear + several other
 # flake8 plugins. Sole entry in the `lint` dependency group.
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py312"
 # Belt-and-suspenders: ruff already skips .gitignore'd paths, but listing the
 # common ones makes the intent explicit and survives any future config drift.

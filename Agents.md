@@ -178,3 +178,9 @@ The sections above this one describe *what the system builds* (Agno
 agents, the Runtime services). `CONTRIBUTING.md` describes *how to work
 on the codebase*. The word "agent" in this file refers to the former;
 "contributor" or "coding assistant" refers to the latter.
+
+**Language convention.** Interactive conversation with the user is held in
+**Chinese**. All durable artifacts — documentation, code, code comments,
+docstrings, commit messages, and identifiers — are written in **English**.
+Coding assistants must follow this split: reply in Chinese, but write English
+into the repository.
