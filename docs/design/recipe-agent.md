@@ -33,13 +33,29 @@ nutrition: any nutrition reasoning is grounded in a nutrition-facts source (see
 
 ## 2. Data-Source Strategy
 
-### 2.1 The `RecipeSource` abstraction
+### 2.1 Ingestion, not a query abstraction
 
-All recipe data enters through a single `RecipeSource` interface. Each source is
-one implementation of the same contract (roughly
-`search(constraints) -> list[Recipe]` plus `get(id) -> Recipe`). A source may be
-backed by a local dataset, the model itself, a REST API, an Edge-provided store,
-or an MCP server — the transport is hidden behind the interface.
+Recipe data enters through an **ingestion layer** and is read back through Agno's
+native knowledge search — there is no custom query interface or `RecipeSource`.
+
+Two pieces (`recipe_agent/ingestion/`):
+
+- **`RecipeIngester`** — one implementation per *origin*. It owns the origin's
+  transport (a vendored local snapshot, a REST API, the model itself) and
+  `ingest()`s a stream of normalized `Recipe` objects. A source may thus be
+  backed by a local dataset, the model, a REST API, or an MCP server — the
+  transport is hidden behind this interface.
+- **`RecipeSink`** — the shared write endpoint. It consumes any ingester's recipe
+  stream and persists each into the knowledge base (Postgres + pgvector).
+  Persistence (chunk, embed, upsert) is identical across origins, so it lives here
+  once rather than in each ingester.
+
+At query time the agent does **not** call a custom store: it searches the
+knowledge base through Agno's built-in agentic RAG (`search_knowledge_base`, on by
+default when `knowledge` is attached). A parallel typed query interface would
+duplicate that. A typed read of structured `Recipe` objects is introduced only if
+non-LLM logic (e.g. portion scaling) later needs it — as an internal helper or an
+Agno `knowledge_retriever` hook, never an agent-facing tool. (See §5.)
 
 ### 2.2 Phased rollout
 
@@ -71,7 +87,7 @@ The internal model every source normalizes into. Core fields:
   ordering, emphasis) rather than a split list, since nothing consumes steps one
   at a time.
 - `servings` (int), `difficulty` (ordinal 1-5), `time` (hours) — all optional.
-- `provenance` — which `RecipeSource` the recipe was normalized from, plus the
+- `provenance` — which source (ingester) the recipe was normalized from, plus the
   original ref/URL within that source.
 
 **Free-text fields hold Markdown by contract** (`description`, `steps`): sources
@@ -126,18 +142,22 @@ The agent is thin — it composes the layers above:
 
 - `model` — a domestic provider (DeepSeek / Zhipu / Qwen / Moonshot), per
   `Agents.md`, configured via env.
-- `knowledge` — the recipe knowledge base in pgvector.
+- `knowledge` — the recipe knowledge base in pgvector, written by the ingestion
+  layer (§2.1).
 - `db` — `PostgresDb`, for sessions and the Agno User Memory store.
 - `dependencies` — a callback that injects the merged household constraints and
   key health snapshot from Profile Management before each run (see §4).
-- `tools` — knowledge search, plus Profile Management tools (member detail,
-  record measurement).
+- `tools` — Agno's built-in knowledge search (`search_knowledge_base`), plus
+  Profile Management tools (member detail, record measurement).
 - `learning` — User Memory enabled for soft preferences.
 - `instructions` — ground answers in *retrieved* recipes; adapt to the injected
   profile / household constraints.
 
-**RAG strategy:** agentic search-as-tool — the agent queries the knowledge base
-rather than having the entire dataset auto-injected. Per-agent and revisitable.
+**RAG strategy:** Agno's native agentic search-as-tool — the agent calls
+`search_knowledge_base` to query the knowledge base on demand rather than having
+the entire dataset auto-injected. No custom retrieval store is built; retrieval
+grounds generation (the agent adapts retrieved recipes), it is not exact
+constraint lookup.
 
 ---
 

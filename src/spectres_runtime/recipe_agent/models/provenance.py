@@ -1,9 +1,8 @@
 """Provenance sub-model of the recipe domain.
 
 Records where a recipe came from. Named ``provenance`` rather than ``source`` to
-keep it distinct from the sibling ``sources`` package, which is the fetching
-layer (the ``RecipeSource`` interface and its implementations); this records the
-origin of an already-normalized recipe.
+keep it distinct from the sibling ``ingestion`` package — the fetching layer;
+this records the origin of an already-normalized recipe.
 """
 
 from __future__ import annotations
