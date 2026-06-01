@@ -44,7 +44,7 @@ uv run mypy                    # strict type check
 uv run pytest                  # tests + coverage gate (≥ 80%)
 
 uv run uvicorn spectres_runtime.app:app --reload
-curl -s http://127.0.0.1:8000/healthz   # → {"status":"ok"}
+curl -s http://127.0.0.1:8000/health   # → {"status":"ok",...}
 ```
 
 OpenAPI: `/openapi.json`; Swagger UI: `/docs`.
@@ -57,7 +57,7 @@ OpenAPI: `/openapi.json`; Swagger UI: `/docs`.
 | Format | `uv run ruff format .` |
 | Type check | `uv run mypy` |
 | Run tests | `uv run pytest` |
-| Run a single test | `uv run pytest tests/test_healthz.py::test_healthz_returns_ok` |
+| Run a single test | `uv run pytest tests/test_health.py::test_health_returns_ok` |
 | Coverage HTML | `uv run pytest --cov-report=html` → `htmlcov/index.html` |
 | Run all hooks | `uv run pre-commit run --all-files` |
 | Update hook versions | `uv run pre-commit autoupdate` |

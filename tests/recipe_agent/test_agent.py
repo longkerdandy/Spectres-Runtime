@@ -2,8 +2,8 @@
 
 Asserts construction *shape* and that the placeholder model is never silently
 usable — its invocation raises ``NotImplementedError``. The app-level checks go
-through ``TestClient`` only (no network, DB, or LLM): ``/healthz`` is retained
-and the recipe agent is discoverable on the AgentOS surface.
+through ``TestClient`` only (no network, DB, or LLM): AgentOS's ``/health``
+probe responds and the recipe agent is discoverable on the AgentOS surface.
 """
 
 from __future__ import annotations
@@ -35,10 +35,10 @@ def test_placeholder_model_is_not_invocable() -> None:
         agent.model.invoke()
 
 
-def test_healthz_retained() -> None:
-    response = client.get("/healthz")
+def test_health_responds() -> None:
+    response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
 
 
 def test_recipe_agent_registered() -> None:
