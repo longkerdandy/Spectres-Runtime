@@ -81,56 +81,6 @@ packages it needs are listed under `additional_dependencies` in
 `.pre-commit-config.yaml`. **When you bump a runtime dep, mirror the bump
 there.**
 
-## GPU / local inference (dev-only)
-
-Recipe ingestion (v0.3+) embeds with **Qwen3-Embedding-8B** (4096-dim) on a local
-GPU. This is a **dev-box convenience for the offline ingest batch only** — the
-Runtime service needs no GPU, and **CI never uses one** (it uses a small CPU
-embedder or skips the integration tier). Skip this whole section unless you are
-running ingestion locally.
-
-Reference dev box: **RTX 5090 (Blackwell, `sm_120`)** under **WSL2**.
-
-- **Driver lives on the Windows host, never inside WSL.** WSL2 reaches the GPU
-  through the host driver via `/usr/lib/wsl/lib/libcuda.so`. Keep the Windows
-  NVIDIA driver current; do **not** `apt install` an NVIDIA driver inside WSL.
-  WSL1 has no GPU passthrough.
-- **Blackwell requires a CUDA 12.8 (`cu128`) PyTorch build.** Older `torch`
-  wheels ship no `sm_120` kernels and fail with *"no kernel image is available"*
-  or silently fall back to CPU. `torch.cuda.is_available() == True` is **not**
-  sufficient proof — a real CUDA kernel must run.
-- **Keep the HF cache on the native filesystem.** Point `HF_HOME` at a WSL-native
-  path (e.g. `~/.cache/huggingface`), **never** under `/mnt/c/...` — cross-
-  filesystem I/O makes loading the multi-GB weights painfully slow.
-
-### Verification gate
-
-Confirms passthrough + a `sm_120`-capable torch that actually executes a kernel.
-The ephemeral `--with` invocation pulls a cu128 `torch` without touching the
-project env (the pinned project dependency lands in v0.3 §3):
-
-```bash
-nvidia-smi   # RTX 5090 listed; note "CUDA UMD Version"
-
-uv run --no-project --with torch \
-  --index https://download.pytorch.org/whl/cu128 python - <<'PY'
-import torch
-assert torch.cuda.is_available(), "CUDA not available"
-cap = torch.cuda.get_device_capability()
-assert cap[0] >= 12, f"not Blackwell-capable torch, got sm_{cap[0]}{cap[1]}"
-print(torch.__version__, "/ cuda", torch.version.cuda)
-print(torch.cuda.get_device_name(0), cap)
-x = torch.randn(1024, 1024, device="cuda")
-y = torch.randn(1024, 1024, device="cuda")
-print("matmul ok:", (x @ y).sum().item())   # real sm_120 kernel, not CPU fallback
-PY
-```
-
-Expected (verified 2026-06): `torch 2.11.0+cu128 / cuda 12.8`,
-`NVIDIA GeForce RTX 5090 (12, 0)`, and a finite `matmul ok` value. A
-`Failed to initialize NumPy` warning from the ephemeral env is harmless (no
-`numpy` installed there; the real project pulls it in transitively).
-
 ## Troubleshooting
 
 - **`uv sync` says lockfile is out of date** — `pyproject.toml` changed without
@@ -143,11 +93,6 @@ Expected (verified 2026-06): `torch 2.11.0+cu128 / cuda 12.8`,
 - **`uvicorn: command not found`** — always prefix with `uv run`.
 - **`commit-msg` hook does not fire** — install the second stage:
   `uv run pre-commit install --hook-type commit-msg`.
-- **`nvidia-smi` not found / GPU missing inside WSL** — update the NVIDIA driver
-  on the *Windows* host (do not install one in WSL), then `wsl --shutdown` from
-  Windows and reopen. Confirm `/usr/lib/wsl/lib/libcuda.so` exists.
-- **torch: "no kernel image is available for execution"** — a non-`cu128` wheel
-  on Blackwell. Reinstall from the cu128 index (see GPU verification gate).
 - **`git push` rejected by push protection** — GitHub detected a secret
   in the pushed commits. Do not bypass blindly. Either rewrite history to
   remove the secret (`git rebase -i` + force-push is blocked on `main`;
