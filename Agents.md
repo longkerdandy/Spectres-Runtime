@@ -184,3 +184,15 @@ on the codebase*. The word "agent" in this file refers to the former;
 docstrings, commit messages, and identifiers — are written in **English**.
 Coding assistants must follow this split: reply in Chinese, but write English
 into the repository.
+
+**No references to plan files from durable artifacts.** Plan documents under
+`docs/plans/` (e.g. `v0.3-recipe-ingestion.md`) are **historical, transient
+records** — they describe a release's work breakdown and may be deleted once that
+release lands. Durable artifacts — source code, code comments, docstrings,
+configuration (`pyproject.toml`, etc.), and long-lived design docs — must **not**
+cite a plan file or its section numbers (no "plan v0.3 §10", "see §1", and the
+like). A reference that can rot into a dangling pointer does not belong in code or
+config. Instead, state the rationale inline, or link to a durable source (a design
+doc under `docs/design/`, a PEP, or upstream documentation). Plan files may freely
+reference each other and the design docs; the prohibition is one-directional —
+durable artifacts must not depend on plans.

@@ -1,7 +1,7 @@
 # Postgres + pgvector for Spectres-Runtime (dev).
 #
 # Only the database is containerized; the Runtime itself still runs via uvicorn on
-# the host (see docs/plans/v0.3 §2). Uses Agno's official pgvector image and its
+# the host. Uses Agno's official pgvector image and its
 # 5532 host-port convention (avoids clashing with a standard local Postgres / other
 # projects on 5432).
 #
