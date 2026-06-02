@@ -1,0 +1,40 @@
+# Postgres + pgvector for Spectres-Runtime (dev).
+#
+# Only the database is containerized; the Runtime itself still runs via uvicorn on
+# the host (see docs/plans/v0.3 §2). Uses Agno's official pgvector image and its
+# 5532 host-port convention (avoids clashing with a standard local Postgres / other
+# projects on 5432).
+#
+# Up:   docker compose -f docker/compose.yaml up -d
+# Down: docker compose -f docker/compose.yaml down        (add -v to wipe data)
+#
+# DATABASE_URL -> postgresql+psycopg://ai:ai@localhost:5532/ai
+
+name: spectres-runtime
+
+services:
+  postgres:
+    image: agnohq/pgvector:16
+    container_name: spectres-runtime-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ai
+      POSTGRES_USER: ai
+      POSTGRES_PASSWORD: ai
+      # Keep the data subdir out of the volume mountpoint root.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5532:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # First-boot extension enablement (see init.sql). Read-only mount.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai -d ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:
