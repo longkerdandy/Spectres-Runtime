@@ -16,8 +16,13 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-merge-conflict
+      # Vendored third-party snapshots (datasets/) are byte-faithful mirrors of
+      # upstream — these hygiene hooks must not rewrite them, or the snapshot
+      # diverges from its pinned source. Our own files are still checked.
       - id: end-of-file-fixer
+        exclude: ^datasets/
       - id: trailing-whitespace
+        exclude: ^datasets/
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
