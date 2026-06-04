@@ -27,8 +27,11 @@ services:
       - "5532:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # First-boot extension enablement (see init.sql). Read-only mount.
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      # First-boot extension enablement (see postgres/init.sql). Mounted as the
+      # whole directory (not a single file): single-file bind mounts are fragile on
+      # Docker Desktop + WSL2 — they break across container restarts with "not a
+      # directory" mount errors. Postgres runs every *.sql/*.sh here on first init.
+      - ./postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ai -d ai"]
       interval: 5s
