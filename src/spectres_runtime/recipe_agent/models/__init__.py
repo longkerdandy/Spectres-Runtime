@@ -7,16 +7,12 @@ by sub-concept; the public surface is re-exported here so callers import from
 
 from __future__ import annotations
 
-from spectres_runtime.recipe_agent.models.ingredient import (
-    Ingredient,
-    IngredientRole,
-)
+from spectres_runtime.recipe_agent.models.ingredient import Ingredient
 from spectres_runtime.recipe_agent.models.provenance import RecipeProvenance
 from spectres_runtime.recipe_agent.models.recipe import Recipe
 
 __all__ = [
     "Ingredient",
-    "IngredientRole",
     "Recipe",
     "RecipeProvenance",
 ]

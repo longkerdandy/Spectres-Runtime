@@ -77,16 +77,15 @@ The internal model every source normalizes into. Core fields:
   references (local path or served URL), populated at ingestion rather than the
   upstream address.
 - `category` tags
-- **structured `ingredients`** — a list of `{name, quantity, unit, role,
-  optional}` where `role ∈ {main, supporting, seasoning}` and `optional` flags an
-  ingredient the cook may leave out. Structured from day one (not a free-text
-  blob), which enables portion scaling and downstream filtering. `quantity` is a
+- **structured `ingredients`** — a list of `{name, quantity, unit, optional}`
+  where `optional` flags an ingredient the cook may leave out. Structured from day
+  one (not a free-text blob), which enables downstream filtering. `quantity` is a
   raw string so ranges (e.g. `10-15`) survive losslessly; the `unit` is a
   separate field.
 - `steps` — **Markdown**, keeping the source's structure (phase headings,
   ordering, emphasis) rather than a split list, since nothing consumes steps one
   at a time.
-- `servings` (int), `difficulty` (ordinal 1-5), `time` (hours) — all optional.
+- `difficulty` (ordinal 1-5), `time` (hours) — both optional.
 - `provenance` — which source (ingester) the recipe was normalized from, plus the
   original ref/URL within that source.
 
