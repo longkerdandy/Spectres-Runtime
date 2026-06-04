@@ -5,10 +5,19 @@
 It is **Runtime-wide and reused across agents**, not recipe-private.
 
 In v0.3 this handle activates only one role: the knowledge ``contents_db`` — the
-``knowledge_contents`` table that records what was ingested, which is what makes
+``agno_knowledge`` table that records what was ingested, which is what makes
 ingestion idempotent (the re-run ``skipped`` count). The sessions / memory / profile
 roles are the *same* handle gaining *more tables* later, deferred to the agent
 release — not a different database.
+
+Table names are left at Agno's defaults (all ``agno_*``). Idempotency is handled
+inside Agno's ``contents_db`` and never references a table name from this code, so
+overriding the name would only fragment the schema once the other roles activate.
+
+The Postgres ``schema`` is pinned to ``public`` explicitly. Agno's library default
+is ``ai`` — a meaningless namespace for a database dedicated to this Runtime, and one
+that forces clients to juggle ``search_path``. ``PgVector`` (see ``knowledge.py``) is
+pinned to the same ``public`` so both halves land in one namespace.
 """
 
 from __future__ import annotations
@@ -17,10 +26,6 @@ from agno.db.postgres import PostgresDb
 
 from spectres_runtime.config import Settings
 
-# The knowledge content-tracking table (the ``contents_db`` role). Named explicitly
-# so the ingestion idempotency path (plan §7) refers to a stable table.
-KNOWLEDGE_CONTENTS_TABLE = "knowledge_contents"
-
 
 def build_db(settings: Settings) -> PostgresDb:
     """Construct the shared ``PostgresDb`` from settings.
@@ -28,4 +33,4 @@ def build_db(settings: Settings) -> PostgresDb:
     Offline: only configures the SQLAlchemy engine; no connection is opened until a
     table is actually read or written.
     """
-    return PostgresDb(db_url=settings.database_url, knowledge_table=KNOWLEDGE_CONTENTS_TABLE)
+    return PostgresDb(db_url=settings.database_url, db_schema="public")

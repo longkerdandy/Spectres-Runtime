@@ -5,10 +5,15 @@
 # 5532 host-port convention (avoids clashing with a standard local Postgres / other
 # projects on 5432).
 #
-# Up:   docker compose -f docker/compose.yaml up -d
-# Down: docker compose -f docker/compose.yaml down        (add -v to wipe data)
+# The DB user/password are NOT baked in here — they are read from the environment
+# (DATABASE_USERNAME / DATABASE_PASSWORD). Pass the repo-root `.env` explicitly with
+# `--env-file`, since Compose otherwise looks for `.env` next to this file (in
+# docker/), not the repo root. Compose errors out if either is unset — no defaults.
 #
-# DATABASE_URL -> postgresql+psycopg://ai:ai@localhost:5532/ai
+# Up:   docker compose --env-file .env -f docker/compose.yaml up -d
+# Down: docker compose --env-file .env -f docker/compose.yaml down   (add -v to wipe data)
+#
+# DATABASE_URL -> postgresql+psycopg://<DATABASE_USERNAME>:<DATABASE_PASSWORD>@localhost:5532/spectres_runtime
 
 name: spectres-runtime
 
@@ -18,9 +23,13 @@ services:
     container_name: spectres-runtime-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ai
-      POSTGRES_USER: ai
-      POSTGRES_PASSWORD: ai
+      POSTGRES_DB: spectres_runtime
+      # Container var names must stay POSTGRES_USER / POSTGRES_PASSWORD (the image's
+      # contract). Their values have no default — interpolated from DATABASE_USERNAME /
+      # DATABASE_PASSWORD in the environment (repo-root `.env` via --env-file, or a
+      # shell export), so they are never hardcoded. Compose aborts if either is unset.
+      POSTGRES_USER: ${DATABASE_USERNAME:?set DATABASE_USERNAME (see .env / .env.example)}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?set DATABASE_PASSWORD (see .env / .env.example)}
       # Keep the data subdir out of the volume mountpoint root.
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
@@ -33,7 +42,7 @@ services:
       # directory" mount errors. Postgres runs every *.sql/*.sh here on first init.
       - ./postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ai -d ai"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 5

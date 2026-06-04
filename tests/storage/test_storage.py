@@ -19,7 +19,7 @@ from spectres_runtime.config import Settings
 from spectres_runtime.storage import build_db, build_knowledge
 from spectres_runtime.storage import knowledge as knowledge_module
 
-_DB_URL = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+_DB_URL = "postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime"
 
 
 def _settings() -> Settings:
@@ -38,6 +38,8 @@ def test_build_db_returns_shared_postgres_handle() -> None:
 
     assert isinstance(db, PostgresDb)
     assert db.db_url == _DB_URL
+    # Schema is pinned to public, not Agno's library default ("ai").
+    assert db.db_schema == "public"
 
 
 def test_build_knowledge_wires_vector_store_and_contents_db(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,6 +57,8 @@ def test_build_knowledge_wires_vector_store_and_contents_db(monkeypatch: pytest.
     vector_db = captured["vector_db"]
     assert isinstance(vector_db, PgVector)
     assert vector_db.table_name == "recipes"
+    # Pinned to public, matching the shared PostgresDb (not Agno's default "ai").
+    assert vector_db.schema == "public"
     assert vector_db.search_type is SearchType.vector
     # Dimensionality flows from the reused embedder, not a hardcoded value.
     assert vector_db.dimensions == 1024

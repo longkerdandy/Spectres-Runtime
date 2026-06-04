@@ -8,11 +8,10 @@ db. Grouping settled in plan v0.3 §4.
 
 from __future__ import annotations
 
-from spectres_runtime.storage.db import KNOWLEDGE_CONTENTS_TABLE, build_db
+from spectres_runtime.storage.db import build_db
 from spectres_runtime.storage.knowledge import RECIPES_TABLE, build_knowledge
 
 __all__ = [
-    "KNOWLEDGE_CONTENTS_TABLE",
     "RECIPES_TABLE",
     "build_db",
     "build_knowledge",
