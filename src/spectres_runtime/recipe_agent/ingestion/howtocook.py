@@ -43,6 +43,12 @@ def _content_from_markdown(text: str) -> str | None:
 
     Keeps every line verbatim (structure preserved) except those carrying the
     footer marker. ``None`` when nothing remains.
+
+    Deterministic by contract: the same source bytes always yield byte-identical
+    output, and line endings are normalized to ``\\n`` (``splitlines`` +
+    ``"\\n".join``) so CRLF/LF differences do not change it. The §7 sink hashes
+    this output as its idempotency key, so any change here (e.g. a regex rewrite
+    or platform-specific newlines) must preserve that stability.
     """
     body = "\n".join(line for line in text.splitlines() if _FOOTER_MARKER not in line)
     return body.strip() or None
