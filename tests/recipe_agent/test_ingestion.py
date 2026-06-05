@@ -88,20 +88,9 @@ def test_ingest_steps_capture_calculation_section_onward(tmp_path: Path) -> None
     assert "必备原料和工具" not in recipe.steps  # the section before 计算 is excluded
 
 
-def test_ingest_steps_fall_back_to_operation_when_no_calculation(tmp_path: Path) -> None:
-    entry = {"ref": "staple/饭.md", "name": "饭", "images": [], "difficulty": 1, "ingredients": []}
-    _write_snapshot(tmp_path, entry, "# 饭\n\n## 必备原料和工具\n\n- 米\n\n## 操作\n\n- 蒸\n")
-
-    recipe = next(HowToCookIngester(root=tmp_path).ingest())
-
-    assert recipe.steps is not None
-    assert recipe.steps.startswith("## 操作")  # no 计算 -> fall back
-    assert "必备原料和工具" not in recipe.steps
-
-
 def test_ingest_steps_none_when_no_steps_heading(tmp_path: Path) -> None:
     entry = {"ref": "drink/水.md", "name": "水", "images": [], "difficulty": 1, "ingredients": []}
-    _write_snapshot(tmp_path, entry, "# 水\n\n没有计算或操作小节。\n")
+    _write_snapshot(tmp_path, entry, "# 水\n\n没有计算小节。\n")
 
     assert next(HowToCookIngester(root=tmp_path).ingest()).steps is None
 

@@ -29,24 +29,21 @@ from spectres_runtime.recipe_agent.models.provenance import RecipeProvenance
 # src -> repo root.
 _DEFAULT_ROOT = Path(__file__).resolve().parents[4] / "datasets" / "howtocook"
 
-# Section headings that begin the cooking body, in priority order: prefer the
-# quantity table (``## 计算``) so per-portion amounts ride along with the steps,
-# and fall back to ``## 操作`` for any dish that omits it.
-_STEPS_HEADINGS = ("## 计算", "## 操作")
+# The cooking body starts at the quantity table (``## 计算``) so per-portion
+# amounts ride along with the steps; every vendored dish has it.
+_STEPS_HEADING = "## 计算"
 
 
 def _steps_from_markdown(text: str) -> str | None:
-    """Return the cooking body — the first present heading in :data:`_STEPS_HEADINGS`
-    onward — verbatim.
+    """Return the cooking body — the ``## 计算`` heading onward — verbatim.
 
-    Lossless-leaning: everything from that heading to end of file is kept (trailing
-    sections included), structure preserved. ``None`` when no such heading is found.
+    Lossless-leaning: everything from the heading to end of file is kept (trailing
+    sections included), structure preserved. ``None`` when the heading is absent.
     """
     lines = text.splitlines()
-    for heading in _STEPS_HEADINGS:
-        for idx, line in enumerate(lines):
-            if line.strip() == heading:
-                return "\n".join(lines[idx:]).strip() or None
+    for idx, line in enumerate(lines):
+        if line.strip() == _STEPS_HEADING:
+            return "\n".join(lines[idx:]).strip() or None
     return None
 
 
