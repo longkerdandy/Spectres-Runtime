@@ -1,15 +1,15 @@
 """Integration probe for Agno's write semantics that the §7 sink relies on.
 
 Opt-in: marked ``integration`` (excluded from the default gate) and skipped unless
-the runtime config is complete and Postgres is reachable. Drives the §7 design
-decision (idempotency keyed on the content hash, not name-only) by pinning *how*
-``Knowledge.insert`` behaves when the same ``name`` is written twice with a
-**different body**: does it replace the row in place, leave it stale, or duplicate?
+the runtime config is complete and Postgres is reachable. Pins the property the §7
+full-update depends on by exercising *how* ``Knowledge.insert`` behaves when the
+same ``name`` is written twice with a **different body**: does it replace the row
+in place, leave it stale, or duplicate?
 
-The sink's incremental contract — "re-embed only changed recipes, no duplicate
-vectors" — depends on the answer, so it is asserted here against live pgvector
-before the sink is built on top of it. One real embedder call per insert; bodies
-are kept short (single chunk) to keep the row bookkeeping 1:1.
+The sink's full-update contract — "re-embed every recipe each run, no duplicate
+vectors" — depends on a stable ``name`` upserting **in place**, so that answer is
+asserted here against live pgvector. One real embedder call per insert; bodies are
+kept short (single chunk) to keep the row bookkeeping 1:1.
 
 Run with a populated ``.env`` (or env vars) and Postgres up:
 ``uv run pytest -m integration``
