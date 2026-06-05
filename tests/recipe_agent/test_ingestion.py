@@ -23,7 +23,7 @@ from spectres_runtime.recipe_agent.models import Recipe
 
 def _write_snapshot(root: Path, entry: dict, markdown: str) -> None:
     """Lay out a minimal ``datasets/howtocook`` snapshot: one catalog line + .md."""
-    catalog = root / "ai-cleaned" / "recipes.jsonl"
+    catalog = root / "catalog" / "recipes.jsonl"
     catalog.parent.mkdir(parents=True, exist_ok=True)
     catalog.write_text(json.dumps(entry, ensure_ascii=False) + "\n", encoding="utf-8")
     md = root / "dishes" / entry["ref"]
@@ -96,7 +96,7 @@ def test_ingest_steps_none_when_no_steps_heading(tmp_path: Path) -> None:
 
 
 def test_ingest_skips_blank_catalog_lines(tmp_path: Path) -> None:
-    catalog = tmp_path / "ai-cleaned" / "recipes.jsonl"
+    catalog = tmp_path / "catalog" / "recipes.jsonl"
     catalog.parent.mkdir(parents=True)
     entry = {"ref": "drink/茶.md", "name": "茶", "images": [], "difficulty": 1, "ingredients": []}
     catalog.write_text("\n" + json.dumps(entry, ensure_ascii=False) + "\n\n", encoding="utf-8")

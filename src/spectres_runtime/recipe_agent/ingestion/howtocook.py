@@ -3,7 +3,7 @@
 Composes each :class:`Recipe` from two committed, offline artifacts under a
 vendored snapshot root (design §6):
 
-- ``ai-cleaned/recipes.jsonl`` — the structured catalog (one recipe per line):
+- ``catalog/recipes.jsonl`` — the structured catalog (one recipe per line):
   ``name``, ``description``, ``images``, ``difficulty`` and cleaned, curated
   ``ingredients``. Built offline by ``scripts/howtocook_clean.py`` plus a
   one-time review pass; never parsed live.
@@ -58,7 +58,7 @@ class HowToCookIngester(RecipeIngester):
         Defaults to the repo's vendored snapshot; tests inject a fixture root.
         """
         self._root = root if root is not None else _DEFAULT_ROOT
-        self._catalog = self._root / "ai-cleaned" / "recipes.jsonl"
+        self._catalog = self._root / "catalog" / "recipes.jsonl"
         self._dishes = self._root / "dishes"
 
     def ingest(self) -> Iterator[Recipe]:

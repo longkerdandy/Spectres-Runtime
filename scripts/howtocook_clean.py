@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """HowToCook dish .md -> recipes.jsonl cleaner.
 
-Implements datasets/howtocook/ai-cleaned/INSTRUCTIONS.md as a deterministic
-heuristic pass:
+Deterministic heuristic pass that builds the structured catalog
+(datasets/howtocook/catalog/recipes.jsonl):
 
   - read only the region H1 .. (not including) `## 计算`
   - name   = filename stem of ref
@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DISHES = ROOT / "datasets" / "howtocook" / "dishes"
-OUT = ROOT / "datasets" / "howtocook" / "ai-cleaned" / "recipes.jsonl"
+OUT = ROOT / "datasets" / "howtocook" / "catalog" / "recipes.jsonl"
 
 # ---------------------------------------------------------------------------
 # Tool / equipment detection (the one semantic call, done heuristically).
