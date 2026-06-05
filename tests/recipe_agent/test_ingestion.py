@@ -59,7 +59,7 @@ def test_ingest_composes_typed_recipe_from_artifacts(tmp_path: Path) -> None:
     assert len(recipes) == 1
     recipe = recipes[0]
     assert isinstance(recipe, Recipe)
-    assert recipe.id == "howtocook:aquatic/示例菜.md"
+    assert recipe.id == "howtocook/aquatic/示例菜"
     assert recipe.name == "示例菜"
     assert recipe.description == "一段简介。"
     assert recipe.images == ["aquatic/示例菜/成品.jpg"]
@@ -109,7 +109,7 @@ def test_ingest_over_vendored_snapshot_yields_valid_recipes() -> None:
     assert len(recipes) == 357
     assert all(isinstance(r, Recipe) for r in recipes)
     assert all(r.id and r.name for r in recipes)
-    assert all(r.id.startswith("howtocook:") for r in recipes)
+    assert all(r.id.startswith("howtocook/") for r in recipes)
     assert all(r.provenance is not None and r.provenance.source == "howtocook" for r in recipes)
     assert all(r.category and r.category[0] for r in recipes)
 
