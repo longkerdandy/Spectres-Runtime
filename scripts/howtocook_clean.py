@@ -152,10 +152,60 @@ TOOL_KEYWORDS = (
     "汤匙",
     "瓢",
     "盅",
+    # appliances / vessels / disposable supplies seen across the catalog. The
+    # bare single-character keys 杯 / 机 / 器 are intentional: no edible item in
+    # the catalog contains them, but cookware/appliances frequently do.
+    "杯",
+    "机",
+    "器",
+    "秒表",
+    "研杵",
+    "吸管",
+    "筛网",
+    "量筒",
+    "打火机",
+    "过滤袋",
+    "滤袋",
 )
 
 # Tokens that, if equal to the whole name, are tools even without a keyword.
 TOOL_EXACT = {"油纸", "保鲜袋", "密封袋", "塑料袋", "案台"}
+
+# Bare prep modifiers: dropped only when they are the WHOLE token (so they do
+# not strip the same characters out of names like 带皮五花肉 / 去骨鸡腿).
+MODIFIER_EXACT = {"带皮", "去皮", "去骨", "切块", "切片", "切丝", "切段", "洗净", "适量"}
+
+# Water / ice spellings are consumable and always kept (some carry amounts that
+# the quantity stripper reduces to these bare forms).
+KEEP_WHITELIST |= {"凉白开", "矿泉水", "苏打水", "气泡水"}
+
+# Section / category labels: as a stand-alone header line or as the `标签：…`
+# prefix of a bullet, the label itself is dropped and any items after the colon
+# are kept.
+KNOWN_LABELS = {
+    "原料",
+    "用料",
+    "食材",
+    "材料",
+    "主料",
+    "辅料",
+    "配料",
+    "调料",
+    "调味料",
+    "主要原料",
+    "其他原料",
+    "其它原料",
+    "工具",
+    "其他",
+    "其它",
+}
+OPTIONAL_LABELS = {"可选", "选用", "可选项"}
+
+# Extra label words / suffixes used to tell `标签：条目列表` apart from
+# `名称：数量`. A bullet whose pre-colon text is a label hands its real items to
+# the post-colon part; anything else is treated as `name：amount`.
+LABEL_WORDS = {"必备", "主食", "主要", "全部", "全料", "其他", "其它"}
+LABEL_SUFFIX = ("料", "原料", "材料", "食材", "用料")
 
 BULLET_RE = re.compile(r"^\s*[*\-+]\s+(.*\S)\s*$")
 IMG_RE = re.compile(r"!\[[^\]]*\]\(\s*((?:[^()\s]|\([^()]*\))+)\s*\)")
@@ -163,6 +213,29 @@ SPLIT_RE = re.compile(r"[、，,/]")
 OPTIONAL_RE = re.compile(r"（?\(?\s*(可选|选用)\s*）?\)?")
 PAREN_RE = re.compile(r"（[^）]*）|\([^)]*\)")
 STAR_RE = re.compile(r"★")
+
+# `名称：数量` vs `标签：条目` — split on the first colon only.
+COLON_RE = re.compile(r"[:：]")
+# Sentence punctuation marks a bullet/token as prose (a note), not an item.
+SENT_PUNCT_RE = re.compile(r"[。！？!?；;]")
+# Instruction / note phrases that, when present, mean the token is prose.
+PROSE_RE = re.compile(
+    r"即可|可根据|根据个人|如果|尽量|最好|建议|注意|参见|参考|"
+    r"前者|后者|价格|超市|市场|能够|没有就|否则|务必"
+)
+# Markdown image / link / emphasis fragments to strip from a name.
+MD_IMG_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+BRACKET_RE = re.compile(r"[\[\]`*_]")
+# Quantities: Arabic and Chinese numerals with an optional unit.
+UNIT = (
+    r"(?:g|kg|ml|l|克|千克|毫升|升|斤|两|个|只|颗|粒|片|张|块|根|条|瓣|朵|"
+    r"勺|匙|大勺|小勺|大匙|小匙|杯|袋|包|盒|滴|把|束|份|寸|cm|mm|毫米|厘米|克左右)"
+)
+QTY_RE = re.compile(rf"\d+(?:[.\-~/]\d+)?\s*{UNIT}?", re.IGNORECASE)
+CN_QTY_RE = re.compile(rf"[一二两三四五六七八九十几半数]+\s*{UNIT}")
+# Stray amount / note words to strip (no digit, so QTY_RE misses them).
+NOTE_RE = re.compile(r"适量|少许|若干|适当|品牌不限|不限|网孔[^ ]*|约[^ ，]*")
 
 
 def normalize(text: str) -> str:
@@ -251,6 +324,76 @@ def is_tool(name: str) -> bool:
     return any(k in name for k in TOOL_KEYWORDS)
 
 
+def clean_token(tok: str) -> str:
+    """Reduce one split token to a bare ingredient name (no markdown/amounts)."""
+    tok = MD_IMG_RE.sub("", tok)
+    tok = MD_LINK_RE.sub(r"\1", tok)
+    tok = BRACKET_RE.sub("", tok)
+    tok = CN_QTY_RE.sub("", tok)
+    tok = QTY_RE.sub("", tok)
+    tok = NOTE_RE.sub("", tok)
+    tok = re.sub(r"\s+", " ", tok)
+    return tok.strip(" \t：:、，,./。·-—~+&")
+
+
+def header_kind(line: str) -> str | None:
+    """Classify a non-bullet line as a section header.
+
+    Returns "tool" / "optional" / "plain" for a recognised header (which resets
+    or sets the running section state), or None if the line is not a header.
+    """
+    core = PAREN_RE.sub("", line).strip().rstrip(":：").strip()
+    is_header = line.rstrip().endswith((":", "：")) or core in KNOWN_LABELS or core in OPTIONAL_LABELS
+    if not is_header:
+        # bare "可选（…）" style sub-headers carry no colon
+        if OPTIONAL_RE.search(line) and len(line.strip()) <= 12:
+            return "optional"
+        return None
+    if "工具" in core:
+        return "tool"
+    if core in OPTIONAL_LABELS or OPTIONAL_RE.search(line):
+        return "optional"
+    return "plain"
+
+
+def _is_label(s: str) -> bool:
+    """True if `s` is a category label rather than an ingredient name."""
+    if s in KNOWN_LABELS or s in OPTIONAL_LABELS or s in LABEL_WORDS:
+        return True
+    return s.endswith(LABEL_SUFFIX)
+
+
+def split_label(text: str) -> tuple[str, bool, bool]:
+    """Resolve a `标签：条目` / `名称：数量` / `名称：可选` bullet.
+
+    Returns (working_text, optional_from_label, drop_bullet).
+    """
+    m = COLON_RE.search(text)
+    if not m:
+        return text, False, False
+    before = text[: m.start()].strip()
+    after = text[m.end() :].strip()
+    drop_tool = "工具" in before
+    if not before:
+        # leading colon (label sat inside a stripped `（可选）`/parenthetical)
+        return after, False, drop_tool
+    if before in KNOWN_LABELS:
+        return after, False, drop_tool
+    if before in OPTIONAL_LABELS:
+        return after, True, drop_tool
+    if not after:
+        # `名称：`-style category header with nothing after → drop
+        return "", False, True
+    if not OPTIONAL_RE.sub("", after).strip():
+        # `名称：可选` — the optional marker is the whole after-part
+        return before, True, drop_tool
+    if _is_label(before):
+        # `全香料：月桂叶、…`, `必备：蒜蓉酱` → real item(s) follow the colon
+        return after, bool(OPTIONAL_RE.search(before)), drop_tool
+    # `名称：数量/备注/说明` → the ingredient is the part before the colon
+    return before, False, drop_tool
+
+
 def extract_ingredients(region: list[str]) -> list[dict]:
     # find the `## 必备原料和工具` section within the region
     start = None
@@ -260,31 +403,53 @@ def extract_ingredients(region: list[str]) -> list[dict]:
             break
     if start is None:
         return []
-    bullets: list[str] = []
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    section_optional = False
+    section_drop = False  # under a `工具：` header
+
     for ln in region[start:]:
         if ln.strip().startswith("## "):
             break
         m = BULLET_RE.match(ln)
-        if m:
-            bullets.append(m.group(1))
+        if not m:
+            if not ln.strip():
+                continue
+            kind = header_kind(ln)
+            if kind == "tool":
+                section_drop, section_optional = True, False
+            elif kind == "optional":
+                section_drop, section_optional = False, True
+            elif kind == "plain":
+                section_drop, section_optional = False, False
+            continue
 
-    out: list[dict] = []
-    seen: set[str] = set()
-    for raw in bullets:
-        optional = bool(OPTIONAL_RE.search(raw))
-        # strip parenthetical notes (and the optional markers within them)
+        if section_drop:
+            continue
+        raw = m.group(1)
+        # strip markdown images/links first so their `!`/`[]` don't read as prose
+        raw = MD_IMG_RE.sub("", raw)
+        raw = MD_LINK_RE.sub(r"\1", raw)
+        inline_optional = bool(OPTIONAL_RE.search(raw))
         cleaned = PAREN_RE.sub("", raw)
-        cleaned = OPTIONAL_RE.sub("", cleaned)
-        for piece in SPLIT_RE.split(cleaned):
-            name = piece.strip().strip("：:").strip()
-            # drop trailing/leading markdown emphasis
-            name = name.strip("*_` ").strip()
-            if not name:
+        if SENT_PUNCT_RE.search(cleaned) or cleaned.strip().startswith("注"):
+            continue  # prose note, not an ingredient
+        work, label_optional, drop = split_label(cleaned)
+        if drop:
+            continue
+        work = OPTIONAL_RE.sub("", work)  # drop any bare 可选/选用 left among items
+        optional = section_optional or inline_optional or label_optional
+        for piece in SPLIT_RE.split(work):
+            name = clean_token(piece)
+            if not name or name in KNOWN_LABELS or name in OPTIONAL_LABELS:
                 continue
-            if "：" in name or ":" in name:  # sub-header label remnants
-                name = re.split(r"[：:]", name)[-1].strip()
-            if not name:
+            if name in MODIFIER_EXACT:
                 continue
+            if PROSE_RE.search(name) or SENT_PUNCT_RE.search(name):
+                continue
+            if not re.search(r"[\u4e00-\u9fffA-Za-z]", name):
+                continue  # nothing but leftover digits/punctuation
             if is_tool(name):
                 continue
             if name in seen:

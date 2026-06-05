@@ -114,9 +114,10 @@ ignore = []
 # here because pytest's whole model is built on `assert`).
 "tests/**/*.py" = ["S101"]
 # The HowToCook cleaner deliberately embeds full-width CJK punctuation (、，（）：)
-# in its regexes and docstring to match the Chinese source text; the
-# "ambiguous character" rules are noise here.
-"scripts/howtocook_clean.py" = ["RUF001", "RUF002"]
+# in its regexes, docstring, and explanatory comments to match the Chinese
+# source text; the "ambiguous character" rules (string/docstring/comment) are
+# noise here.
+"scripts/howtocook_clean.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 # Match Black's defaults: double quotes, spaces for indent, LF line endings.
