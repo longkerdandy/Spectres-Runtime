@@ -118,6 +118,9 @@ ignore = []
 # source text; the "ambiguous character" rules (string/docstring/comment) are
 # noise here.
 "scripts/howtocook_extract.py" = ["RUF001", "RUF002", "RUF003"]
+# The ingestion integration probe embeds Chinese recipe bodies (full-width ，：。)
+# to mirror real source text; the "ambiguous character" rules are noise here.
+"tests/recipe_agent/test_ingestion_integration.py" = ["S101", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 # Match Black's defaults: double quotes, spaces for indent, LF line endings.
