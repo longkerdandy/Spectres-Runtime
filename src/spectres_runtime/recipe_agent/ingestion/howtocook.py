@@ -75,6 +75,13 @@ class HowToCookIngester(RecipeIngester):
                 yield self._compose(json.loads(line))
 
     def _compose(self, entry: dict[str, Any]) -> Recipe:
+        """Build one :class:`Recipe` from a catalog ``entry`` plus its snapshot ``.md``.
+
+        Structured fields come from the entry; ``steps`` from the matching ``.md`` (the
+        ``## 计算`` section onward, ``None`` when missing); ``id`` is the
+        source-namespaced ``ref`` slug; ``category`` is the leading ``ref`` segment; the
+        raw ``ref`` is kept in ``provenance``.
+        """
         ref: str = entry["ref"]
         md_path = self._dishes / ref
         steps = _steps_from_markdown(md_path.read_text(encoding="utf-8")) if md_path.is_file() else None
