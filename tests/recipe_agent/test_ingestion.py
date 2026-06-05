@@ -70,23 +70,38 @@ def test_ingest_composes_typed_recipe_from_artifacts(tmp_path: Path) -> None:
     assert (recipe.provenance.source, recipe.provenance.ref) == ("howtocook", "aquatic/示例菜.md")
 
 
-def test_ingest_steps_capture_operation_section_onward(tmp_path: Path) -> None:
+def test_ingest_steps_capture_calculation_section_onward(tmp_path: Path) -> None:
     entry = {"ref": "staple/面.md", "name": "面", "images": [], "difficulty": 1, "ingredients": []}
-    markdown = "# 面的做法\n\n简介。\n\n## 必备原料和工具\n\n- 面条\n\n## 操作\n\n- 下锅\n\n## 附加内容\n\n- 链接\n"
+    markdown = (
+        "# 面的做法\n\n简介。\n\n## 必备原料和工具\n\n- 面条\n\n"
+        "## 计算\n\n- 面条 100g\n\n## 操作\n\n- 下锅\n\n## 附加内容\n\n- 链接\n"
+    )
     _write_snapshot(tmp_path, entry, markdown)
 
     recipe = next(HowToCookIngester(root=tmp_path).ingest())
 
     assert recipe.steps is not None
-    assert recipe.steps.startswith("## 操作")
+    assert recipe.steps.startswith("## 计算")  # quantity table rides along with steps
+    assert "## 操作" in recipe.steps
     assert "- 下锅" in recipe.steps
     assert "## 附加内容" in recipe.steps  # lossless: trailing sections kept
-    assert "必备原料和工具" not in recipe.steps  # the section before 操作 is excluded
+    assert "必备原料和工具" not in recipe.steps  # the section before 计算 is excluded
 
 
-def test_ingest_steps_none_when_operation_heading_absent(tmp_path: Path) -> None:
+def test_ingest_steps_fall_back_to_operation_when_no_calculation(tmp_path: Path) -> None:
+    entry = {"ref": "staple/饭.md", "name": "饭", "images": [], "difficulty": 1, "ingredients": []}
+    _write_snapshot(tmp_path, entry, "# 饭\n\n## 必备原料和工具\n\n- 米\n\n## 操作\n\n- 蒸\n")
+
+    recipe = next(HowToCookIngester(root=tmp_path).ingest())
+
+    assert recipe.steps is not None
+    assert recipe.steps.startswith("## 操作")  # no 计算 -> fall back
+    assert "必备原料和工具" not in recipe.steps
+
+
+def test_ingest_steps_none_when_no_steps_heading(tmp_path: Path) -> None:
     entry = {"ref": "drink/水.md", "name": "水", "images": [], "difficulty": 1, "ingredients": []}
-    _write_snapshot(tmp_path, entry, "# 水\n\n没有操作小节。\n")
+    _write_snapshot(tmp_path, entry, "# 水\n\n没有计算或操作小节。\n")
 
     assert next(HowToCookIngester(root=tmp_path).ingest()).steps is None
 
