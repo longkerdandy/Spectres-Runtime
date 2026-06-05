@@ -87,7 +87,7 @@ The internal model every source normalizes into. Core fields:
   stripped. Kept whole rather than split into a `steps` list because nothing consumes
   it one line at a time, and because **this body is the text embedded for retrieval** —
   the structured fields above ride alongside as filter/display metadata.
-- `difficulty` (ordinal 1-5), `time` (hours) — both optional.
+- `difficulty` (ordinal 1-5) — optional.
 - `provenance` — which source (ingester) the recipe was normalized from, plus the
   original ref/URL within that source.
 

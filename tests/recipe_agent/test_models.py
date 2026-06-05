@@ -54,7 +54,6 @@ def test_recipe_structured_ingredients() -> None:
         ],
         content="### Prep\n\n1. Blanch the pork.\n2. Caramelize the sugar.",
         difficulty=3,
-        time=1.5,
         provenance=RecipeProvenance(source="howtocook", ref="dishes/meat_dish/..."),
     )
     assert [i.name for i in recipe.ingredients] == ["pork belly", "sugar"]
@@ -63,6 +62,5 @@ def test_recipe_structured_ingredients() -> None:
     assert recipe.content is not None
     assert recipe.content.startswith("### Prep")
     assert recipe.difficulty == 3
-    assert recipe.time == 1.5
     assert recipe.provenance is not None
     assert recipe.provenance.source == "howtocook"

@@ -30,5 +30,4 @@ class Recipe(BaseModel):
     ingredients: list[Ingredient] = Field(default_factory=list)  # structured ingredient lines
     content: str | None = None  # full human-readable body (Markdown), source noise stripped — the embedded text
     difficulty: int | None = None  # rating, 1 (easy) to 5 (hard)
-    time: float | None = None  # total time in hours
     provenance: RecipeProvenance | None = None  # where the recipe came from
