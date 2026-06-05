@@ -117,7 +117,7 @@ ignore = []
 # in its regexes, docstring, and explanatory comments to match the Chinese
 # source text; the "ambiguous character" rules (string/docstring/comment) are
 # noise here.
-"scripts/howtocook_clean.py" = ["RUF001", "RUF002", "RUF003"]
+"scripts/howtocook_extract.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 # Match Black's defaults: double quotes, spaces for indent, LF line endings.

@@ -5,7 +5,7 @@ vendored snapshot root (design §6):
 
 - ``catalog/recipes.jsonl`` — the structured catalog (one recipe per line):
   ``name``, ``description``, ``images``, ``difficulty`` and cleaned, curated
-  ``ingredients``. Built offline by ``scripts/howtocook_clean.py`` plus a
+  ``ingredients``. Built offline by ``scripts/howtocook_extract.py`` plus a
   one-time review pass; never parsed live.
 - ``dishes/<ref>`` — the faithful Markdown snapshot, read only for the cooking
   ``steps`` (the ``## 操作`` section onward, structure preserved).

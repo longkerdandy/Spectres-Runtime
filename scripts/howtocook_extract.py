@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HowToCook dish .md -> recipes.jsonl cleaner.
+"""HowToCook dish .md -> recipes.jsonl extractor.
 
 Deterministic heuristic pass that builds the structured catalog
 (datasets/howtocook/catalog/recipes.jsonl):
