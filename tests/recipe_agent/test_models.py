@@ -1,9 +1,8 @@
 """Shape / typing tests for the ``Recipe`` domain model.
 
 Construct the model and assert the structured ``ingredients`` shape:
-``quantity`` is a raw string (ranges survive), ``difficulty`` is a 1-5 int, and
-ingredients carry an ``optional`` flag. No parsing, network, DB, or LLM is
-exercised.
+``difficulty`` is a 1-5 int and ingredients carry an ``optional`` flag. No
+parsing, network, DB, or LLM is exercised.
 """
 
 from __future__ import annotations
@@ -18,20 +17,15 @@ from spectres_runtime.recipe_agent.models import (
 def test_ingredient_defaults_and_shape() -> None:
     ingredient = Ingredient(name="garlic")
     assert ingredient.name == "garlic"
-    assert ingredient.quantity is None
-    assert ingredient.unit is None
     assert ingredient.optional is False
 
 
-def test_ingredient_full_shape_with_range_quantity() -> None:
+def test_ingredient_full_shape() -> None:
     ingredient = Ingredient(
         name="cooking oil",
-        quantity="10-15",
-        unit="ml",
         optional=True,
     )
-    assert ingredient.quantity == "10-15"
-    assert ingredient.unit == "ml"
+    assert ingredient.name == "cooking oil"
     assert ingredient.optional is True
 
 
@@ -55,8 +49,8 @@ def test_recipe_structured_ingredients() -> None:
         description="A homestyle braised pork belly.",
         images=["recipes/r2/cover.jpg", "recipes/r2/plated.jpg"],
         ingredients=[
-            Ingredient(name="pork belly", quantity="500", unit="g"),
-            Ingredient(name="sugar", quantity="20", unit="g"),
+            Ingredient(name="pork belly"),
+            Ingredient(name="sugar"),
         ],
         steps="### Prep\n\n1. Blanch the pork.\n2. Caramelize the sugar.",
         difficulty=3,
