@@ -23,7 +23,6 @@ class Recipe(BaseModel):
 
     id: str  # stable unique identifier
     name: str  # canonical display name
-    aliases: list[str] = Field(default_factory=list)  # other names for the dish
     description: str | None = None  # human-readable summary (Markdown)
     images: list[str] = Field(default_factory=list)  # runtime-resolvable refs (local path or served URL)
     category: list[str] = Field(default_factory=list)  # classification tags

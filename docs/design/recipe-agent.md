@@ -71,7 +71,7 @@ Agno `knowledge_retriever` hook, never an agent-facing tool. (See §5.)
 
 The internal model every source normalizes into. Core fields:
 
-- `id`, `name`, `aliases`
+- `id`, `name`
 - `description` and `images` — a human-readable summary and cover/display
   images. `description` is **Markdown**; `images` are runtime-resolvable
   references (local path or served URL), populated at ingestion rather than the

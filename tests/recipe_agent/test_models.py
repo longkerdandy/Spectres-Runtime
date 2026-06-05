@@ -33,7 +33,6 @@ def test_recipe_minimal_construction() -> None:
     recipe = Recipe(id="r1", name="Tomato Eggs")
     assert recipe.id == "r1"
     assert recipe.name == "Tomato Eggs"
-    assert recipe.aliases == []
     assert recipe.description is None
     assert recipe.images == []
     assert recipe.ingredients == []
