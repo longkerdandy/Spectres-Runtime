@@ -38,10 +38,10 @@ def _steps_from_markdown(text: str) -> str | None:
     Lossless-leaning: everything from the heading to end of file is kept (trailing
     sections included), structure preserved. ``None`` when the heading is absent.
     """
-    for idx, line in enumerate(text.splitlines()):
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
         if line.strip() == _STEPS_HEADING:
-            steps = "\n".join(text.splitlines()[idx:]).strip()
-            return steps or None
+            return "\n".join(lines[idx:]).strip() or None
     return None
 
 
