@@ -77,7 +77,7 @@ class HowToCookIngester(RecipeIngester):
         md_path = self._dishes / ref
         steps = _steps_from_markdown(md_path.read_text(encoding="utf-8")) if md_path.is_file() else None
         return Recipe(
-            id=ref,
+            id=f"{self.name}:{ref}",
             name=entry["name"],
             description=entry.get("description"),
             images=list(entry.get("images", [])),
