@@ -3,9 +3,10 @@
 
 Downloads the ``Anduin2017/HowToCook`` source archive for a release tag and
 mirrors its ``dishes/`` tree — recipe Markdown and images — into the datasets
-directory. The snapshot is committed to the repo, so ingestion needs no network;
-this script is run only to refresh or bump the tag. Re-running rebuilds
-``dishes/`` from scratch, so files removed upstream disappear too.
+directory, and records the synced tag in a ``VERSION`` file alongside it. The
+snapshot is committed to the repo, so ingestion needs no network; this script is
+run only to refresh or bump the tag. Re-running rebuilds ``dishes/`` from
+scratch, so files removed upstream disappear too.
 
 Usage:
     uv run python scripts/howtocook.py 1.6.0
@@ -62,7 +63,12 @@ def main() -> None:
             target.write_bytes(extracted.read())
             count += 1
 
+    version_file = args.dest / "VERSION"
+    args.dest.mkdir(parents=True, exist_ok=True)
+    version_file.write_text(f"{args.tag}\n", encoding="utf-8")
+
     print(f"Synced {count} files into {dishes_dir}/")
+    print(f"Recorded tag {args.tag} in {version_file}")
 
 
 if __name__ == "__main__":
