@@ -80,16 +80,18 @@ The internal model every source normalizes into. Core fields:
 - **structured `ingredients`** — a list of `{name, optional}` where `optional`
   flags an ingredient the cook may leave out. A clean structured name list (not a
   free-text blob) enables downstream filtering ("用到豆瓣酱吗", "纯素"). Amounts are
-  deliberately **not** structured: quantities stay in the steps body for the cook to
-  read and balance, so there is no `quantity`/`unit` field.
-- `steps` — **Markdown**, keeping the source's structure (phase headings,
-  ordering, emphasis) rather than a split list, since nothing consumes steps one
-  at a time.
+  deliberately **not** structured: quantities stay in the `content` body for the cook
+  to read and balance, so there is no `quantity`/`unit` field.
+- `content` — **Markdown**, the recipe's full human-readable body (title, intro,
+  ingredient/quantity sections, steps), source boilerplate (e.g. contributor footers)
+  stripped. Kept whole rather than split into a `steps` list because nothing consumes
+  it one line at a time, and because **this body is the text embedded for retrieval** —
+  the structured fields above ride alongside as filter/display metadata.
 - `difficulty` (ordinal 1-5), `time` (hours) — both optional.
 - `provenance` — which source (ingester) the recipe was normalized from, plus the
   original ref/URL within that source.
 
-**Free-text fields hold Markdown by contract** (`description`, `steps`): sources
+**Free-text fields hold Markdown by contract** (`description`, `content`): sources
 that are not natively Markdown are converted during normalization, so consumers
 always render one format.
 

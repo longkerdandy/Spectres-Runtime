@@ -70,29 +70,33 @@ def test_ingest_composes_typed_recipe_from_artifacts(tmp_path: Path) -> None:
     assert (recipe.provenance.source, recipe.provenance.ref) == ("howtocook", "aquatic/示例菜.md")
 
 
-def test_ingest_steps_capture_calculation_section_onward(tmp_path: Path) -> None:
+def test_ingest_content_is_full_markdown_without_footer(tmp_path: Path) -> None:
     entry = {"ref": "staple/面.md", "name": "面", "images": [], "difficulty": 1, "ingredients": []}
     markdown = (
         "# 面的做法\n\n简介。\n\n## 必备原料和工具\n\n- 面条\n\n"
-        "## 计算\n\n- 面条 100g\n\n## 操作\n\n- 下锅\n\n## 附加内容\n\n- 链接\n"
+        "## 操作\n\n- 下锅\n\n## 附加内容\n\n- 链接\n\n"
+        "如果您遵循本指南的制作流程而发现有问题或可以改进的流程，请提出 Issue 或 Pull request 。\n"
     )
     _write_snapshot(tmp_path, entry, markdown)
 
     recipe = next(HowToCookIngester(root=tmp_path).ingest())
 
-    assert recipe.steps is not None
-    assert recipe.steps.startswith("## 计算")  # quantity table rides along with steps
-    assert "## 操作" in recipe.steps
-    assert "- 下锅" in recipe.steps
-    assert "## 附加内容" in recipe.steps  # lossless: trailing sections kept
-    assert "必备原料和工具" not in recipe.steps  # the section before 计算 is excluded
+    assert recipe.content is not None
+    assert recipe.content.startswith("# 面的做法")  # full body from the title down
+    assert "## 必备原料和工具" in recipe.content  # whole document kept, not just steps
+    assert "## 操作" in recipe.content
+    assert "## 附加内容" in recipe.content
+    assert "请提出 Issue 或 Pull request" not in recipe.content  # contributor footer stripped
 
 
-def test_ingest_steps_none_when_no_steps_heading(tmp_path: Path) -> None:
+def test_ingest_content_none_when_markdown_missing(tmp_path: Path) -> None:
+    # Catalog entry whose snapshot .md is absent — content cannot be read.
+    catalog = tmp_path / "catalog" / "recipes.jsonl"
+    catalog.parent.mkdir(parents=True)
     entry = {"ref": "drink/水.md", "name": "水", "images": [], "difficulty": 1, "ingredients": []}
-    _write_snapshot(tmp_path, entry, "# 水\n\n没有计算小节。\n")
+    catalog.write_text(json.dumps(entry, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    assert next(HowToCookIngester(root=tmp_path).ingest()).steps is None
+    assert next(HowToCookIngester(root=tmp_path).ingest()).content is None
 
 
 def test_ingest_skips_blank_catalog_lines(tmp_path: Path) -> None:
@@ -116,6 +120,8 @@ def test_ingest_over_vendored_snapshot_yields_valid_recipes() -> None:
     assert all(r.id.startswith("howtocook/") for r in recipes)
     assert all(r.provenance is not None and r.provenance.source == "howtocook" for r in recipes)
     assert all(r.category and r.category[0] for r in recipes)
+    assert all(r.content for r in recipes)  # every dish has a Markdown body
+    assert all("请提出 Issue 或 Pull request" not in r.content for r in recipes)  # footer stripped corpus-wide
 
 
 def test_write_result_defaults_to_zero() -> None:

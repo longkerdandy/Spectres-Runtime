@@ -37,7 +37,7 @@ def test_recipe_minimal_construction() -> None:
     assert recipe.description is None
     assert recipe.images == []
     assert recipe.ingredients == []
-    assert recipe.steps is None
+    assert recipe.content is None
     assert recipe.difficulty is None
     assert recipe.provenance is None
 
@@ -52,7 +52,7 @@ def test_recipe_structured_ingredients() -> None:
             Ingredient(name="pork belly"),
             Ingredient(name="sugar"),
         ],
-        steps="### Prep\n\n1. Blanch the pork.\n2. Caramelize the sugar.",
+        content="### Prep\n\n1. Blanch the pork.\n2. Caramelize the sugar.",
         difficulty=3,
         time=1.5,
         provenance=RecipeProvenance(source="howtocook", ref="dishes/meat_dish/..."),
@@ -60,8 +60,8 @@ def test_recipe_structured_ingredients() -> None:
     assert [i.name for i in recipe.ingredients] == ["pork belly", "sugar"]
     assert recipe.images == ["recipes/r2/cover.jpg", "recipes/r2/plated.jpg"]
     assert recipe.ingredients[1].name == "sugar"
-    assert recipe.steps is not None
-    assert recipe.steps.startswith("### Prep")
+    assert recipe.content is not None
+    assert recipe.content.startswith("### Prep")
     assert recipe.difficulty == 3
     assert recipe.time == 1.5
     assert recipe.provenance is not None

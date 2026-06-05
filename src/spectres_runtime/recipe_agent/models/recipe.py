@@ -28,7 +28,7 @@ class Recipe(BaseModel):
     images: list[str] = Field(default_factory=list)  # runtime-resolvable refs (local path or served URL)
     category: list[str] = Field(default_factory=list)  # classification tags
     ingredients: list[Ingredient] = Field(default_factory=list)  # structured ingredient lines
-    steps: str | None = None  # cooking instructions (Markdown, structure preserved)
+    content: str | None = None  # full human-readable body (Markdown), source noise stripped — the embedded text
     difficulty: int | None = None  # rating, 1 (easy) to 5 (hard)
     time: float | None = None  # total time in hours
     provenance: RecipeProvenance | None = None  # where the recipe came from

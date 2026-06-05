@@ -7,8 +7,9 @@ vendored snapshot root (design §6):
   ``name``, ``description``, ``images``, ``difficulty`` and cleaned, curated
   ``ingredients``. Built offline by ``scripts/howtocook_extract.py`` plus a
   one-time review pass; never parsed live.
-- ``dishes/<ref>`` — the faithful Markdown snapshot, read only for the cooking
-  ``steps`` (the ``## 操作`` section onward, structure preserved).
+- ``dishes/<ref>`` — the faithful Markdown snapshot, read for the recipe's full
+  body (``content``): the entire ``.md`` with the project's contributor footer
+  stripped, structure otherwise preserved. This body is what gets embedded.
 
 Online origin, served locally: no network, DB, or LLM at ingest time.
 """
@@ -29,22 +30,22 @@ from spectres_runtime.recipe_agent.models.provenance import RecipeProvenance
 # src -> repo root.
 _DEFAULT_ROOT = Path(__file__).resolve().parents[4] / "datasets" / "howtocook"
 
-# The cooking body starts at the quantity table (``## 计算``) so per-portion
-# amounts ride along with the steps; every vendored dish has it.
-_STEPS_HEADING = "## 计算"
+# Distinctive phrase of HowToCook's trailing contributor footer ("...请提出 Issue
+# 或 Pull request 。"), present in every dish. It addresses contributors, not
+# cooks — zero retrieval signal and identical across the corpus, so it is dropped
+# from the embedded body. Matched as a substring to catch its standalone,
+# image-trailing, and list-item ("- ...") variants alike.
+_FOOTER_MARKER = "请提出 Issue 或 Pull request"
 
 
-def _steps_from_markdown(text: str) -> str | None:
-    """Return the cooking body — the ``## 计算`` heading onward — verbatim.
+def _content_from_markdown(text: str) -> str | None:
+    """Return the dish's full Markdown body with the contributor footer removed.
 
-    Lossless-leaning: everything from the heading to end of file is kept (trailing
-    sections included), structure preserved. ``None`` when the heading is absent.
+    Keeps every line verbatim (structure preserved) except those carrying the
+    footer marker. ``None`` when nothing remains.
     """
-    lines = text.splitlines()
-    for idx, line in enumerate(lines):
-        if line.strip() == _STEPS_HEADING:
-            return "\n".join(lines[idx:]).strip() or None
-    return None
+    body = "\n".join(line for line in text.splitlines() if _FOOTER_MARKER not in line)
+    return body.strip() or None
 
 
 class HowToCookIngester(RecipeIngester):
@@ -64,8 +65,8 @@ class HowToCookIngester(RecipeIngester):
     def ingest(self) -> Iterator[Recipe]:
         """Yield one :class:`Recipe` per catalog line, lazily.
 
-        Structured fields come from the catalog entry; ``steps`` is read from the
-        matching snapshot ``.md``; ``category`` is the leading ``ref`` path segment.
+        Structured fields come from the catalog entry; ``content`` is the matching
+        snapshot ``.md`` (footer stripped); ``category`` is the leading ``ref`` segment.
         """
         with self._catalog.open(encoding="utf-8") as lines:
             for line in lines:
@@ -77,14 +78,14 @@ class HowToCookIngester(RecipeIngester):
     def _compose(self, entry: dict[str, Any]) -> Recipe:
         """Build one :class:`Recipe` from a catalog ``entry`` plus its snapshot ``.md``.
 
-        Structured fields come from the entry; ``steps`` from the matching ``.md`` (the
-        ``## 计算`` section onward, ``None`` when missing); ``id`` is the
-        source-namespaced ``ref`` slug; ``category`` is the leading ``ref`` segment; the
-        raw ``ref`` is kept in ``provenance``.
+        Structured fields come from the entry; ``content`` is the matching ``.md``'s full
+        body with the contributor footer stripped (``None`` when the file is missing);
+        ``id`` is the source-namespaced ``ref`` slug; ``category`` is the leading ``ref``
+        segment; the raw ``ref`` is kept in ``provenance``.
         """
         ref: str = entry["ref"]
         md_path = self._dishes / ref
-        steps = _steps_from_markdown(md_path.read_text(encoding="utf-8")) if md_path.is_file() else None
+        content = _content_from_markdown(md_path.read_text(encoding="utf-8")) if md_path.is_file() else None
         return Recipe(
             id=f"{self.name}/{ref.removesuffix('.md')}",
             name=entry["name"],
@@ -92,7 +93,7 @@ class HowToCookIngester(RecipeIngester):
             images=list(entry.get("images", [])),
             category=[ref.split("/", 1)[0]],
             ingredients=[Ingredient(name=i["name"], optional=i.get("optional", False)) for i in entry["ingredients"]],
-            steps=steps,
+            content=content,
             difficulty=entry.get("difficulty"),
             provenance=RecipeProvenance(source=self.name, ref=ref),
         )
