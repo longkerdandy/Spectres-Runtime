@@ -41,6 +41,13 @@ dependencies = [
     "uvicorn[standard]>=0.48.0",
 ]
 
+# Console scripts (PEP 621). `recipe-ingest` is the one-shot batch command that
+# populates the recipe knowledge base (plan §8); it wires the HowToCook ingester to
+# the sink and reports counts. Target lives in `__main__.py`, so
+# `python -m spectres_runtime.recipe_agent.ingestion` works too.
+[project.scripts]
+recipe-ingest = "spectres_runtime.recipe_agent.ingestion.__main__:main"
+
 # ---------------------------------------------------------------------------
 # Build backend. `hatchling` is uv init's "hatch" option — actively maintained,
 # zero-config for a standard src/ layout, no Setuptools baggage.
