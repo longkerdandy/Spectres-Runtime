@@ -8,10 +8,19 @@ from agno.models.moonshot import MoonShot
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from spectres_runtime.recipe_agent.config import RecipeAgentSettings
+
 
 class Settings(BaseSettings):
     """Typed, env-driven runtime config. No defaults — every value comes from the
-    process env or a git-ignored `.env` (documented in `.env.example`)."""
+    process env or a git-ignored `.env` (documented in `.env.example`).
+
+    Holds only *shared* infrastructure config (database, embedder, chat). Each
+    agent's private config lives in its own module (e.g.
+    :class:`~spectres_runtime.recipe_agent.config.RecipeAgentSettings`) and is
+    composed in as a nested field by :func:`get_settings`, so adding an agent
+    never touches this class.
+    """
 
     # Read `.env` after the process env; ignore unrelated vars instead of erroring.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -26,8 +35,7 @@ class Settings(BaseSettings):
     chat_base_url: str  # Chat provider base URL (Kimi Code endpoint or Moonshot open platform).
     chat_api_key: SecretStr  # Secret — a separate key/provider from the embedder; only in the local `.env`.
 
-    recipe_agent_instructions: str  # Recipe agent system instructions (env-driven now; UI-managed later).
-    recipe_agent_num_history_runs: int  # Prior conversation turns replayed into the agent's context.
+    recipe_agent: RecipeAgentSettings  # Recipe-agent-private config (see its own module); composed by `get_settings`.
 
     def build_embedder(self) -> OpenAIEmbedder:
         """Build the hosted embedder, shared by ingest and search to stay in one vector space."""
@@ -51,5 +59,10 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Build Settings from the current environment / `.env`."""
-    return Settings()
+    """Build Settings from the current environment / `.env`.
+
+    Each agent's nested config is constructed explicitly (rather than via a model
+    default) so the hermetic `_env_file=None` guarantee stays under the caller's
+    control in tests.
+    """
+    return Settings(recipe_agent=RecipeAgentSettings())

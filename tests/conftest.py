@@ -25,6 +25,7 @@ from agno.models.response import ModelResponse
 from pydantic import SecretStr
 
 from spectres_runtime.config import Settings
+from spectres_runtime.recipe_agent.config import RecipeAgentSettings
 
 SCRIPTED_RESPONSE = "scripted-response"
 
@@ -33,7 +34,9 @@ def make_settings(**overrides: Any) -> Settings:
     """Build a fully-populated ``Settings`` double (no env / ``.env`` read).
 
     Supplies every required field with inert test values; ``overrides`` replace
-    individual fields for tests that care about a specific one.
+    individual fields for tests that care about a specific one. The nested
+    ``recipe_agent`` can be overridden wholesale by passing a
+    ``RecipeAgentSettings`` (or a dict of its fields).
     """
     values: dict[str, Any] = {
         "database_url": "postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime",
@@ -44,8 +47,11 @@ def make_settings(**overrides: Any) -> Settings:
         "chat_model": "kimi-for-coding",
         "chat_base_url": "https://api.kimi.com/coding/v1",
         "chat_api_key": SecretStr("sk-chat-secret"),
-        "recipe_agent_instructions": "Test instructions.",
-        "recipe_agent_num_history_runs": 5,
+        "recipe_agent": RecipeAgentSettings(
+            _env_file=None,
+            instructions="Test instructions.",
+            num_history_runs=5,
+        ),
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)

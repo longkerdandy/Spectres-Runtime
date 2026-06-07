@@ -37,9 +37,9 @@ def test_build_recipe_agent_shape(settings: Settings, fake_knowledge: FakeKnowle
     assert agent.knowledge is fake_knowledge
     assert agent.db is not None
     # Instructions and history depth flow from Settings, not hardcoded.
-    assert agent.instructions == settings.recipe_agent_instructions
+    assert agent.instructions == settings.recipe_agent.instructions
     assert agent.add_history_to_context is True
-    assert agent.num_history_runs == settings.recipe_agent_num_history_runs
+    assert agent.num_history_runs == settings.recipe_agent.num_history_runs
     # Telemetry is explicitly off (Agno defaults it on).
     assert agent.telemetry is False
 

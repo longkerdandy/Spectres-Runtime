@@ -1,8 +1,10 @@
 """Unit tests for ``spectres_runtime.config`` — pure, no DB, no network.
 
-Settings declares no defaults, so these tests supply values explicitly (via constructor
-kwargs or env) and check they load and map onto the embedder and chat model. The live
-embed / chat calls live in the ``integration`` tier (see ``test_embedder_integration``).
+Scoped to the *shared* infrastructure config (database, embedder, chat) and how
+``get_settings`` composes the per-module sub-configs. Each agent's private
+settings are tested next to that agent (e.g.
+``tests/recipe_agent/test_config.py``). The live embed / chat calls live in the
+``integration`` tier (see ``test_embedder_integration``).
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from agno.models.moonshot import MoonShot
 from pydantic import SecretStr
 
 from spectres_runtime.config import Settings, get_settings
+from tests.conftest import make_settings
 
 _ENV = {
     "DATABASE_URL": "postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime",
@@ -23,6 +26,8 @@ _ENV = {
     "CHAT_MODEL": "kimi-for-coding",
     "CHAT_BASE_URL": "https://api.kimi.com/coding/v1",
     "CHAT_API_KEY": "sk-chat-secret",
+    # Required for `get_settings()` to compose the recipe-agent sub-config; the
+    # prefix / field mapping itself is covered in tests/recipe_agent/test_config.py.
     "RECIPE_AGENT_INSTRUCTIONS": "Search recipes before answering.",
     "RECIPE_AGENT_NUM_HISTORY_RUNS": "5",
 }
@@ -43,8 +48,8 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.chat_model == "kimi-for-coding"
     assert settings.chat_base_url == "https://api.kimi.com/coding/v1"
     assert settings.chat_api_key.get_secret_value() == "sk-chat-secret"
-    assert settings.recipe_agent_instructions == "Search recipes before answering."
-    assert settings.recipe_agent_num_history_runs == 5
+    # `get_settings()` wired the per-module sub-config (values asserted in its own suite).
+    assert settings.recipe_agent.num_history_runs == 5
 
 
 def test_missing_required_field_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -56,18 +61,11 @@ def test_missing_required_field_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_build_embedder_maps_every_field() -> None:
-    settings = Settings(
-        _env_file=None,
-        database_url="postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime",
+    settings = make_settings(
         embedder_model="custom/model",
         embedder_base_url="https://example.test/v1",
         embedder_dimensions=512,
         embedder_api_key=SecretStr("sk-secret"),
-        chat_model="kimi-for-coding",
-        chat_base_url="https://api.kimi.com/coding/v1",
-        chat_api_key=SecretStr("sk-chat-secret"),
-        recipe_agent_instructions="Search recipes before answering.",
-        recipe_agent_num_history_runs=5,
     )
 
     embedder = settings.build_embedder()
@@ -80,25 +78,8 @@ def test_build_embedder_maps_every_field() -> None:
     assert embedder.api_key == "sk-secret"
 
 
-def _chat_settings() -> Settings:
-    """Settings double carrying the required chat fields (and embedder/db fillers)."""
-    return Settings(
-        _env_file=None,
-        database_url="postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime",
-        embedder_model="custom/model",
-        embedder_base_url="https://example.test/v1",
-        embedder_dimensions=512,
-        embedder_api_key=SecretStr("sk-secret"),
-        chat_model="kimi-for-coding",
-        chat_base_url="https://api.kimi.com/coding/v1",
-        chat_api_key=SecretStr("sk-chat-secret"),
-        recipe_agent_instructions="Search recipes before answering.",
-        recipe_agent_num_history_runs=5,
-    )
-
-
 def test_build_chat_model_maps_every_field() -> None:
-    chat_model = _chat_settings().build_chat_model()
+    chat_model = make_settings().build_chat_model()
 
     assert isinstance(chat_model, MoonShot)
     assert chat_model.id == "kimi-for-coding"

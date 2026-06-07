@@ -44,7 +44,7 @@ def build_recipe_agent(
     ``settings`` and exist as injection seams for tests. ``search_knowledge`` is left
     at Agno's default (``True``), so the agent gains a knowledge-search tool;
     ``add_knowledge_to_context`` stays off (no whole-dataset injection). Conversation
-    history is replayed into context with depth ``recipe_agent_num_history_runs``.
+    history is replayed into context with depth ``recipe_agent.num_history_runs``.
     """
     return Agent(
         id=RECIPE_AGENT_ID,
@@ -52,8 +52,8 @@ def build_recipe_agent(
         model=model or settings.build_chat_model(),
         db=db or build_db(settings),
         knowledge=knowledge or build_knowledge(settings),
-        instructions=settings.recipe_agent_instructions,
+        instructions=settings.recipe_agent.instructions,
         add_history_to_context=True,
-        num_history_runs=settings.recipe_agent_num_history_runs,
+        num_history_runs=settings.recipe_agent.num_history_runs,
         telemetry=False,
     )
