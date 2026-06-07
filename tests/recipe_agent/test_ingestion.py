@@ -23,12 +23,12 @@ from spectres_runtime.recipe_agent.models import Ingredient, Recipe
 from spectres_runtime.recipe_agent.models.provenance import RecipeProvenance
 
 
-def _write_snapshot(root: Path, entry: dict, markdown: str) -> None:
+def _write_snapshot(root: Path, entry: dict[str, object], markdown: str) -> None:
     """Lay out a minimal ``datasets/howtocook`` snapshot: one catalog line + .md."""
     catalog = root / "catalog" / "recipes.jsonl"
     catalog.parent.mkdir(parents=True, exist_ok=True)
     catalog.write_text(json.dumps(entry, ensure_ascii=False) + "\n", encoding="utf-8")
-    md = root / "dishes" / entry["ref"]
+    md = root / "dishes" / str(entry["ref"])
     md.parent.mkdir(parents=True, exist_ok=True)
     md.write_text(markdown, encoding="utf-8")
 
@@ -123,7 +123,7 @@ def test_ingest_over_vendored_snapshot_yields_valid_recipes() -> None:
     assert all(r.provenance is not None and r.provenance.source == "howtocook" for r in recipes)
     assert all(r.category and r.category[0] for r in recipes)
     assert all(r.content for r in recipes)  # every dish has a Markdown body
-    assert all("请提出 Issue 或 Pull request" not in r.content for r in recipes)  # footer stripped corpus-wide
+    assert all("请提出 Issue 或 Pull request" not in (r.content or "") for r in recipes)  # footer stripped corpus-wide
 
 
 def test_write_result_defaults_to_zero() -> None:
