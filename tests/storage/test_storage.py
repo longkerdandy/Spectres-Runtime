@@ -13,27 +13,18 @@ import pytest
 from agno.db.postgres import PostgresDb
 from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.vectordb.pgvector import PgVector, SearchType
-from pydantic import SecretStr
 
 from spectres_runtime.config import Settings
 from spectres_runtime.storage import build_db, build_knowledge
 from spectres_runtime.storage import knowledge as knowledge_module
+from tests.conftest import make_settings
 
 _DB_URL = "postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime"
 
 
 def _settings() -> Settings:
-    return Settings(
-        _env_file=None,
-        database_url=_DB_URL,
-        embedder_model="Qwen/Qwen3-Embedding-0.6B",
-        embedder_base_url="https://api.siliconflow.cn/v1",
-        embedder_dimensions=1024,
-        embedder_api_key=SecretStr("sk-secret"),
-        chat_model="kimi-for-coding",
-        chat_base_url="https://api.kimi.com/coding/v1",
-        chat_api_key=SecretStr("sk-chat-secret"),
-    )
+    # Shared factory; the embedder/db fields below are what these tests assert on.
+    return make_settings(database_url=_DB_URL)
 
 
 def test_build_db_returns_shared_postgres_handle() -> None:

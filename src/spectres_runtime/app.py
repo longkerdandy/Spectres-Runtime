@@ -1,57 +1,78 @@
 """FastAPI application entry point for the Spectres Runtime.
 
 Stands up an [AgentOS](https://docs.agno.com/agent-os/introduction) instance and
-registers the placeholder recipe agent. AgentOS *is* a FastAPI app and ships a
-built-in ``/health`` liveness probe, so no custom base app is needed — the
-module-level ``app`` is preserved so ``uvicorn spectres_runtime.app:app`` and
-container / CI health checks keep working.
+registers the recipe agent. AgentOS *is* a FastAPI app and ships a built-in
+``/health`` liveness probe, so no custom base app is needed.
 
-No ``PostgresDb``, ``knowledge``, ``dependencies``, or tools are wired here, and
-the agent's model is never invoked — this is a structural skeleton only.
-``telemetry`` is disabled so construction stays network-free.
+Construction is a factory, not a module-level singleton: ``build_app`` takes its
+agents by injection (pure, no I/O of its own), and ``app_factory`` is the
+production wiring that reads ``Settings`` and builds the real agent. Importing
+this module therefore has no side effects — no DB connection, no provider SDK,
+no credentials — which keeps the unit test tier hermetic. ``telemetry`` is
+disabled explicitly.
+
+Run locally with ``uvicorn spectres_runtime.app:app_factory --factory``.
 """
 
 from __future__ import annotations
 
-from typing import Final
+from importlib.metadata import version
 
+from agno.agent import Agent
 from agno.os import AgentOS
 from fastapi import FastAPI
 
+from spectres_runtime.config import get_settings
 from spectres_runtime.recipe_agent.agent import build_recipe_agent
 
+# The HTTP/OpenAPI version of this AgentOS surface. Sourced from the installed
+# package metadata (pyproject ``version``) so there is one version to maintain,
+# never a hand-synced literal that drifts from the release.
+_APP_VERSION = version("spectres-runtime")
 
-def build_app() -> FastAPI:
-    """Construct the AgentOS app with the placeholder recipe agent registered.
 
-    Static construction at module load is sufficient for one built-in stub
-    agent; an ``AgentFactory`` / directory-driven construction is deferred.
-    The liveness probe is AgentOS's built-in ``/health`` endpoint.
+def build_app(agents: list[Agent]) -> FastAPI:
+    """Construct the AgentOS app with the given agents registered.
+
+    Agents are injected rather than built here so tests can register agents
+    wired with hermetic doubles. The liveness probe is AgentOS's built-in
+    ``/health`` endpoint.
     """
     agent_os = AgentOS(
         name="Spectres Runtime",
         description="Runtime tier of the Spectres personal assistant.",
-        version="0.2.0",
-        agents=[build_recipe_agent()],
+        version=_APP_VERSION,
+        # ``Agent`` is a member of AgentOS's accepted union; the ignore is only the
+        # invariance of ``list`` (list[Agent] vs list[Agent | ...]).
+        agents=agents,  # type: ignore[arg-type]
         telemetry=False,
     )
     return agent_os.get_app()
 
 
-app: Final[FastAPI] = build_app()
+def app_factory() -> FastAPI:  # pragma: no cover - production wiring, exercised at deploy
+    """Build the production app from the environment / ``.env``.
+
+    The ASGI factory for ``uvicorn ... --factory``: reads ``Settings`` and
+    registers the real recipe agent (live model, knowledge, and db).
+    """
+    settings = get_settings()
+    return build_app([build_recipe_agent(settings)])
 
 
 def main() -> None:  # pragma: no cover - thin uvicorn wrapper, exercised manually
     """Run the app with uvicorn for local development.
 
-    Production deployments should invoke ``uvicorn spectres_runtime.app:app``
-    directly with the desired worker / binding flags.
+    Production deployments should invoke
+    ``uvicorn spectres_runtime.app:app_factory --factory`` directly with the
+    desired worker / binding flags.
     """
     import uvicorn
 
     uvicorn.run(
-        "spectres_runtime.app:app",
+        "spectres_runtime.app:app_factory",
         host="127.0.0.1",
         port=8000,
         reload=False,
+        factory=True,
     )

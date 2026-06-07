@@ -23,6 +23,8 @@ _ENV = {
     "CHAT_MODEL": "kimi-for-coding",
     "CHAT_BASE_URL": "https://api.kimi.com/coding/v1",
     "CHAT_API_KEY": "sk-chat-secret",
+    "RECIPE_AGENT_INSTRUCTIONS": "Search recipes before answering.",
+    "RECIPE_AGENT_NUM_HISTORY_RUNS": "5",
 }
 
 
@@ -41,6 +43,8 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.chat_model == "kimi-for-coding"
     assert settings.chat_base_url == "https://api.kimi.com/coding/v1"
     assert settings.chat_api_key.get_secret_value() == "sk-chat-secret"
+    assert settings.recipe_agent_instructions == "Search recipes before answering."
+    assert settings.recipe_agent_num_history_runs == 5
 
 
 def test_missing_required_field_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,6 +66,8 @@ def test_build_embedder_maps_every_field() -> None:
         chat_model="kimi-for-coding",
         chat_base_url="https://api.kimi.com/coding/v1",
         chat_api_key=SecretStr("sk-chat-secret"),
+        recipe_agent_instructions="Search recipes before answering.",
+        recipe_agent_num_history_runs=5,
     )
 
     embedder = settings.build_embedder()
@@ -86,6 +92,8 @@ def _chat_settings() -> Settings:
         chat_model="kimi-for-coding",
         chat_base_url="https://api.kimi.com/coding/v1",
         chat_api_key=SecretStr("sk-chat-secret"),
+        recipe_agent_instructions="Search recipes before answering.",
+        recipe_agent_num_history_runs=5,
     )
 
 

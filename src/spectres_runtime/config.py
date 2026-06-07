@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     chat_base_url: str  # Chat provider base URL (Kimi Code endpoint or Moonshot open platform).
     chat_api_key: SecretStr  # Secret — a separate key/provider from the embedder; only in the local `.env`.
 
+    recipe_agent_instructions: str  # Recipe agent system instructions (env-driven now; UI-managed later).
+    recipe_agent_num_history_runs: int  # Prior conversation turns replayed into the agent's context.
+
     def build_embedder(self) -> OpenAIEmbedder:
         """Build the hosted embedder, shared by ingest and search to stay in one vector space."""
         return OpenAIEmbedder(
