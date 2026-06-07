@@ -30,6 +30,9 @@ def _settings() -> Settings:
         embedder_base_url="https://api.siliconflow.cn/v1",
         embedder_dimensions=1024,
         embedder_api_key=SecretStr("sk-secret"),
+        chat_model="kimi-for-coding",
+        chat_base_url="https://api.kimi.com/coding/v1",
+        chat_api_key=SecretStr("sk-chat-secret"),
     )
 
 

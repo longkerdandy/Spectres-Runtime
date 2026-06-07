@@ -1,14 +1,16 @@
 """Unit tests for ``spectres_runtime.config`` — pure, no DB, no network.
 
-Settings declares no defaults, so these tests supply values explicitly (via
-constructor kwargs or env) and check they load and map onto the embedder. The live
-embed call lives in the ``integration`` tier (see ``test_embedder_integration``).
+Settings declares no defaults (except the optional ``chat_temperature``), so these
+tests supply values explicitly (via constructor kwargs or env) and check they load and
+map onto the embedder and chat model. The live embed / chat calls live in the
+``integration`` tier (see ``test_embedder_integration``).
 """
 
 from __future__ import annotations
 
 import pytest
 from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.models.moonshot import MoonShot
 from pydantic import SecretStr
 
 from spectres_runtime.config import Settings, get_settings
@@ -19,6 +21,9 @@ _ENV = {
     "EMBEDDER_BASE_URL": "https://api.siliconflow.cn/v1",
     "EMBEDDER_DIMENSIONS": "1024",
     "EMBEDDER_API_KEY": "sk-secret",
+    "CHAT_MODEL": "kimi-for-coding",
+    "CHAT_BASE_URL": "https://api.kimi.com/coding/v1",
+    "CHAT_API_KEY": "sk-chat-secret",
 }
 
 
@@ -34,6 +39,11 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.embedder_dimensions == 1024
     # Secret stays wrapped; not exposed by repr.
     assert settings.embedder_api_key.get_secret_value() == "sk-secret"
+    assert settings.chat_model == "kimi-for-coding"
+    assert settings.chat_base_url == "https://api.kimi.com/coding/v1"
+    assert settings.chat_api_key.get_secret_value() == "sk-chat-secret"
+    # Optional field: absent from env → provider default (None).
+    assert settings.chat_temperature is None
 
 
 def test_missing_required_field_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,6 +62,9 @@ def test_build_embedder_maps_every_field() -> None:
         embedder_base_url="https://example.test/v1",
         embedder_dimensions=512,
         embedder_api_key=SecretStr("sk-secret"),
+        chat_model="kimi-for-coding",
+        chat_base_url="https://api.kimi.com/coding/v1",
+        chat_api_key=SecretStr("sk-chat-secret"),
     )
 
     embedder = settings.build_embedder()
@@ -62,3 +75,42 @@ def test_build_embedder_maps_every_field() -> None:
     assert embedder.dimensions == 512
     # SecretStr is unwrapped to a plain string for the OpenAI client.
     assert embedder.api_key == "sk-secret"
+
+
+def _chat_settings(*, chat_temperature: float | None = None) -> Settings:
+    """Settings double carrying the required chat fields (and embedder/db fillers)."""
+    return Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime",
+        embedder_model="custom/model",
+        embedder_base_url="https://example.test/v1",
+        embedder_dimensions=512,
+        embedder_api_key=SecretStr("sk-secret"),
+        chat_model="kimi-for-coding",
+        chat_base_url="https://api.kimi.com/coding/v1",
+        chat_api_key=SecretStr("sk-chat-secret"),
+        chat_temperature=chat_temperature,
+    )
+
+
+def test_build_chat_model_maps_every_field() -> None:
+    chat_model = _chat_settings().build_chat_model()
+
+    assert isinstance(chat_model, MoonShot)
+    assert chat_model.id == "kimi-for-coding"
+    assert chat_model.base_url == "https://api.kimi.com/coding/v1"
+    # SecretStr is unwrapped to a plain string for the OpenAI-compatible client.
+    assert chat_model.api_key == "sk-chat-secret"
+
+
+def test_build_chat_model_passes_temperature_when_set() -> None:
+    chat_model = _chat_settings(chat_temperature=0.3).build_chat_model()
+
+    assert chat_model.temperature == 0.3
+
+
+def test_build_chat_model_leaves_provider_default_when_temperature_unset() -> None:
+    # Unset temperature must not override the provider default — MoonShot's default is None.
+    chat_model = _chat_settings(chat_temperature=None).build_chat_model()
+
+    assert chat_model.temperature is None
