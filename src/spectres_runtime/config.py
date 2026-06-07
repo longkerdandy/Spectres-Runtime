@@ -3,8 +3,6 @@ documented keys, their recommended values, and rationale."""
 
 from __future__ import annotations
 
-from typing import Any
-
 from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.models.moonshot import MoonShot
 from pydantic import SecretStr
@@ -27,7 +25,6 @@ class Settings(BaseSettings):
     chat_model: str  # Chat model id (e.g. "kimi-for-coding"). Generation quality/cost only, not a data contract.
     chat_base_url: str  # Chat provider base URL (Kimi Code endpoint or Moonshot open platform).
     chat_api_key: SecretStr  # Secret — a separate key/provider from the embedder; only in the local `.env`.
-    chat_temperature: float | None = None  # Optional; unset means use the provider default (see build_chat_model).
 
     def build_embedder(self) -> OpenAIEmbedder:
         """Build the hosted embedder, shared by ingest and search to stay in one vector space."""
@@ -41,17 +38,13 @@ class Settings(BaseSettings):
     def build_chat_model(self) -> MoonShot:
         """Build the hosted chat model. Text-only (no embeddings) — distinct from the embedder.
 
-        Provider-agnostic: id/base_url/key come from config, so swapping providers is a config
-        change. ``chat_temperature`` is passed only when set, never overriding the provider default.
+        Provider-agnostic: id/base_url/key come from config, so swapping providers is a config change.
         """
-        kwargs: dict[str, Any] = {
-            "id": self.chat_model,  # provider-agnostic model id
-            "base_url": self.chat_base_url,  # OpenAI-compatible endpoint
-            "api_key": self.chat_api_key.get_secret_value(),  # unwrapped for the client
-        }
-        if self.chat_temperature is not None:  # omit when unset → keep provider default
-            kwargs["temperature"] = self.chat_temperature
-        return MoonShot(**kwargs)
+        return MoonShot(
+            id=self.chat_model,  # provider-agnostic model id
+            base_url=self.chat_base_url,  # OpenAI-compatible endpoint
+            api_key=self.chat_api_key.get_secret_value(),  # unwrapped for the client
+        )
 
 
 def get_settings() -> Settings:
