@@ -79,12 +79,15 @@ class RecipeSink:
         """Build the JSONB metadata stored beside the vector.
 
         Not embedded; serves provenance (``source``, ``ref``) and the
-        filter/display payload (``category``, ``difficulty``, ``images``,
-        structured ``ingredients``).
+        filter/display payload (``name``, ``category``, ``difficulty``,
+        ``images``, structured ``ingredients``). ``name`` is the canonical
+        display name, carried so a retrieved recipe has a stable, auditable
+        dish name to cite that does not depend on the body's title heading.
         """
         provenance = recipe.provenance
         return {
             "recipe_id": recipe.id,
+            "name": recipe.name,
             "source": provenance.source if provenance else None,
             "ref": provenance.ref if provenance else None,
             "category": recipe.category,

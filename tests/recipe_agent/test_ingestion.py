@@ -223,6 +223,7 @@ def test_write_metadata_carries_provenance_and_filter_payload() -> None:
     meta = knowledge.inserts[0]["metadata"]
     assert meta == {
         "recipe_id": recipe.id,
+        "name": "蟹",
         "source": "howtocook",
         "ref": "aquatic/蟹.md",
         "category": ["aquatic"],
