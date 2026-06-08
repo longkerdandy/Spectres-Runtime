@@ -50,9 +50,12 @@ At minimum, set:
 - `DATABASE_USERNAME` / `DATABASE_PASSWORD` — credentials for the local Postgres
   role. `DATABASE_URL` references them via `${...}`, so you set them in one place.
 - `EMBEDDER_API_KEY` — your SiliconFlow (`.cn`) key; required for any live embedding
-  call (ingestion / search).
+  call (recipe ingestion and knowledge search).
+- `CHAT_API_KEY` — your chat-provider key (Kimi / Moonshot); required for the recipe
+  agent to generate replies.
 
-Every key is documented inline in `.env.example`.
+Every key is documented inline in `.env.example`, including the recipe agent's own
+`RECIPE_AGENT_*` settings.
 
 ## 4. Start the database (Docker)
 
@@ -80,7 +83,20 @@ docker compose --env-file .env -f docker/compose.yaml down
 > If you change them later, recreate the volume: `down -v` (wipes **all** data),
 > then `up -d`.
 
-## 5. Verify
+## 5. Populate the recipe knowledge base (optional)
+
+The recipe agent answers from a pgvector knowledge base, which starts empty. Run the
+one-shot `recipe-ingest` batch command to load the bundled corpus. It needs the
+database **up** (step 4) and a valid `EMBEDDER_API_KEY` (step 3) to compute vectors:
+
+```bash
+uv run recipe-ingest
+```
+
+The run is idempotent — it re-ingests the full corpus each time, so re-running it is
+safe. Skip this step if you only want to exercise `/health` or non-knowledge paths.
+
+## 6. Verify
 
 ```bash
 uv run ruff check .            # lint
@@ -88,7 +104,7 @@ uv run ruff format --check .   # formatter dry-run
 uv run mypy                    # strict type check
 uv run pytest                  # tests + coverage gate (≥ 80%)
 
-uv run uvicorn spectres_runtime.app:app --reload
+uv run uvicorn spectres_runtime.app:app_factory --factory --reload
 curl -s http://127.0.0.1:8000/health   # → {"status":"ok",...}
 ```
 
@@ -105,5 +121,6 @@ uv sync --frozen
 uv run pre-commit install && uv run pre-commit install --hook-type commit-msg
 docker compose --env-file .env -f docker/compose.yaml down -v
 docker compose --env-file .env -f docker/compose.yaml up -d
+uv run recipe-ingest   # down -v wiped the volume; re-load the knowledge corpus
 uv run pytest
 ```
