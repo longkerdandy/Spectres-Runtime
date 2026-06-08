@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v6.0.2
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.36.0
+        uses: github/codeql-action/init@v4.36.2
         with:
           languages: ${{ matrix.language }}
           # Python is interpreted; no compile step is needed. `none` skips
@@ -48,6 +48,6 @@ jobs:
           build-mode: none
 
       - name: Analyze
-        uses: github/codeql-action/analyze@v4.36.0
+        uses: github/codeql-action/analyze@v4.36.2
         with:
           category: "/language:${{ matrix.language }}"
