@@ -1,7 +1,7 @@
 """HowToCook ingester (``Anduin2017/HowToCook``).
 
 Composes each :class:`Recipe` from two committed, offline artifacts under a
-vendored snapshot root (design §6):
+vendored snapshot root:
 
 - ``catalog/recipes.jsonl`` — the structured catalog (one recipe per line):
   ``name``, ``description``, ``images``, ``difficulty`` and cleaned, curated
@@ -46,7 +46,7 @@ def _content_from_markdown(text: str) -> str | None:
 
     Deterministic by contract: the same source bytes always yield byte-identical
     output, and line endings are normalized to ``\\n`` (``splitlines`` +
-    ``"\\n".join``) so CRLF/LF differences do not change it. The §7 sink hashes
+    ``"\\n".join``) so CRLF/LF differences do not change it. The sink hashes
     this output as its idempotency key, so any change here (e.g. a regex rewrite
     or platform-specific newlines) must preserve that stability.
     """
@@ -57,7 +57,7 @@ def _content_from_markdown(text: str) -> str | None:
 class HowToCookIngester(RecipeIngester):
     """Ingests recipes from a vendored HowToCook snapshot — catalog + Markdown."""
 
-    name: ClassVar[str] = "howtocook"
+    name: ClassVar[str] = "howtocook"  # stable source name, recorded as ``provenance.source``
 
     def __init__(self, root: Path | None = None) -> None:
         """Bind the snapshot root (the ``datasets/howtocook`` directory).

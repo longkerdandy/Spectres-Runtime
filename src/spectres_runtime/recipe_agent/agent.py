@@ -25,7 +25,8 @@ from agno.knowledge.protocol import KnowledgeProtocol
 from agno.models.base import Model
 
 from spectres_runtime.config import Settings
-from spectres_runtime.storage import build_db, build_knowledge
+from spectres_runtime.recipe_agent.knowledge import build_recipe_knowledge
+from spectres_runtime.storage import build_db
 
 RECIPE_AGENT_ID: Final[str] = "recipe"
 RECIPE_AGENT_NAME: Final[str] = "Recipe Agent"
@@ -51,7 +52,7 @@ def build_recipe_agent(
         name=RECIPE_AGENT_NAME,
         model=model or settings.build_chat_model(),
         db=db or build_db(settings),
-        knowledge=knowledge or build_knowledge(settings),
+        knowledge=knowledge or build_recipe_knowledge(settings),
         instructions=settings.recipe_agent.instructions,
         add_history_to_context=True,
         num_history_runs=settings.recipe_agent.num_history_runs,

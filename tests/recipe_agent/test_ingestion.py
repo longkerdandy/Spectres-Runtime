@@ -38,6 +38,15 @@ def test_howtocook_is_a_recipe_ingester() -> None:
     assert HowToCookIngester.name == "howtocook"
 
 
+def test_ingest_entrypoint_exposes_callable_main() -> None:
+    """The ``recipe-ingest`` console script wires up: the entry module imports
+    cleanly and exposes a callable ``main``. Guards the import path (the body needs
+    live infra, so only the wiring is unit-checked)."""
+    from spectres_runtime.recipe_agent.ingestion.__main__ import main
+
+    assert callable(main)
+
+
 def test_ingest_composes_typed_recipe_from_artifacts(tmp_path: Path) -> None:
     entry = {
         "ref": "aquatic/示例菜.md",

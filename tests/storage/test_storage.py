@@ -40,17 +40,31 @@ def test_build_knowledge_wires_vector_store_and_contents_db(monkeypatch: pytest.
     captured: dict[str, object] = {}
 
     class _RecordingKnowledge:
-        def __init__(self, vector_db: object = None, contents_db: object = None) -> None:
+        def __init__(
+            self,
+            vector_db: object = None,
+            contents_db: object = None,
+            name: object = None,
+            description: object = None,
+        ) -> None:
             captured["vector_db"] = vector_db
             captured["contents_db"] = contents_db
+            captured["name"] = name
+            captured["description"] = description
 
     # Patch only the connecting part; the real PgVector / PostgresDb are built offline.
     monkeypatch.setattr(knowledge_module, "Knowledge", _RecordingKnowledge)
-    result = build_knowledge(_settings())
+    result = build_knowledge(
+        _settings(),
+        table_name="widgets",
+        name="Widget Knowledge",
+        description="Test widgets.",
+    )
 
     vector_db = captured["vector_db"]
     assert isinstance(vector_db, PgVector)
-    assert vector_db.table_name == "recipes"
+    # The caller-supplied table name is wired through (generic factory, no hardcoded domain).
+    assert vector_db.table_name == "widgets"
     # Pinned to public, matching the shared PostgresDb (not Agno's default "ai").
     assert vector_db.schema == "public"
     assert vector_db.search_type is SearchType.vector
@@ -58,8 +72,11 @@ def test_build_knowledge_wires_vector_store_and_contents_db(monkeypatch: pytest.
     assert vector_db.dimensions == 1024
     assert isinstance(vector_db.embedder, OpenAIEmbedder)
     assert vector_db.embedder.id == "Qwen/Qwen3-Embedding-0.6B"
-    # No ANN index in v0.3 (exact KNN).
+    # No ANN index (exact KNN).
     assert vector_db.vector_index is None
+    # Caller-supplied identity flows to Knowledge.
+    assert captured["name"] == "Widget Knowledge"
+    assert captured["description"] == "Test widgets."
     # The contents_db is the shared PostgresDb handle.
     assert isinstance(captured["contents_db"], PostgresDb)
     assert isinstance(result, _RecordingKnowledge)

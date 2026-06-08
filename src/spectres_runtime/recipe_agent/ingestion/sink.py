@@ -5,7 +5,7 @@ drains a stream of normalized recipes and writes each into the knowledge base
 (Postgres + pgvector) the agent later searches via Agno's native agentic RAG.
 Takes a plain recipe stream, not an ingester, so it is decoupled from any origin.
 
-The write is a **full update** every run (design §7): each recipe's embedded body
+The write is a **full update** every run: each recipe's embedded body
 is ``Recipe.content``, inserted with ``upsert=True`` under a stable ``name``
 (``Recipe.id``). Agno keys its content hash on that name, so the same name
 replaces the existing row in place rather than duplicating it — a re-run simply
@@ -76,9 +76,9 @@ class RecipeSink:
 
     @staticmethod
     def _metadata(recipe: Recipe) -> dict[str, object]:
-        """Build the JSONB metadata stored beside the vector (design §7).
+        """Build the JSONB metadata stored beside the vector.
 
-        Not embedded; serves provenance (``source``, ``ref``) and the v0.4
+        Not embedded; serves provenance (``source``, ``ref``) and the
         filter/display payload (``category``, ``difficulty``, ``images``,
         structured ``ingredients``).
         """

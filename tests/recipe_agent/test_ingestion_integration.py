@@ -1,7 +1,7 @@
-"""Integration probe for Agno's write semantics that the §7 sink relies on.
+"""Integration probe for Agno's write semantics that the recipe sink relies on.
 
 Opt-in: marked ``integration`` (excluded from the default gate) and skipped unless
-the runtime config is complete and Postgres is reachable. Pins the property the §7
+the runtime config is complete and Postgres is reachable. Pins the property the sink's
 full-update depends on by exercising *how* ``Knowledge.insert`` behaves when the
 same ``name`` is written twice with a **different body**: does it replace the row
 in place, leave it stale, or duplicate?
@@ -18,25 +18,17 @@ Run with a populated ``.env`` (or env vars) and Postgres up:
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 from sqlalchemy import create_engine, text
 
-from spectres_runtime.config import Settings, get_settings
-from spectres_runtime.storage.knowledge import RECIPES_TABLE, build_knowledge
+from spectres_runtime.recipe_agent.knowledge import RECIPES_TABLE, build_recipe_knowledge
+from tests.conftest import settings_or_skip
 
 pytestmark = pytest.mark.integration
 
 # A namespaced, obviously-synthetic name so the probe never collides with real
 # recipes and is trivial to clean up by prefix.
 _PROBE_NAME = "__probe__/howtocook/replace-semantics"
-_SCHEMA = "public"  # matches build_knowledge's pinned namespace
-
-
-def _settings_or_skip() -> Settings:
-    try:
-        return get_settings()
-    except ValidationError:
-        pytest.skip("Runtime config incomplete (no DB/key via env / .env) — live check skipped.")
+_SCHEMA = "public"  # matches the knowledge handle's pinned namespace
 
 
 def _rows_for_name(database_url: str, name: str) -> list[dict[str, str]]:
@@ -70,8 +62,8 @@ def test_same_name_changed_body_replaces_in_place() -> None:
     body behind nor fork a second logical content — the sink's in-place re-embed
     contract. Asserts: exactly one ``content_id`` for the name, and the stored body
     reflects the *latest* write (no stale text, no duplicate vector)."""
-    settings = _settings_or_skip()
-    knowledge = build_knowledge(settings)
+    settings = settings_or_skip()
+    knowledge = build_recipe_knowledge(settings)
     if not knowledge.vector_db.exists():  # type: ignore[union-attr]
         knowledge.vector_db.create()  # type: ignore[union-attr]
 

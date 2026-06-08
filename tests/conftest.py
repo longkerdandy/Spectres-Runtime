@@ -8,8 +8,9 @@ filler kwargs) and the two doubles the agent tests need:
 * :class:`FakeKnowledge` — a :class:`~agno.knowledge.protocol.KnowledgeProtocol`
   implementation that exposes no tools and connects to nothing.
 
-Anything that touches real infrastructure (Postgres, the live providers) lives
-in the ``integration`` tier instead.
+Also provides :func:`settings_or_skip`, the one skip-or-load helper the
+``integration`` tier shares. Anything that touches real infrastructure (Postgres,
+the live providers) lives in that tier.
 """
 
 from __future__ import annotations
@@ -22,12 +23,25 @@ from agno.knowledge.document import Document
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.models.response import ModelResponse
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
-from spectres_runtime.config import Settings
+from spectres_runtime.config import Settings, get_settings
 from spectres_runtime.recipe_agent.config import RecipeAgentSettings
 
 SCRIPTED_RESPONSE = "scripted-response"
+
+
+def settings_or_skip() -> Settings:
+    """Load ``Settings`` for an integration test, or skip if config is incomplete.
+
+    ``get_settings`` reads the process env and a local ``.env``; a missing required
+    field (no DB URL / API key) raises ``ValidationError``, turned into a skip so the
+    opt-in integration tier is a no-op without credentials.
+    """
+    try:
+        return get_settings()
+    except ValidationError:
+        pytest.skip("Runtime config incomplete (no DB/key via env / .env) — integration check skipped.")
 
 
 def make_settings(**overrides: Any) -> Settings:

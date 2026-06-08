@@ -1,4 +1,4 @@
-"""§9 retrieval check — proves the ingested corpus is searchable, no LLM involved.
+"""Retrieval check — proves the ingested corpus is searchable, no LLM involved.
 
 Opt-in: marked ``integration`` (excluded from the default gate) and skipped unless
 the runtime config is complete **and** the store is populated. Read-only: issues one
@@ -7,9 +7,9 @@ asserts the matching recipe lands in the top results — exercising the full
 embed → store → embed-query → vector-search loop end to end. This is retrieval
 grounding, **not** generation: no ``Agent.run``, no chat LLM.
 
-The corpus is populated once by the ``recipe-ingest`` command (plan §8) and persists
-in the Postgres volume across runs, so this check needs no re-ingest. When the store
-is empty (fresh DB), the test skips with a hint rather than failing.
+The corpus is populated once by the ``recipe-ingest`` command and persists in the
+Postgres volume across runs, so this check needs no re-ingest. When the store is
+empty (fresh DB), the test skips with a hint rather than failing.
 
 Populate once, then run:
 ``recipe-ingest`` (after ``docker compose -f docker/compose.yaml --env-file .env up -d``),
@@ -19,32 +19,23 @@ then ``uv run pytest -m integration``.
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 from sqlalchemy import create_engine, text
 
-from spectres_runtime.config import Settings, get_settings
-from spectres_runtime.storage.knowledge import RECIPES_TABLE, build_knowledge
+from spectres_runtime.config import Settings
+from spectres_runtime.recipe_agent.knowledge import RECIPES_TABLE, build_recipe_knowledge
+from tests.conftest import settings_or_skip
 
 pytestmark = pytest.mark.integration
 
-# Matches build_knowledge's pinned namespace (storage/knowledge.py).
+# Matches the knowledge handle's pinned namespace.
 _SCHEMA = "public"
 
-# The plan's canonical Chinese query (§9) and the real recipe it must surface.
-# Verified against the live corpus: the dish lands inside the top results — but not
-# at rank 1 ("美式炒蛋" scores above it), so the bar is top-k membership, never the
-# top slot.
+# The canonical Chinese query and the real recipe it must surface. Verified against
+# the live corpus: the dish lands inside the top results — but not at rank 1
+# ("美式炒蛋" scores above it), so the bar is top-k membership, never the top slot.
 _QUERY = "番茄炒蛋怎么做"
 _EXPECTED_ID = "howtocook/vegetable_dish/西红柿炒鸡蛋"
 _TOP_K = 5
-
-
-def _settings_or_skip() -> Settings:
-    """Load Settings, or skip if the config (incl. the API key) is incomplete."""
-    try:
-        return get_settings()
-    except ValidationError:
-        pytest.skip("Runtime config incomplete (no DB/key via env / .env) — live check skipped.")
 
 
 def _require_populated_corpus(settings: Settings) -> None:
@@ -73,9 +64,9 @@ def test_chinese_query_returns_relevant_recipe() -> None:
     produced the stored vectors, vector-searched against the populated corpus, and the
     expected dish appears within the top ``_TOP_K`` — proving the data is retrievable.
     """
-    settings = _settings_or_skip()
+    settings = settings_or_skip()
     _require_populated_corpus(settings)
-    knowledge = build_knowledge(settings)
+    knowledge = build_recipe_knowledge(settings)
 
     docs = knowledge.search(_QUERY, max_results=_TOP_K)
     names = [doc.name for doc in docs]
