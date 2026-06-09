@@ -129,6 +129,9 @@ ignore = []
 # real source text; the "ambiguous character" rules are noise here.
 "tests/recipe_agent/test_ingestion.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/recipe_agent/test_ingestion_integration.py" = ["RUF001", "RUF002", "RUF003"]
+# The agent run/session tests embed Chinese prompts (full-width ？) to mirror real
+# user turns; the "ambiguous character" rule is noise here.
+"tests/recipe_agent/test_agent.py" = ["RUF001"]
 # The §9 retrieval test embeds a Chinese query + recipe id (full-width ，：) to mirror
 # real corpus text; the "ambiguous character" rules are noise here.
 "tests/storage/test_retrieval_integration.py" = ["RUF001", "RUF002", "RUF003"]

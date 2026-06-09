@@ -11,6 +11,14 @@ this module therefore has no side effects — no DB connection, no provider SDK,
 no credentials — which keeps the unit test tier hermetic. ``telemetry`` is
 disabled explicitly.
 
+**Security posture (v0.4):** AgentOS generates its whole HTTP surface — including
+data/destructive endpoints (``/sessions``, ``/knowledge/content``, ``/memories``)
+and groups with no backing capability yet (Memory, Evals) — and ``authorization``
+is **off** (single-household; auth is a deferred module). The surface is therefore
+**unauthenticated**, so the dev server binds **loopback only** (``main``) and the
+port must not be exposed. Put it behind an authenticating reverse proxy (or enable
+AgentOS ``authorization``) before any non-local exposure.
+
 Run locally with ``uvicorn spectres_runtime.app:app_factory --factory``.
 """
 

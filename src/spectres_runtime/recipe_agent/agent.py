@@ -31,6 +31,13 @@ from spectres_runtime.storage import build_db
 RECIPE_AGENT_ID: Final[str] = "recipe"
 RECIPE_AGENT_NAME: Final[str] = "Recipe Agent"
 
+# Single-household default identity. v0.4 has no auth/multi-user (deferred module),
+# so runs that omit ``user_id`` attribute to this stable id — which scopes sessions
+# and history meaningfully from day one and eases a later multi-user migration. A
+# request-supplied ``user_id`` still overrides it per run. Temporary: replaced by
+# real authenticated identities when the profile/auth module lands.
+DEFAULT_USER_ID: Final[str] = "developer"
+
 
 def build_recipe_agent(
     settings: Settings,
@@ -46,6 +53,8 @@ def build_recipe_agent(
     at Agno's default (``True``), so the agent gains a knowledge-search tool;
     ``add_knowledge_to_context`` stays off (no whole-dataset injection). Conversation
     history is replayed into context with depth ``recipe_agent.num_history_runs``.
+    ``user_id`` defaults to :data:`DEFAULT_USER_ID` (single-household), overridable
+    per request.
     """
     return Agent(
         id=RECIPE_AGENT_ID,
@@ -56,5 +65,6 @@ def build_recipe_agent(
         instructions=settings.recipe_agent.instructions,
         add_history_to_context=True,
         num_history_runs=settings.recipe_agent.num_history_runs,
+        user_id=DEFAULT_USER_ID,
         telemetry=False,
     )
