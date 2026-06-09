@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from agno.db.sqlite import SqliteDb
-from agno.models.moonshot import MoonShot
+from agno.models.openai import OpenAILike
 from fastapi.testclient import TestClient
 
 from spectres_runtime.app import build_app
@@ -32,7 +32,7 @@ def test_build_recipe_agent_shape(settings: Settings, fake_knowledge: FakeKnowle
     assert agent.id == RECIPE_AGENT_ID
     assert agent.name == RECIPE_AGENT_NAME
     # The real chat model is constructed (offline) — no placeholder.
-    assert isinstance(agent.model, MoonShot)
+    assert isinstance(agent.model, OpenAILike)
     assert agent.model.id == settings.chat_model
     # Injected knowledge is wired through; the shared db handle is attached.
     assert agent.knowledge is fake_knowledge

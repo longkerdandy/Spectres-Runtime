@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 from agno.knowledge.embedder.openai import OpenAIEmbedder
-from agno.models.moonshot import MoonShot
+from agno.models.openai import OpenAILike
 from pydantic import SecretStr
 
 from spectres_runtime.config import Settings, get_settings
@@ -81,8 +81,8 @@ def test_build_embedder_maps_every_field() -> None:
 def test_build_chat_model_maps_every_field() -> None:
     chat_model = make_settings().build_chat_model()
 
-    assert isinstance(chat_model, MoonShot)
-    assert chat_model.id == "kimi-for-coding"
-    assert chat_model.base_url == "https://api.kimi.com/coding/v1"
+    assert isinstance(chat_model, OpenAILike)
+    assert chat_model.id == "deepseek-ai/DeepSeek-V4-Flash"
+    assert chat_model.base_url == "https://api.siliconflow.cn/v1"
     # SecretStr is unwrapped to a plain string for the OpenAI-compatible client.
     assert chat_model.api_key == "sk-chat-secret"
