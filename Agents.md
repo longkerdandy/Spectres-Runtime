@@ -4,7 +4,7 @@ The Runtime layer is the core of the Spectres personal assistant system. It is b
 
 **Status:** design stage. High-level architecture is settled; concrete schemas, protocols, and deployment specifics are deferred to implementation.
 
-**Scope:** this repository contains **only the Runtime tier**. The Client and Edge tiers live in separate repositories and are described below only to give Runtime design choices their context.
+**Scope:** this repository contains **only the Runtime tier**. The Edge tier lives in a separate repository; the web Client tier lives in **Spectres-Web**. No frontend code, Node.js build tooling, or client assets are committed here.
 
 ## System Overview
 
@@ -59,7 +59,7 @@ Clients (web, mobile, CLI) talk to the Runtime over its authenticated HTTP/SSE s
 
 - **No bypass.** All client interactions go through the Runtime, even on the local network. This keeps conversation, memory, and audit trail consistent across paths.
 - **Multi-device sessions.** A user can be active on multiple clients simultaneously; continuity comes from the Runtime's session store.
-- **Clients may expose capabilities back to the Runtime.** A mobile client can offer location, push, sensors, or on-device actions as tools the Runtime's agents can invoke — the phone then behaves as a "client-side Edge". Protocol deferred (candidates: AG-UI, MCP, webhook + push).
+- **Clients may expose capabilities back to the Runtime.** A mobile client can offer location, push, sensors, or on-device actions as tools the Runtime's agents can invoke — the phone then behaves as a "client-side Edge". Protocol deferred (candidates: AgentOS REST, MCP, webhook + push).
 
 ## Edge Integration
 
@@ -115,12 +115,13 @@ Additional infrastructure (cache, message broker, task queue) is not adopted up-
 ## Models
 
 - The Runtime is **model-agnostic**. Agents declare their model in code; swapping providers is configuration, not architecture.
-- Current leaning: **domestic (China-based) providers** — DeepSeek / Zhipu / Qwen / Moonshot — to keep inference in-region with the Runtime, reduce cost, and avoid cross-border reliability issues.
+- The chat model is consumed through Agno's generic `OpenAILike` client; only the model id, base URL, and API key are configured per agent. Any OpenAI-compatible endpoint works, including domestic providers such as DeepSeek / GLM / Qwen / Moonshot, to keep inference in-region, reduce cost, and avoid cross-border reliability issues.
 - Mixing providers per agent (stronger model for reasoning, cheaper one for simple tasks) is expected.
 
 ## Observability and Governance
 
 - **Tracing** is provided by AgentOS and stored in the same database (no third-party egress).
+- **Telemetry is disabled in code.** Both `AgentOS` and individual `Agent` instances are constructed with `telemetry=False` so no anonymous metadata leaves the process. No env-var opt-out is relied on.
 - **Hooks** (pre/post, per-hook or global) extend cross-cutting concerns: auditing, redaction, custom event publication. Inline or as FastAPI background tasks.
 - **Approvals / Human-in-the-loop** are built into AgentOS for tool calls and team runs.
 - **Agno Control Plane (`os.agno.com`)** may be used in development (free); not used in production (paid + cross-border).
@@ -136,11 +137,10 @@ To be resolved during implementation.
 **Runtime**
 - Profile Management schema, storage, and API surface — deferred to its component design ([`docs/design/user-profile-management.md`](./docs/design/user-profile-management.md)).
 - User Memory maintenance mode: `always` extraction vs. `agentic` updates vs. hybrid. (Profile Management auto-extraction is deferred separately, in its component design.)
-- Default RAG strategy per agent (traditional auto-injection vs. agentic search-as-tool).
+- Default RAG strategy per agent (traditional auto-injection vs. agentic search-as-tool). The recipe agent already uses agentic search-as-tool; other agents decide when they are introduced.
 - Agent construction split: static Python / `AgentFactory` / directory-driven — likely a mix.
 - Event surface for Edge-originated and other asynchronous triggers: AgentOS Hooks, an external event bus, or both.
 - Whether to expose the Runtime over MCP (`enable_mcp_server=True`).
-- AgentOS anonymous telemetry: keep on or disable (`AGNO_TELEMETRY=false`).
 
 **Edge**
 - Protocol between edge-cloud and edge-local.
