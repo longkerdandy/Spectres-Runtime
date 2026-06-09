@@ -59,13 +59,13 @@ def make_settings(**overrides: Any) -> Settings:
         "embedder_base_url": "https://api.siliconflow.cn/v1",
         "embedder_dimensions": 1024,
         "embedder_api_key": SecretStr("sk-secret"),
-        "chat_model": "chat-model-id",
-        "chat_base_url": "https://chat-provider.example/v1",
-        "chat_api_key": SecretStr("sk-chat-secret"),
         "recipe_agent": RecipeAgentSettings(
             _env_file=None,
             instructions="Test instructions.",
             num_history_runs=5,
+            chat_model="chat-model-id",
+            chat_base_url="https://chat-provider.example/v1",
+            chat_api_key=SecretStr("sk-chat-secret"),
         ),
     }
     values.update(overrides)

@@ -33,7 +33,7 @@ def test_build_recipe_agent_shape(settings: Settings, fake_knowledge: FakeKnowle
     assert agent.name == RECIPE_AGENT_NAME
     # The real chat model is constructed (offline) — no placeholder.
     assert isinstance(agent.model, OpenAILike)
-    assert agent.model.id == settings.chat_model
+    assert agent.model.id == settings.recipe_agent.chat_model
     # Injected knowledge is wired through; the shared db handle is attached.
     assert agent.knowledge is fake_knowledge
     assert agent.db is not None

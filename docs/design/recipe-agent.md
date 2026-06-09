@@ -241,7 +241,7 @@ The implementation keeps shared infrastructure and agent-private logic separate:
 
 | Path | Responsibility |
 |---|---|
-| `config.py` | Shared `Settings` (database, embedder, chat) + builders `build_embedder` / `build_chat_model`. |
+| `config.py` | Shared `Settings` (database, embedder) + builder `build_embedder`. Per-agent chat config lives in the agent's own settings. |
 | `storage/` | Shared persistence: `build_db` (the one `PostgresDb`) and the generic `build_knowledge` factory. No domain identity. |
 | `app.py` | AgentOS wiring — registers agents and knowledge bases; `app_factory` is the ASGI entry point. |
 | `recipe_agent/agent.py` | `build_recipe_agent` — composes the agent from `Settings` (§5). |

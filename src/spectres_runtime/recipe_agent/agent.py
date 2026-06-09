@@ -59,7 +59,7 @@ def build_recipe_agent(
     return Agent(
         id=RECIPE_AGENT_ID,
         name=RECIPE_AGENT_NAME,
-        model=model or settings.build_chat_model(),
+        model=model or settings.recipe_agent.build_chat_model(),
         db=db or build_db(settings),
         knowledge=knowledge or build_recipe_knowledge(settings),
         instructions=settings.recipe_agent.instructions,

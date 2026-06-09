@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 from agno.knowledge.embedder.openai import OpenAIEmbedder
-from agno.models.openai import OpenAILike
 from pydantic import SecretStr
 
 from spectres_runtime.config import Settings, get_settings
@@ -23,9 +22,6 @@ _ENV = {
     "EMBEDDER_BASE_URL": "https://api.siliconflow.cn/v1",
     "EMBEDDER_DIMENSIONS": "1024",
     "EMBEDDER_API_KEY": "sk-secret",
-    "CHAT_MODEL": "chat-model-id",
-    "CHAT_BASE_URL": "https://chat-provider.example/v1",
-    "CHAT_API_KEY": "sk-chat-secret",
     # Required for `get_settings()` to compose the recipe-agent sub-config; the
     # prefix / field mapping itself is covered in tests/recipe_agent/test_config.py.
     "RECIPE_AGENT_INSTRUCTIONS": "Search recipes before answering.",
@@ -45,9 +41,6 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.embedder_dimensions == 1024
     # Secret stays wrapped; not exposed by repr.
     assert settings.embedder_api_key.get_secret_value() == "sk-secret"
-    assert settings.chat_model == "chat-model-id"
-    assert settings.chat_base_url == "https://chat-provider.example/v1"
-    assert settings.chat_api_key.get_secret_value() == "sk-chat-secret"
     # `get_settings()` wired the per-module sub-config (values asserted in its own suite).
     assert settings.recipe_agent.num_history_runs == 5
 
@@ -76,13 +69,3 @@ def test_build_embedder_maps_every_field() -> None:
     assert embedder.dimensions == 512
     # SecretStr is unwrapped to a plain string for the OpenAI client.
     assert embedder.api_key == "sk-secret"
-
-
-def test_build_chat_model_maps_every_field() -> None:
-    chat_model = make_settings().build_chat_model()
-
-    assert isinstance(chat_model, OpenAILike)
-    assert chat_model.id == "chat-model-id"
-    assert chat_model.base_url == "https://chat-provider.example/v1"
-    # SecretStr is unwrapped to a plain string for the OpenAI-compatible client.
-    assert chat_model.api_key == "sk-chat-secret"

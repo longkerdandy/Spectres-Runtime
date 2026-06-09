@@ -13,6 +13,8 @@ Reads the same single ``.env`` as the root settings; the ``RECIPE_AGENT_``
 
 from __future__ import annotations
 
+from agno.models.openai import OpenAILike
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,3 +35,18 @@ class RecipeAgentSettings(BaseSettings):
 
     instructions: str  # Recipe agent system instructions (env-driven now; UI-managed later).
     num_history_runs: int  # Prior conversation turns replayed into the agent's context.
+    chat_model: str  # Chat model id from the configured provider. Not a data contract.
+    chat_base_url: str  # Chat provider base URL (OpenAI-compatible endpoint).
+    chat_api_key: SecretStr  # Secret — only ever set in the local `.env`, never committed.
+
+    def build_chat_model(self) -> OpenAILike:
+        """Build the hosted chat model. Text-only (no embeddings).
+
+        Uses Agno's generic OpenAI-compatible client; the actual provider is driven
+        entirely by config so swapping providers is a `.env` change, never a code change.
+        """
+        return OpenAILike(
+            id=self.chat_model,
+            base_url=self.chat_base_url,
+            api_key=self.chat_api_key.get_secret_value(),
+        )
