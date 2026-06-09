@@ -184,8 +184,12 @@ The agent is thin — it composes the layers above.
 
 **Wired today (`build_recipe_agent`):**
 
-- `model` — the hosted chat model, configured via env (currently Moonshot through
-  the Kimi endpoint); provider-agnostic, since id / base-URL / key are all config.
+- `model` — the hosted chat model, configured via env (currently **DeepSeek-V4-Flash**
+  through SiliconFlow); provider-agnostic, since id / base-URL / key are all config.
+  v0.4 uses a mid-tier model because the current task (grounded recipe Q&A) is
+  composition-heavy rather than reasoning-heavy; the full household profile with
+  health-constraint reasoning (design §4) is expected to need a stronger tier
+  (DeepSeek-V4-Pro or equivalent) when it lands.
 - `knowledge` — the recipe knowledge base in pgvector (§2.3), written by the
   ingestion layer (§2.1). Agno's agentic search-as-tool is on by default.
 - `db` — the shared `PostgresDb` (§2.3); today it backs conversation history, later
