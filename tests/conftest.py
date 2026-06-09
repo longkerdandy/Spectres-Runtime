@@ -26,6 +26,7 @@ from agno.models.response import ModelResponse
 from pydantic import SecretStr, ValidationError
 
 from spectres_runtime.config import Settings, get_settings
+from spectres_runtime.recipe_agent.agent import RECIPE_AGENT_ID
 from spectres_runtime.recipe_agent.config import RecipeAgentSettings
 
 SCRIPTED_RESPONSE = "scripted-response"
@@ -156,3 +157,28 @@ def scripted_model() -> ScriptedModel:
 @pytest.fixture
 def fake_knowledge() -> FakeKnowledge:
     return FakeKnowledge()
+
+
+def run_agent(
+    client: Any,
+    message: str,
+    *,
+    agent_id: str = RECIPE_AGENT_ID,
+    session_id: str | None = None,
+    user_id: str | None = None,
+    stream: bool = False,
+) -> Any:
+    """POST one turn to ``/agents/<id>/runs`` as the endpoint's ``multipart/form-data``.
+
+    The single seam every run-endpoint test goes through, so the form contract
+    (``message`` / ``stream`` / ``session_id`` / ``user_id``) lives in one place
+    rather than being re-spelled per test. ``stream`` defaults to ``False`` so the
+    response is one JSON body (assertable), not an SSE stream. Pass the same
+    ``session_id`` across turns to exercise multi-turn continuity.
+    """
+    data: dict[str, str] = {"message": message, "stream": str(stream).lower()}
+    if session_id is not None:
+        data["session_id"] = session_id
+    if user_id is not None:
+        data["user_id"] = user_id
+    return client.post(f"/agents/{agent_id}/runs", data=data)
