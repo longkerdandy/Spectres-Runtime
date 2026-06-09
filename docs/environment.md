@@ -49,10 +49,10 @@ At minimum, set:
 
 - `DATABASE_USERNAME` / `DATABASE_PASSWORD` — credentials for the local Postgres
   role. `DATABASE_URL` references them via `${...}`, so you set them in one place.
-- `EMBEDDER_API_KEY` — your SiliconFlow (`.cn`) key; required for any live embedding
+- `EMBEDDER_API_KEY` — your embedder-provider key; required for any live embedding
   call (recipe ingestion and knowledge search).
-- `CHAT_API_KEY` — your chat-provider key (Kimi / Moonshot); required for the recipe
-  agent to generate replies.
+- `CHAT_API_KEY` — your chat-provider key; required for the recipe agent to generate
+  replies.
 
 Every key is documented inline in `.env.example`, including the recipe agent's own
 `RECIPE_AGENT_*` settings.

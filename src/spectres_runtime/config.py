@@ -31,10 +31,8 @@ class Settings(BaseSettings):
     embedder_dimensions: int  # Embedding vector size.
     embedder_api_key: SecretStr  # Secret — only ever set in the local `.env`, never committed.
 
-    chat_model: (
-        str  # Chat model id (e.g. "deepseek-ai/DeepSeek-V4-Flash"). Generation quality/cost only, not a data contract.
-    )
-    chat_base_url: str  # Chat provider base URL (e.g. SiliconFlow, Kimi, DeepSeek open platform).
+    chat_model: str  # Chat model id from the configured provider. Not a data contract — can change run-to-run.
+    chat_base_url: str  # Chat provider base URL (OpenAI-compatible endpoint).
     chat_api_key: SecretStr  # Secret — a separate key/provider from the embedder; only in the local `.env`.
 
     recipe_agent: RecipeAgentSettings  # Recipe-agent-private config (see its own module); composed by `get_settings`.
@@ -51,8 +49,9 @@ class Settings(BaseSettings):
     def build_chat_model(self) -> OpenAILike:
         """Build the hosted chat model. Text-only (no embeddings) — distinct from the embedder.
 
-        Uses Agno's generic OpenAI-compatible client so any provider (SiliconFlow,
-        DeepSeek, Kimi, Zhipu, Qwen) is a config change, not a code change.
+        Uses Agno's generic OpenAI-compatible client; the actual provider is driven
+        entirely by config (base_url + api_key + model id) so swapping providers is
+        a config change, never a code change.
         """
         return OpenAILike(
             id=self.chat_model,
