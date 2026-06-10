@@ -23,15 +23,16 @@ Optional config fields (defaults shown):
     "max_completion_tokens": 120,
     "delay_seconds": 0.5
 
-Supported providers:
-  - Kimi Code:  https://api.kimi.com/coding/v1,  model="kimi-for-coding"
-  - Moonshot:   https://api.moonshot.cn/v1,      model="kimi-k2.6"
-  - Any OpenAI-compatible endpoint.
+User-Agent:
+    When running inside OpenCode the script auto-detects the local version
+    (via `opencode --version` or the plugin package.json) and sends it as the
+    User-Agent header. You can override it with the optional `user_agent` field.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -42,6 +43,43 @@ import httpx
 CATALOG_DIR = Path(__file__).resolve().parent
 RECIPE_FILE = CATALOG_DIR / "recipes.jsonl"
 CONFIG_FILE = CATALOG_DIR / "generate_descriptions.json"
+
+# Auto-detect OpenCode version for User-Agent when running inside OpenCode.
+_OPCODEC_EXE = Path.home() / ".opencode" / "bin" / "opencode"
+_OPCODEC_PKG = Path.home() / ".config" / "opencode" / "node_modules" / "@opencode-ai" / "plugin" / "package.json"
+
+
+def _detect_opencode_version() -> str | None:
+    """Try to discover the local OpenCode version."""
+    # 1. Ask the CLI directly (fastest & most accurate)
+    for exe in (_OPCODEC_EXE, "opencode"):
+        try:
+            result = subprocess.run(
+                [str(exe), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5.0,
+                check=False,
+            )
+            if result.returncode == 0:
+                ver = result.stdout.strip().split()[0]
+                if ver:
+                    return f"OpenCode/{ver}"
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+
+    # 2. Fallback: read the plugin package.json
+    if _OPCODEC_PKG.exists():
+        try:
+            data = json.loads(_OPCODEC_PKG.read_text(encoding="utf-8"))
+            ver = data.get("version", "").strip()
+            if ver:
+                return f"OpenCode/{ver}"
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return None
+
 
 PROMPT_TEMPLATE = """\
 为以下菜谱生成一段 50-80 字的中文描述，要求：
@@ -67,9 +105,11 @@ def _load_config() -> dict[str, Any]:
 
 def _call_llm(prompt: str, cfg: dict[str, Any]) -> str:
     """Call the configured chat-completion endpoint."""
+    user_agent = cfg.get("user_agent") or _detect_opencode_version() or "OpenCode"
     headers = {
         "Authorization": f"Bearer {cfg['api_key']}",
         "Content-Type": "application/json",
+        "User-Agent": user_agent,
     }
     payload: dict[str, Any] = {
         "model": cfg.get("model", "default"),
