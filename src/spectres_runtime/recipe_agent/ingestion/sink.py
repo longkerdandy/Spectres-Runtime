@@ -94,4 +94,5 @@ class RecipeSink:
             "difficulty": recipe.difficulty,
             "images": recipe.images,
             "ingredients": [{"name": i.name, "optional": i.optional} for i in recipe.ingredients],
+            "description": recipe.description,
         }
