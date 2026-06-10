@@ -1,12 +1,20 @@
 {
   "_comment": "Copy to generate_descriptions.local.json and fill in api_key. This file is git-ignored.",
-  "api_key": "your-kimi-api-key-here",
-  "base_url": "https://api.moonshot.cn/v1",
-  "model": "kimi-latest",
+  "api_key": "your-api-key-here",
+  "base_url": "https://api.kimi.com/coding/v1",
+  "model": "kimi-for-coding",
   "temperature": 0.3,
   "max_tokens": 120,
-  "batch_size": 5,
-  "delay_seconds": 1.0,
-  "force_regenerate": false,
-  "only_null": true
+  "delay_seconds": 0.5,
+  "_comment_providers": "Supported providers: kimi-code (default), moonshot-open-platform",
+  "_comment_kimi_code": {
+    "base_url": "https://api.kimi.com/coding/v1",
+    "model": "kimi-for-coding",
+    "note": "Requires Kimi Code subscription. Fixed model ID, backend auto-upgrades."
+  },
+  "_comment_moonshot": {
+    "base_url": "https://api.moonshot.cn/v1",
+    "model": "kimi-k2.6",
+    "note": "Open platform, pay-as-you-go. Get key from platform.kimi.com"
+  }
 }
