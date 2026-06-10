@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy to generate_descriptions.local.json and fill in api_key. This file is git-ignored.",
+  "api_key": "your-kimi-api-key-here",
+  "base_url": "https://api.moonshot.cn/v1",
+  "model": "kimi-latest",
+  "temperature": 0.3,
+  "max_tokens": 120,
+  "batch_size": 5,
+  "delay_seconds": 1.0,
+  "force_regenerate": false,
+  "only_null": true
+}

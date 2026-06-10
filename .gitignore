@@ -58,3 +58,7 @@ htmlcov/
 .tox/
 .mypy_cache/
 .ruff_cache/
+
+# Dataset catalog local files (API keys, progress)
+datasets/howtocook/catalog/*.local.json
+datasets/howtocook/catalog/.progress.json
