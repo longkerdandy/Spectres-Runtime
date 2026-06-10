@@ -59,6 +59,5 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Dataset catalog local files (API keys, progress)
-datasets/howtocook/catalog/*.local.json
-datasets/howtocook/catalog/.progress.json
+# HowToCook description generator config (contains API keys)
+datasets/howtocook/catalog/generate_descriptions.json

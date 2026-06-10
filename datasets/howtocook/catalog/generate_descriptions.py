@@ -6,7 +6,7 @@ produce a concise Chinese description for every recipe whose `description`
 is null, then writes the enriched lines back to the same file.
 
 Setup:
-    Create `generate_descriptions.local.json` (git-ignored) with your API key:
+    Edit `generate_descriptions.json` with your API key:
 
     {
       "api_key": "sk-xxxxx",
@@ -16,6 +16,8 @@ Setup:
 
     Then run:
     python generate_descriptions.py
+
+    (This file is git-ignored; fill in your real key after checkout.)
 
 Optional config fields (defaults shown):
     "max_completion_tokens": 120,
@@ -39,7 +41,7 @@ import httpx
 
 CATALOG_DIR = Path(__file__).resolve().parent
 RECIPE_FILE = CATALOG_DIR / "recipes.jsonl"
-CONFIG_FILE = CATALOG_DIR / "generate_descriptions.local.json"
+CONFIG_FILE = CATALOG_DIR / "generate_descriptions.json"
 
 PROMPT_TEMPLATE = """\
 为以下菜谱生成一段 50-80 字的中文描述，要求：
