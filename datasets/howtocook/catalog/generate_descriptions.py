@@ -5,22 +5,26 @@ Reads `recipes.jsonl`, calls the configured chat-completion endpoint to
 produce a concise Chinese description for every recipe whose `description`
 is null, then writes the enriched lines back to the same file.
 
-Configuration lives in a sibling JSON file (git-ignored). Copy the template,
-fill in the key, and run:
+Setup:
+    Create `generate_descriptions.local.json` (git-ignored) with your API key:
 
-    cp generate_descriptions.json generate_descriptions.local.json
-    # edit generate_descriptions.local.json
+    {
+      "api_key": "sk-xxxxx",
+      "base_url": "https://api.kimi.com/coding/v1",
+      "model": "kimi-for-coding"
+    }
+
+    Then run:
     python generate_descriptions.py
 
-The script is meant to be executed by an AI agent in one shot; it does not
-save partial progress and exits on the first unrecoverable error.
+Optional config fields (defaults shown):
+    "max_completion_tokens": 120,
+    "delay_seconds": 0.5
 
-Supported providers (configure via base_url + model):
-  - Kimi Code (default): https://api.kimi.com/coding/v1, model="kimi-for-coding"
-    Requires Kimi Code subscription. Fixed model ID, backend auto-upgrades.
-  - Moonshot Open Platform: https://api.moonshot.cn/v1, model="kimi-k2.6"
-    Pay-as-you-go. Get key from platform.kimi.com
-  - Any OpenAI-compatible endpoint works as well.
+Supported providers:
+  - Kimi Code:  https://api.kimi.com/coding/v1,  model="kimi-for-coding"
+  - Moonshot:   https://api.moonshot.cn/v1,      model="kimi-k2.6"
+  - Any OpenAI-compatible endpoint.
 """
 
 from __future__ import annotations
@@ -65,11 +69,10 @@ def _call_llm(prompt: str, cfg: dict[str, Any]) -> str:
         "Authorization": f"Bearer {cfg['api_key']}",
         "Content-Type": "application/json",
     }
-    payload = {
+    payload: dict[str, Any] = {
         "model": cfg.get("model", "default"),
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": cfg.get("temperature", 0.3),
-        "max_tokens": cfg.get("max_tokens", 120),
+        "max_completion_tokens": cfg.get("max_completion_tokens", 120),
     }
 
     resp = httpx.post(
