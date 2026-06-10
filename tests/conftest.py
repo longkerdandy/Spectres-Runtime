@@ -1,12 +1,10 @@
 """Shared test fixtures and hermetic doubles for the unit tier.
 
 Centralizes the ``Settings`` factory (so individual tests stop duplicating the
-filler kwargs) and the two doubles the agent tests need:
+filler kwargs) and the scripted model double the agent tests need:
 
 * :class:`ScriptedModel` — a run-capable model that bypasses the provider
   pipeline and returns a canned response, so ``agent.run`` works with no network.
-* :class:`FakeKnowledge` — a :class:`~agno.knowledge.protocol.KnowledgeProtocol`
-  implementation that exposes no tools and connects to nothing.
 
 Also provides :func:`settings_or_skip`, the one skip-or-load helper the
 ``integration`` tier shares. Anything that touches real infrastructure (Postgres,
@@ -15,11 +13,10 @@ the live providers) lives in that tier.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 import pytest
-from agno.knowledge.document import Document
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.models.response import ModelResponse
@@ -125,25 +122,6 @@ class ScriptedModel(Model):
         raise NotImplementedError
 
 
-class FakeKnowledge:
-    """A ``KnowledgeProtocol`` double: satisfies the agent's wiring, connects to nothing."""
-
-    def build_context(self, **kwargs: Any) -> str:
-        return ""
-
-    def get_tools(self, **kwargs: Any) -> list[Callable[..., Any]]:
-        return []
-
-    async def aget_tools(self, **kwargs: Any) -> list[Callable[..., Any]]:
-        return []
-
-    def retrieve(self, query: str, **kwargs: Any) -> list[Document]:
-        return []
-
-    async def aretrieve(self, query: str, **kwargs: Any) -> list[Document]:
-        return []
-
-
 @pytest.fixture
 def settings() -> Settings:
     return make_settings()
@@ -152,11 +130,6 @@ def settings() -> Settings:
 @pytest.fixture
 def scripted_model() -> ScriptedModel:
     return ScriptedModel(id="scripted", name="Scripted", provider="scripted")
-
-
-@pytest.fixture
-def fake_knowledge() -> FakeKnowledge:
-    return FakeKnowledge()
 
 
 def run_agent(

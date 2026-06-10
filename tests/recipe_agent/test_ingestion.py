@@ -230,6 +230,7 @@ def test_write_metadata_carries_provenance_and_filter_payload() -> None:
         "difficulty": 2,
         "images": ["aquatic/蟹/成品.jpg"],
         "ingredients": [{"name": "蟹", "optional": False}, {"name": "姜", "optional": True}],
+        "description": recipe.description,
     }
 
 
