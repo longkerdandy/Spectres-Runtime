@@ -5,7 +5,7 @@
 
 [project]
 name = "spectres-runtime"
-version = "0.5.0"
+version = "0.4.1"
 description = "Runtime tier of the Spectres personal assistant — agent orchestration, memory, knowledge, and capability exposure built on Agno's AgentOS."
 readme = "README.md"
 authors = [
