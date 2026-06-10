@@ -3,7 +3,7 @@
 
 Reads `recipes.jsonl`, calls the configured chat-completion endpoint to
 produce a concise Chinese description for every recipe whose `description`
-is null, then writes the enriched lines back to the same file.
+is null or empty, then writes the enriched lines back to the same file.
 
 Setup:
     Edit `generate_descriptions.json` with your API key:
@@ -11,7 +11,8 @@ Setup:
     {
       "api_key": "sk-xxxxx",
       "base_url": "https://api.kimi.com/coding/v1",
-      "model": "kimi-for-coding"
+      "model": "kimi-for-coding",
+      "max_completion_tokens": 500
     }
 
     Then run:
@@ -21,7 +22,9 @@ Setup:
 
 Optional config fields (defaults shown):
     "max_completion_tokens": 120,
-    "delay_seconds": 0.5
+    "delay_seconds": 0.0,
+    "batch_size": 10
+    "timeout_seconds": 60.0
 
 User-Agent:
     When running inside OpenCode the script auto-detects the local version
@@ -31,6 +34,7 @@ User-Agent:
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -51,7 +55,6 @@ _OPCODEC_PKG = Path.home() / ".config" / "opencode" / "node_modules" / "@opencod
 
 def _detect_opencode_version() -> str | None:
     """Try to discover the local OpenCode version."""
-    # 1. Ask the CLI directly (fastest & most accurate)
     for exe in (_OPCODEC_EXE, "opencode"):
         try:
             result = subprocess.run(
@@ -64,17 +67,16 @@ def _detect_opencode_version() -> str | None:
             if result.returncode == 0:
                 ver = result.stdout.strip().split()[0]
                 if ver:
-                    return f"OpenCode/{ver}"
+                    return f"opencode/{ver}"
         except (FileNotFoundError, subprocess.TimeoutExpired):
             continue
 
-    # 2. Fallback: read the plugin package.json
     if _OPCODEC_PKG.exists():
         try:
             data = json.loads(_OPCODEC_PKG.read_text(encoding="utf-8"))
             ver = data.get("version", "").strip()
             if ver:
-                return f"OpenCode/{ver}"
+                return f"opencode/{ver}"
         except (json.JSONDecodeError, OSError):
             pass
 
@@ -105,7 +107,7 @@ def _load_config() -> dict[str, Any]:
 
 def _call_llm(prompt: str, cfg: dict[str, Any]) -> str:
     """Call the configured chat-completion endpoint."""
-    user_agent = cfg.get("user_agent") or _detect_opencode_version() or "OpenCode"
+    user_agent = cfg.get("user_agent") or _detect_opencode_version() or "opencode"
     headers = {
         "Authorization": f"Bearer {cfg['api_key']}",
         "Content-Type": "application/json",
@@ -117,18 +119,33 @@ def _call_llm(prompt: str, cfg: dict[str, Any]) -> str:
         "max_completion_tokens": cfg.get("max_completion_tokens", 120),
     }
 
+    # Disable reasoning/thinking if configured
+    if cfg.get("disable_reasoning", False):
+        payload["thinking"] = {"type": "disabled"}
+
+    timeout = cfg.get("timeout_seconds", 60.0)
     resp = httpx.post(
         f"{cfg['base_url'].rstrip('/')}/chat/completions",
         headers=headers,
         json=payload,
-        timeout=60.0,
+        timeout=timeout,
     )
     resp.raise_for_status()
 
     data: dict[str, Any] = resp.json()
     choice: dict[str, Any] = data["choices"][0]
     message: dict[str, Any] = choice["message"]
-    return str(message["content"]).strip()
+    content = str(message.get("content", "")).strip()
+
+    # Some models return reasoning_content but empty content
+    if not content and "reasoning_content" in message:
+        reasoning = str(message["reasoning_content"]).strip()
+        # Try to extract the final description from reasoning
+        lines = [line.strip() for line in reasoning.split("\n") if line.strip()]
+        if lines:
+            content = lines[-1]  # Usually the last line is the answer
+
+    return content
 
 
 def _build_prompt(recipe: dict[str, Any]) -> str:
@@ -140,7 +157,16 @@ def _build_prompt(recipe: dict[str, Any]) -> str:
     )
 
 
-def main() -> int:
+def _save_recipes(recipes: list[dict[str, Any]]) -> None:
+    """Atomically write recipes back to file."""
+    tmp_file = RECIPE_FILE.with_suffix(".tmp")
+    with tmp_file.open("w", encoding="utf-8") as f:
+        for r in recipes:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    tmp_file.replace(RECIPE_FILE)
+
+
+def main(overwrite: bool = False) -> int:
     cfg = _load_config()
 
     if not cfg.get("api_key") or str(cfg["api_key"]).startswith("your-"):
@@ -154,14 +180,18 @@ def main() -> int:
             if line:
                 recipes.append(json.loads(line))
 
-    todo = [r for r in recipes if r.get("description") is None]
-    if not todo:
-        print("Nothing to do — every recipe already has a description.")
-        return 0
+    if overwrite:
+        todo = recipes[:]
+        print(f"Overwrite mode — regenerating all {len(todo)} descriptions …")
+    else:
+        todo = [r for r in recipes if not r.get("description")]
+        if not todo:
+            print("Nothing to do — every recipe already has a description.")
+            return 0
+        print(f"Generating descriptions for {len(todo)} recipes …")
 
-    print(f"Generating descriptions for {len(todo)} recipes …")
-
-    delay = cfg.get("delay_seconds", 0.5)
+    delay = cfg.get("delay_seconds", 0.0)
+    batch_size = cfg.get("batch_size", 10)
     ok = errors = 0
 
     for idx, recipe in enumerate(todo, 1):
@@ -174,17 +204,29 @@ def main() -> int:
             errors += 1
             print(f"  [{idx}/{len(todo)}] {recipe['name']} — ERROR: {exc}")
 
+        # Save progress every batch
+        if idx % batch_size == 0:
+            print(f"    [checkpoint] Saving progress ({idx}/{len(todo)}) …")
+            _save_recipes(recipes)
+
         if delay > 0:
             time.sleep(delay)
 
+    # Final save
     print(f"\nWriting {len(recipes)} recipes back …")
-    with RECIPE_FILE.open("w", encoding="utf-8") as f:
-        for r in recipes:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    _save_recipes(recipes)
 
     print(f"Done.  Success: {ok}  Errors: {errors}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    parser = argparse.ArgumentParser(description="Generate AI descriptions for HowToCook recipes.")
+    parser.add_argument(
+        "--overwrite",
+        "-o",
+        action="store_true",
+        help="Regenerate descriptions even for recipes that already have one.",
+    )
+    args = parser.parse_args()
+    sys.exit(main(overwrite=args.overwrite))
