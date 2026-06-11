@@ -29,15 +29,15 @@ _CATEGORY_MAP = {
     "vegetable_dish": "素菜",
 }
 
-_VALID_CATEGORIES = frozenset(_CATEGORY_MAP.keys())
+_VALID_CATEGORIES = frozenset(_CATEGORY_MAP.keys())  # Valid category keys for the search tool.
 
 
 def _build_search_sql(
-    embedding: list[float],
-    category: str | None,
-    must_include: list[str] | None,
-    must_exclude: list[str] | None,
-    limit: int,
+    embedding: list[float],  # Query embedding vector for semantic search.
+    category: str | None,  # Optional category filter (exact match).
+    must_include: list[str] | None,  # Ingredients that must all be present (AND logic).
+    must_exclude: list[str] | None,  # Ingredients where any match excludes the recipe (OR logic).
+    limit: int,  # Maximum number of results to return.
 ) -> tuple[str, list[Any]]:
     """Build the parameterized SQL for recipe search.
 
@@ -57,7 +57,7 @@ def _build_search_sql(
     WHERE 1=1
       AND NOT meta_data->'category' @> '["template"]'::jsonb
     """
-    params: list[Any] = [embedding]
+    params: list[Any] = [embedding]  # First param is the embedding vector.
 
     if category:
         sql += " AND meta_data->'category' @> %s::jsonb"
@@ -79,23 +79,22 @@ def _build_search_sql(
     return sql, params
 
 
-def build_search_recipes_tool(settings: Settings, *, embedder: Any | None = None) -> Any:
-    """Build the ``search_recipes`` tool with access to settings.
-
-    Args:
-        settings: Runtime configuration.
-        embedder: Optional embedder override (for testing).
-    """
+def build_search_recipes_tool(
+    settings: Settings,  # Runtime configuration (DB URL, embedder settings).
+    *,
+    embedder: Any | None = None,  # Optional embedder override (for testing).
+) -> Any:
+    """Build the ``search_recipes`` tool with access to settings."""
     embedder = embedder or settings.build_embedder()
     db_url = settings.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
 
     @tool(name="search_recipes")
     def search_recipes(
-        query: str,
-        category: str | None = None,
-        must_include: list[str] | None = None,
-        must_exclude: list[str] | None = None,
-        limit: int = 4,
+        query: str,  # Natural language description of what the user wants.
+        category: str | None = None,  # Optional category filter (e.g. "soup", "meat_dish").
+        must_include: list[str] | None = None,  # Ingredients that must all be present.
+        must_exclude: list[str] | None = None,  # Ingredients where any match excludes.
+        limit: int = 4,  # Maximum results (clamped to 1-8).
     ) -> str:
         """Search the recipe catalog by semantic meaning.
 
