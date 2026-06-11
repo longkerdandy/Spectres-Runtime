@@ -97,30 +97,19 @@ def build_search_recipes_tool(settings: Settings, *, embedder: Any | None = None
         must_exclude: list[str] | None = None,
         limit: int = 4,
     ) -> str:
-        """Search the recipe catalog by semantic meaning with optional ingredient filters.
+        """Search the recipe catalog by semantic meaning.
 
-        Use this tool to discover candidate dishes when planning a menu.
-        Returns lightweight metadata only — no cooking steps.
+        Use this tool to find dishes matching a description. Returns lightweight
+        metadata (name, description, ingredients) — no cooking steps.
 
         Args:
-            query: What you are looking for (e.g., "light soup", "savory dish",
-                   "quick veggie"). Describe desired flavor, style, or occasion in Chinese.
-            category: Optional filter. One of: "soup", "meat_dish", "vegetable_dish",
-                      "staple", "breakfast", "dessert", "condiment".
-            must_include: Ingredients the recipe MUST contain (exact match, AND logic).
-                          Example: ["tomato", "egg"] means the recipe must contain BOTH.
-            must_exclude: Ingredients the recipe MUST NOT contain (exact match, any excludes).
-                          Example: ["chili", "peppercorn"] excludes recipes with EITHER.
-            limit: Maximum candidates (default 4, max 8).
-
-        Returns:
-            JSON string with recipe summaries. Each entry:
-            - recipe_id: stable ID (e.g., "howtocook/soup/tomato_egg_drop")
-            - name: display name
-            - category: list of category tags
-            - difficulty: 1-5
-            - description: AI-generated one-sentence description
-            - ingredients: list of ingredient names
+            query: Natural language description of what you want (e.g. "light soup",
+                   "savory meat dish", "quick veggie").
+            category: Filter by category. Valid: soup, meat_dish, vegetable_dish,
+                      staple, breakfast, dessert, condiment, drink, aquatic.
+            must_include: Ingredients that MUST be present (exact match, AND logic).
+            must_exclude: Ingredients that MUST NOT be present (exact match, excludes if any match).
+            limit: Maximum results (default 4, max 8).
         """
         # Clamp limit to reasonable range.
         limit = max(1, min(limit, 8))
