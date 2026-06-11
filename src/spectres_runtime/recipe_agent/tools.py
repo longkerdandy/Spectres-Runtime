@@ -15,21 +15,21 @@ from agno.tools import tool
 
 from spectres_runtime.config import Settings
 
-# Valid category values for user-facing documentation.
-_VALID_CATEGORIES = frozenset(
-    {
-        "aquatic",
-        "breakfast",
-        "condiment",
-        "dessert",
-        "drink",
-        "meat_dish",
-        "semi-finished",
-        "soup",
-        "staple",
-        "vegetable_dish",
-    }
-)
+# Category mapping: English key (stored in DB) → Chinese label (for LLM reference).
+_CATEGORY_MAP = {
+    "aquatic": "水产",
+    "breakfast": "早餐",
+    "condiment": "调味",
+    "dessert": "甜品",
+    "drink": "饮品",
+    "meat_dish": "肉菜",
+    "semi-finished": "半成品",
+    "soup": "汤",
+    "staple": "主食",
+    "vegetable_dish": "素菜",
+}
+
+_VALID_CATEGORIES = frozenset(_CATEGORY_MAP.keys())
 
 
 def _build_search_sql(
@@ -127,8 +127,9 @@ def build_search_recipes_tool(settings: Settings, *, embedder: Any | None = None
 
         # Validate category if provided.
         if category and category not in _VALID_CATEGORIES:
+            valid_cats = ", ".join(f"{en}({zh})" for en, zh in sorted(_CATEGORY_MAP.items()))
             return json.dumps(
-                {"error": f"Invalid category '{category}'. Valid: {sorted(_VALID_CATEGORIES)}"},
+                {"error": f"Invalid category '{category}'. Use English keys. Valid: {valid_cats}"},
                 ensure_ascii=False,
             )
 
