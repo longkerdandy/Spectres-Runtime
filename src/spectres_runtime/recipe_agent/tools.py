@@ -151,6 +151,10 @@ def build_search_recipes_tool(
             must_include: Ingredients that MUST be present (exact match, AND logic).
             must_exclude: Ingredients that MUST NOT be present (exact match, excludes if any match).
             limit: Maximum results (default 4, max 8).
+
+        Returns:
+            JSON list of recipe metadata, or a JSON object with an ``error`` key
+            when the request cannot be satisfied (e.g. invalid category).
         """
         # Clamp limit to reasonable range.
         limit = max(1, min(limit, 8))
