@@ -41,6 +41,19 @@ def test_build_recipe_agent_shape(settings: Settings) -> None:
     assert agent.instructions == DEFAULT_RECIPE_AGENT_INSTRUCTIONS
     assert "##" in agent.instructions
     assert "Markdown" in agent.instructions
+    # Tools are registered so the agent can retrieve recipes on demand.
+    assert isinstance(agent.tools, list)
+    assert len(agent.tools) == 2
+    tool_names = {getattr(t, "name", None) for t in agent.tools}
+    assert "search_recipes" in tool_names
+    assert "get_recipe_detail" in tool_names
+    # Instructions must reference tools, not the legacy knowledge base.
+    assert "knowledge base" not in agent.instructions.lower()
+    assert "search_recipes" in agent.instructions
+    assert "get_recipe_detail" in agent.instructions
+    # The agent should not fetch full recipes unless the user asks for details.
+    assert "Do not call" in agent.instructions
+    assert "detailed cooking" in agent.instructions
     assert agent.add_history_to_context is True
     assert agent.num_history_runs == settings.recipe_agent.num_history_runs
     # Single-household default identity, overridable per request.

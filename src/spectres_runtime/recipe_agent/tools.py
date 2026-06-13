@@ -79,6 +79,46 @@ def _build_search_sql(
     return sql, params
 
 
+def build_get_recipe_detail_tool(settings: Settings) -> Any:
+    """Build the ``get_recipe_detail`` tool with access to settings."""
+    db_url = settings.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+    @tool(name="get_recipe_detail")
+    def get_recipe_detail(recipe_id: str) -> str:
+        """Retrieve the full recipe with ingredients, quantities, and steps.
+
+        Use this tool ONLY when the user explicitly asks how to make a dish or
+        wants detailed ingredients and cooking steps. For recommendations,
+        menu planning, or general questions, use ``search_recipes`` instead.
+
+        The ``recipe_id`` must come from a previous ``search_recipes`` result.
+        Returns the complete recipe in Markdown, including ingredients and
+        numbered steps.
+
+        Args:
+            recipe_id: Stable ID from ``search_recipes`` (e.g.
+                "howtocook/soup/tomato_egg").
+
+        Returns:
+            Complete Markdown recipe, or a clear "not found" message if the ID
+            does not exist.
+        """
+        with psycopg.connect(db_url) as conn, conn.cursor() as cur:
+            cur.execute("SELECT content FROM recipes WHERE name = %s LIMIT 1", (recipe_id,))
+            row = cur.fetchone()
+
+        if not row or not row[0]:
+            return f"Recipe '{recipe_id}' not found."
+
+        content = str(row[0])
+        max_len = 3000
+        if len(content) > max_len:
+            content = content[:max_len] + "\n\n... (truncated)"
+        return content
+
+    return get_recipe_detail
+
+
 def build_search_recipes_tool(
     settings: Settings,  # Runtime configuration (DB URL, embedder settings).
     *,
@@ -98,8 +138,10 @@ def build_search_recipes_tool(
     ) -> str:
         """Search the recipe catalog by semantic meaning.
 
-        Use this tool to find dishes matching a description. Returns lightweight
-        metadata (name, description, ingredients) — no cooking steps.
+        Use this tool to discover candidate dishes when the user asks for
+        recommendations, meal planning, or a menu. It returns lightweight
+        metadata only — no cooking steps. To get full instructions for a dish,
+        call ``get_recipe_detail`` with the ``recipe_id`` from a result.
 
         Args:
             query: Natural language description of what you want (e.g. "light soup",

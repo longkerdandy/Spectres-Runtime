@@ -12,7 +12,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from spectres_runtime.recipe_agent.tools import _build_search_sql, build_search_recipes_tool
+from spectres_runtime.recipe_agent.tools import (
+    _build_search_sql,
+    build_get_recipe_detail_tool,
+    build_search_recipes_tool,
+)
 
 
 class TestBuildSearchSql:
@@ -113,6 +117,58 @@ class TestSearchRecipesTool:
 
             tool.entrypoint("x", limit=100)
             assert cursor.execute.call_args[0][1][-1] == 8
+
+
+class TestGetRecipeDetailTool:
+    """Tests for the get_recipe_detail tool end-to-end."""
+
+    @pytest.fixture
+    def tool(self) -> Any:
+        return build_get_recipe_detail_tool(_mock_settings())
+
+    def test_returns_full_recipe_content(self, tool: Any) -> None:
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("# 西红柿鸡蛋汤\n\n## 原料\n- 西红柿\n\n## 步骤\n1. 切块",)
+        conn = MagicMock()
+        conn.__enter__ = MagicMock(return_value=conn)
+        conn.__exit__ = MagicMock(return_value=False)
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("psycopg.connect", return_value=conn):
+            result = tool.entrypoint("howtocook/soup/tomato_egg")
+
+        assert "西红柿鸡蛋汤" in result
+        assert "# " in result
+
+    def test_returns_not_found_for_missing_id(self, tool: Any) -> None:
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        conn = MagicMock()
+        conn.__enter__ = MagicMock(return_value=conn)
+        conn.__exit__ = MagicMock(return_value=False)
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("psycopg.connect", return_value=conn):
+            result = tool.entrypoint("howtocook/missing/dish")
+
+        assert "not found" in result.lower()
+
+    def test_truncates_long_content(self, tool: Any) -> None:
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("x" * 4000,)
+        conn = MagicMock()
+        conn.__enter__ = MagicMock(return_value=conn)
+        conn.__exit__ = MagicMock(return_value=False)
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("psycopg.connect", return_value=conn):
+            result = tool.entrypoint("howtocook/soup/long_recipe")
+
+        assert "... (truncated)" in result
+        assert len(result) <= 3100
 
 
 def _mock_settings() -> Any:
