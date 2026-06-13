@@ -33,27 +33,25 @@ echo "    Working dir: ${ROOT_DIR}"
 
 # --- Postgres health check ---------------------------------------------------
 
-if ! command -v pg_isready >/dev/null 2>&1; then
-  echo "⚠️  pg_isready not found; skipping Postgres health check."
+if [ -z "${DATABASE_URL}" ]; then
+  echo "⚠️  DATABASE_URL is not set; skipping Postgres health check."
 else
-  PG_HOST="localhost"
-  PG_PORT="5532"
+  # psycopg accepts postgresql://, not the SQLAlchemy postgresql+psycopg:// scheme.
+  PSYCOPG_URL="${DATABASE_URL//postgresql+psycopg:\/\//postgresql://}"
 
-  # If DATABASE_URL is set, try to extract host/port for a more accurate check.
-  if [ -n "${DATABASE_URL}" ]; then
-    # psycopg URL form: postgresql[+driver]://user:pass@host:port/db
-    parsed="${DATABASE_URL#*@}"            # host:port/db
-    PG_HOST="${parsed%%:*}"
-    PG_PORT="${parsed#*:}"
-    PG_PORT="${PG_PORT%%/*}"
-  fi
-
-  if ! pg_isready -h "${PG_HOST}" -p "${PG_PORT}" >/dev/null 2>&1; then
-    echo "⚠️  Postgres not reachable at ${PG_HOST}:${PG_PORT}"
+  if ! uv run python - <<PY >/dev/null 2>&1
+import psycopg
+try:
+    psycopg.connect("${PSYCOPG_URL}").close()
+except Exception:
+    raise SystemExit(1)
+PY
+  then
+    echo "⚠️  Postgres not reachable via DATABASE_URL"
     echo "   Start it with: docker compose --env-file .env -f docker/compose.yaml up -d"
     exit 1
   fi
-  echo "    Postgres: ${PG_HOST}:${PG_PORT} ✅"
+  echo "    Postgres: ${DATABASE_URL} ✅"
 fi
 
 # --- Recipe corpus check (best-effort, warns only) ---------------------------
@@ -61,8 +59,9 @@ fi
 if [ -n "${DATABASE_URL}" ]; then
   RECIPE_COUNT=$(uv run python - <<PY 2>/dev/null || echo "unknown"
 import psycopg
+url = "${PSYCOPG_URL}"
 try:
-    with psycopg.connect("${DATABASE_URL}") as conn:
+    with psycopg.connect(url) as conn:
         row = conn.execute("SELECT count(*) FROM recipes").fetchone()
         print(row[0] if row else 0)
 except Exception:
