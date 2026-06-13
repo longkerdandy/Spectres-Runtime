@@ -37,8 +37,9 @@ nutrition: any nutrition reasoning is grounded in a nutrition-facts source (see
 
 ### 2.1 Ingestion, not a query abstraction
 
-Recipe data enters through an **ingestion layer** and is read back through Agno's
-native knowledge search — there is no custom query interface or `RecipeSource`.
+Recipe data enters through an **ingestion layer** and is read back through the
+agent's dedicated recipe tools (`search_recipes` and `get_recipe_detail`) —
+there is no custom query interface or `RecipeSource`.
 
 Two pieces (`recipe_agent/ingestion/`):
 
@@ -65,12 +66,13 @@ the corpus over itself in place — **idempotent**, no duplicate vectors. Agno's
 `contents_db` tracks what was written; per-recipe change detection is deliberately
 skipped because the upstream releases rarely.
 
-At query time the agent does **not** call a custom store: it searches the
-knowledge base through Agno's built-in agentic RAG (`search_knowledge_base`, on by
-default when `knowledge` is attached). A parallel typed query interface would
-duplicate that. A typed read of structured `Recipe` objects is introduced only if
-non-LLM logic (e.g. portion scaling) later needs it — as an internal helper or an
-Agno `knowledge_retriever` hook, never an agent-facing tool. (See §5.)
+At query time the agent calls the dedicated recipe tools (`search_recipes` for
+catalog discovery and `get_recipe_detail` for full recipes). These tools run
+parameterized SQL against the same Postgres + pgvector store that ingestion
+writes to, but they return lightweight metadata or a single full recipe instead
+of injecting large result sets into the prompt. A typed read of structured
+`Recipe` objects is introduced only if non-LLM logic (e.g. portion scaling) later
+needs it — as an internal helper, never an agent-facing tool. (See §5.)
 
 ### 2.2 Phased rollout
 
@@ -189,8 +191,9 @@ The agent is thin — it composes the layers above.
   current task (grounded recipe Q&A) is composition-heavy rather than
   reasoning-heavy; the full household profile with health-constraint reasoning
   (design §4) is expected to need a stronger tier when it lands.
-- `knowledge` — the recipe knowledge base in pgvector (§2.3), written by the
-  ingestion layer (§2.1). Agno's agentic search-as-tool is on by default.
+- `tools` — `search_recipes` (catalog search returning lightweight metadata) and
+  `get_recipe_detail` (full recipe by stable ID). Both query the recipe store in
+  Postgres + pgvector (§2.3) written by the ingestion layer (§2.1).
 - `db` — the shared `PostgresDb` (§2.3); today it backs conversation history, later
   the User Memory store and other roles.
 - `instructions` + history — env-driven (`RECIPE_AGENT_*`); the last
@@ -201,17 +204,18 @@ The agent is thin — it composes the layers above.
 - `dependencies` — a callback injecting the merged household constraints and key
   health snapshot from Profile Management before each run.
 - `tools` — Profile Management tools (member detail, record measurement) alongside
-  the built-in knowledge search.
+  the recipe tools.
 - `learning` — User Memory enabled for soft preferences.
 
-The agent and its knowledge base are both registered with AgentOS (`app.py`) so the
-control plane can manage them.
+The agent is registered with AgentOS (`app.py`). The knowledge base handle is no
+longer registered with AgentOS; it is kept for the one-shot `recipe-ingest`
+command.
 
-**RAG strategy:** Agno's native agentic search-as-tool — the agent calls
-`search_knowledge_base` to query the knowledge base on demand rather than having
-the entire dataset auto-injected. No custom retrieval store is built; retrieval
-grounds generation (the agent adapts retrieved recipes), it is not exact
-constraint lookup.
+**RAG strategy:** Tool-driven precise retrieval. The agent calls `search_recipes`
+to discover candidates and `get_recipe_detail` to fetch full instructions on
+demand, rather than having the entire dataset auto-injected. No custom retrieval
+store is built; retrieval grounds generation (the agent adapts retrieved
+recipes), it is not exact constraint lookup.
 
 ---
 
@@ -243,7 +247,7 @@ The implementation keeps shared infrastructure and agent-private logic separate:
 |---|---|
 | `config.py` | Shared `Settings` (database, embedder) + builder `build_embedder`. Per-agent chat config lives in the agent's own settings. |
 | `storage/` | Shared persistence: `build_db` (the one `PostgresDb`) and the generic `build_knowledge` factory. No domain identity. |
-| `app.py` | AgentOS wiring — registers agents and knowledge bases; `app_factory` is the ASGI entry point. |
+| `app.py` | AgentOS wiring — registers agents; `app_factory` is the ASGI entry point. |
 | `recipe_agent/agent.py` | `build_recipe_agent` — composes the agent from `Settings` (§5). |
 | `recipe_agent/config.py` | `RecipeAgentSettings` — agent-private env config (`RECIPE_AGENT_` prefix). |
 | `recipe_agent/knowledge.py` | Recipe knowledge identity: the `recipes` table + `build_recipe_knowledge` (§2.3). |

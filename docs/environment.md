@@ -89,9 +89,10 @@ docker compose --env-file .env -f docker/compose.yaml down
 
 ## 5. Populate the recipe knowledge base (optional)
 
-The recipe agent answers from a pgvector knowledge base, which starts empty. Run the
-one-shot `recipe-ingest` batch command to load the bundled corpus. It needs the
-database **up** (step 4) and a valid `EMBEDDER_API_KEY` (step 3) to compute vectors:
+The recipe agent answers from recipes stored in Postgres + pgvector, which starts
+empty. Run the one-shot `recipe-ingest` batch command to load the bundled corpus.
+It needs the database **up** (step 4) and a valid `EMBEDDER_API_KEY` (step 3) to
+compute vectors:
 
 ```bash
 uv run recipe-ingest

@@ -2,8 +2,10 @@
 
 The write endpoint and counterpart to ``RecipeIngester`` (the producer): it
 drains a stream of normalized recipes and writes each into the knowledge base
-(Postgres + pgvector) the agent later searches via Agno's native agentic RAG.
-Takes a plain recipe stream, not an ingester, so it is decoupled from any origin.
+(Postgres + pgvector). The agent later queries this store through the dedicated
+``search_recipes`` and ``get_recipe_detail`` tools, not Agno's native agentic
+RAG. Takes a plain recipe stream, not an ingester, so it is decoupled from any
+origin.
 
 The write is a **full update** every run: each recipe's embedded body
 is ``Recipe.content``, inserted with ``upsert=True`` under a stable ``name``
