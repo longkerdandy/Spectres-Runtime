@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     database_url: str  # Postgres + pgvector connection URL.
     runtime_port: int  # Port the local uvicorn dev server binds to.
+    spectres_web_origin: str  # Origin of the sibling Spectres-Web frontend for CORS.
     embedder_model: str  # Embedding model id (a data contract — changing it means a full re-embed).
     embedder_base_url: str  # Embedding provider base URL (any OpenAI-compatible endpoint).
     embedder_dimensions: int  # Embedding vector size.

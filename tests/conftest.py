@@ -53,6 +53,7 @@ def make_settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "database_url": "postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime",
         "runtime_port": 7777,
+        "spectres_web_origin": "http://localhost:3000",
         "embedder_model": "Qwen/Qwen3-Embedding-0.6B",
         "embedder_base_url": "https://api.siliconflow.cn/v1",
         "embedder_dimensions": 1024,

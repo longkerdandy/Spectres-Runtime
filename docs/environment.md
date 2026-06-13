@@ -50,6 +50,8 @@ At minimum, set:
 - `DATABASE_USERNAME` / `DATABASE_PASSWORD` — credentials for the local Postgres
   role. `DATABASE_URL` references them via `${...}`, so you set them in one place.
 - `RUNTIME_PORT` — port the local uvicorn dev server binds to (default `7777`).
+- `SPECTRES_WEB_ORIGIN` — origin of the sibling Spectres-Web frontend; AgentOS
+  uses this for CORS (default `http://localhost:3000`).
 - `EMBEDDER_API_KEY` — your embedder-provider key; required for any live embedding
   call (recipe ingestion and knowledge search).
 - `CHAT_API_KEY` — your chat-provider key; required for the recipe agent to generate

@@ -67,7 +67,7 @@ def test_recipe_agent_runs_offline(
 @pytest.fixture
 def client(settings: Settings, scripted_model: ScriptedModel) -> TestClient:
     agent = build_recipe_agent(settings, model=scripted_model)
-    return TestClient(build_app([agent]))
+    return TestClient(build_app([agent], settings.spectres_web_origin))
 
 
 def test_health_responds(client: TestClient) -> None:
@@ -96,7 +96,7 @@ def run_client(
         model=scripted_model,
         db=SqliteDb(db_file=str(tmp_path / "sessions.db")),
     )
-    return TestClient(build_app([agent]))
+    return TestClient(build_app([agent], settings.spectres_web_origin))
 
 
 def test_run_endpoint_returns_grounded_answer_offline(run_client: TestClient) -> None:

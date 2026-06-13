@@ -19,6 +19,7 @@ from tests.conftest import make_settings
 _ENV = {
     "DATABASE_URL": "postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime",
     "RUNTIME_PORT": "7777",
+    "SPECTRES_WEB_ORIGIN": "http://localhost:3000",
     "EMBEDDER_MODEL": "Qwen/Qwen3-Embedding-0.6B",
     "EMBEDDER_BASE_URL": "https://api.siliconflow.cn/v1",
     "EMBEDDER_DIMENSIONS": "1024",
@@ -38,6 +39,7 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert settings.database_url == "postgresql+psycopg://developer:devpass@localhost:5532/spectres_runtime"
     assert settings.runtime_port == 7777
+    assert settings.spectres_web_origin == "http://localhost:3000"
     assert settings.embedder_model == "Qwen/Qwen3-Embedding-0.6B"
     assert settings.embedder_base_url == "https://api.siliconflow.cn/v1"
     assert settings.embedder_dimensions == 1024

@@ -39,7 +39,7 @@ from spectres_runtime.recipe_agent.agent import build_recipe_agent
 _APP_VERSION = version("spectres-runtime")
 
 
-def build_app(agents: list[Agent]) -> FastAPI:
+def build_app(agents: list[Agent], spectres_web_origin: str) -> FastAPI:
     """Construct the AgentOS app with the given agents registered.
 
     Agents are injected rather than built here so tests can register doubles.
@@ -52,6 +52,7 @@ def build_app(agents: list[Agent]) -> FastAPI:
         # ``Agent`` is a member of AgentOS's accepted union; the ignore is only the
         # invariance of ``list`` (list[Agent] vs list[Agent | ...]).
         agents=agents,  # type: ignore[arg-type]
+        cors_allowed_origins=[spectres_web_origin],
         telemetry=False,
     )
     return agent_os.get_app()
@@ -65,7 +66,7 @@ def app_factory() -> FastAPI:  # pragma: no cover - production wiring, exercised
     """
     settings = get_settings()
     agent = build_recipe_agent(settings)
-    return build_app([agent])
+    return build_app([agent], settings.spectres_web_origin)
 
 
 def main() -> None:  # pragma: no cover - thin uvicorn wrapper, exercised manually
