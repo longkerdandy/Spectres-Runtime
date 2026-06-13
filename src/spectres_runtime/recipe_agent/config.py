@@ -33,7 +33,7 @@ class RecipeAgentSettings(BaseSettings):
         extra="ignore",
     )
 
-    instructions: str  # Recipe agent system instructions (env-driven now; UI-managed later).
+    instructions: str = ""  # Recipe agent system instructions; empty uses the built-in default.
     num_history_runs: int  # Prior conversation turns replayed into the agent's context.
     chat_model: str  # Chat model id from the configured provider. Not a data contract.
     chat_base_url: str  # Chat provider base URL (OpenAI-compatible endpoint).

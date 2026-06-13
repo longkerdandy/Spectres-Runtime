@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from spectres_runtime.app import build_app
 from spectres_runtime.config import Settings
 from spectres_runtime.recipe_agent.agent import (
+    DEFAULT_RECIPE_AGENT_INSTRUCTIONS,
     DEFAULT_USER_ID,
     RECIPE_AGENT_ID,
     RECIPE_AGENT_NAME,
@@ -36,14 +37,18 @@ def test_build_recipe_agent_shape(settings: Settings) -> None:
     assert agent.model.id == settings.recipe_agent.chat_model
     # The shared db handle is attached.
     assert agent.db is not None
-    # Instructions and history depth flow from Settings, not hardcoded.
-    assert agent.instructions == settings.recipe_agent.instructions
+    # Empty env instructions fall back to the version-controlled default.
+    assert agent.instructions == DEFAULT_RECIPE_AGENT_INSTRUCTIONS
+    assert "##" in agent.instructions
+    assert "Markdown" in agent.instructions
     assert agent.add_history_to_context is True
     assert agent.num_history_runs == settings.recipe_agent.num_history_runs
     # Single-household default identity, overridable per request.
     assert agent.user_id == DEFAULT_USER_ID
     # Telemetry is explicitly off (Agno defaults it on).
     assert agent.telemetry is False
+    # Markdown output is enabled for AgentUI rendering.
+    assert agent.markdown is True
 
 
 def test_recipe_agent_runs_offline(

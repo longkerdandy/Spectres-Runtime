@@ -46,6 +46,7 @@ def test_settings_load_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Secret stays wrapped; not exposed by repr.
     assert settings.embedder_api_key.get_secret_value() == "sk-secret"
     # `get_settings()` wired the per-module sub-config (values asserted in its own suite).
+    assert settings.recipe_agent.instructions == "Search recipes before answering."
     assert settings.recipe_agent.num_history_runs == 5
 
 

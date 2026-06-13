@@ -60,7 +60,7 @@ def make_settings(**overrides: Any) -> Settings:
         "embedder_api_key": SecretStr("sk-secret"),
         "recipe_agent": RecipeAgentSettings(
             _env_file=None,
-            instructions="Test instructions.",
+            instructions="",
             num_history_runs=5,
             chat_model="chat-model-id",
             chat_base_url="https://chat-provider.example/v1",

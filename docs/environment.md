@@ -54,11 +54,12 @@ At minimum, set:
   uses this for CORS (default `http://localhost:3000`).
 - `EMBEDDER_API_KEY` — your embedder-provider key; required for any live embedding
   call (recipe ingestion and knowledge search).
-- `CHAT_API_KEY` — your chat-provider key; required for the recipe agent to generate
-  replies.
+- `RECIPE_AGENT_CHAT_API_KEY` — your chat-provider key; required for the recipe
+  agent to generate replies.
 
-Every key is documented inline in `.env.example`, including the recipe agent's own
-`RECIPE_AGENT_*` settings.
+`RECIPE_AGENT_INSTRUCTIONS` is optional: leave it empty to use the built-in,
+version-controlled default prompt. Set it only when you want to override the
+default behavior. Every other key is documented inline in `.env.example`.
 
 ## 4. Start the database (Docker)
 
