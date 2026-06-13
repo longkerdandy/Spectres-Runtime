@@ -125,6 +125,7 @@ def _mock_settings() -> Any:
     return Settings(
         _env_file=None,
         database_url="postgresql://developer:devpass@localhost:5532/spectres_runtime",
+        runtime_port=7777,
         embedder_model="test-model",
         embedder_base_url="https://test.example/v1",
         embedder_dimensions=3,

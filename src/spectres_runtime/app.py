@@ -77,10 +77,11 @@ def main() -> None:  # pragma: no cover - thin uvicorn wrapper, exercised manual
     """
     import uvicorn
 
+    settings = get_settings()
     uvicorn.run(
         "spectres_runtime.app:app_factory",
         host="127.0.0.1",
-        port=8000,
+        port=settings.runtime_port,
         reload=False,
         factory=True,
     )

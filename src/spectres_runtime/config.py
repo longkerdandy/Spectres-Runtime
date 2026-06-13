@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str  # Postgres + pgvector connection URL.
+    runtime_port: int  # Port the local uvicorn dev server binds to.
     embedder_model: str  # Embedding model id (a data contract — changing it means a full re-embed).
     embedder_base_url: str  # Embedding provider base URL (any OpenAI-compatible endpoint).
     embedder_dimensions: int  # Embedding vector size.

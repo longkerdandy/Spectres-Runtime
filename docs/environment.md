@@ -49,6 +49,7 @@ At minimum, set:
 
 - `DATABASE_USERNAME` / `DATABASE_PASSWORD` — credentials for the local Postgres
   role. `DATABASE_URL` references them via `${...}`, so you set them in one place.
+- `RUNTIME_PORT` — port the local uvicorn dev server binds to (default `7777`).
 - `EMBEDDER_API_KEY` — your embedder-provider key; required for any live embedding
   call (recipe ingestion and knowledge search).
 - `CHAT_API_KEY` — your chat-provider key; required for the recipe agent to generate
@@ -96,20 +97,41 @@ uv run recipe-ingest
 The run is idempotent — it re-ingests the full corpus each time, so re-running it is
 safe. Skip this step if you only want to exercise `/health` or non-knowledge paths.
 
-## 6. Verify
+## 6. Start the dev server
+
+Once Postgres is up and the corpus is loaded, use the helper script to start the
+backend with hot reload:
+
+```bash
+./scripts/runtime_start.sh
+```
+
+The script checks that Postgres is reachable and warns if the `recipes` table is
+empty, then starts uvicorn on `127.0.0.1:${RUNTIME_PORT:-7777}`.
+
+If you prefer to start uvicorn directly:
+
+```bash
+uv run uvicorn spectres_runtime.app:app_factory --factory --reload --port "${RUNTIME_PORT:-7777}"
+```
+
+Then verify liveness:
+
+```bash
+curl -s "http://127.0.0.1:${RUNTIME_PORT:-7777}/health"   # → {"status":"ok",...}
+```
+
+OpenAPI: `/openapi.json`; Swagger UI: `/docs`. (`/health` needs no database; storage
+features do.)
+
+## 7. Verify
 
 ```bash
 uv run ruff check .            # lint
 uv run ruff format --check .   # formatter dry-run
 uv run mypy                    # strict type check
 uv run pytest                  # tests + coverage gate (≥ 80%)
-
-uv run uvicorn spectres_runtime.app:app_factory --factory --reload
-curl -s http://127.0.0.1:8000/health   # → {"status":"ok",...}
 ```
-
-OpenAPI: `/openapi.json`; Swagger UI: `/docs`. (`/health` needs no database; storage
-features do.)
 
 ## Reset
 
