@@ -1,7 +1,7 @@
 # Spectres Runtime
 
-[![CI](https://github.com/Spectres-Runtime/Spectres-Runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/Spectres-Runtime/Spectres-Runtime/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Spectres-Runtime/Spectres-Runtime/actions/workflows/codeql.yml/badge.svg)](https://github.com/Spectres-Runtime/Spectres-Runtime/actions/workflows/codeql.yml)
+[![CI](https://github.com/longkerdandy/Spectres-Runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/longkerdandy/Spectres-Runtime/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/longkerdandy/Spectres-Runtime/actions/workflows/codeql.yml/badge.svg)](https://github.com/longkerdandy/Spectres-Runtime/actions/workflows/codeql.yml)
 
 Agent core runtime for the Spectres AI personal assistant system.
 
