@@ -31,6 +31,8 @@ uv run pre-commit install
 
 ## Development Commands
 
+All quality checks and tests are run directly through `uv run` (no Makefile required):
+
 ```bash
 uv run pytest                      # Run tests
 uv run ruff check src tests        # Run linter
@@ -68,6 +70,7 @@ Open the project in VSCode. The repository includes recommended extensions and w
 ├── tests/              # Test suite
 ├── pyproject.toml      # Project metadata and tool configuration
 ├── uv.lock             # Locked dependency versions
+├── LICENSE             # MIT license
 └── README.md           # This file
 ```
 
