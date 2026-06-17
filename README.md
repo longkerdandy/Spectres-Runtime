@@ -12,36 +12,29 @@ Spectres Runtime is the middle layer that hosts AI agents, orchestrates tasks, m
 ## Prerequisites
 
 - Python 3.13.x
-- `make` (optional, for convenience commands)
+- [uv](https://docs.astral.sh/uv/) package manager
 - VSCode (recommended, settings are provided)
 
 ## Local Setup
 
-Create and activate a Python 3.13 virtual environment, then install the package with development dependencies:
+Install the project with development dependencies:
 
 ```bash
-make install-dev
-```
-
-Or manually:
-
-```bash
-python3.13 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip setuptools wheel
-pip install -e ".[dev]"
+uv sync
 ```
 
 ## Development Commands
 
 ```bash
-make test          # Run tests
-make lint          # Run linter
-make format        # Format code
-make format-check  # Check formatting without modifying files
-make typecheck     # Run type checker
-make check         # Run lint, format-check, typecheck, and tests
-make clean         # Remove build artifacts and virtual environment
+uv run pytest                      # Run tests
+uv run ruff check src tests        # Run linter
+uv run ruff format src tests       # Format code
+uv run ruff format --check src tests  # Check formatting without modifying files
+uv run mypy src tests              # Run type checker
+uv run ruff check src tests && \
+  uv run ruff format --check src tests && \
+  uv run mypy src tests && \
+  uv run pytest                    # Run all quality checks
 ```
 
 ## VSCode
@@ -63,8 +56,8 @@ Open the project in VSCode. The repository includes recommended extensions and w
 ├── docs/               # Plans and documentation
 ├── src/spectres/       # Application source code (to be implemented)
 ├── tests/              # Test suite
-├── Makefile            # Development commands
 ├── pyproject.toml      # Project metadata and tool configuration
+├── uv.lock             # Locked dependency versions
 └── README.md           # This file
 ```
 
