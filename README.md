@@ -23,6 +23,12 @@ Install the project with development dependencies:
 uv sync
 ```
 
+Install Git hooks so quality checks run automatically on every commit:
+
+```bash
+uv run pre-commit install
+```
+
 ## Development Commands
 
 ```bash
@@ -35,6 +41,9 @@ uv run ruff check src tests && \
   uv run ruff format --check src tests && \
   uv run mypy src tests && \
   uv run pytest                    # Run all quality checks
+
+# Run pre-commit hooks manually against all files
+uv run pre-commit run --all-files
 ```
 
 ## VSCode
@@ -53,6 +62,7 @@ Open the project in VSCode. The repository includes recommended extensions and w
 .
 ├── .github/            # GitHub Actions, Dependabot, and security workflows
 ├── .vscode/            # VSCode settings and recommended extensions
+├── .editorconfig       # Editor configuration for consistent coding style
 ├── docs/               # Plans and documentation
 ├── src/spectres/       # Application source code (to be implemented)
 ├── tests/              # Test suite
