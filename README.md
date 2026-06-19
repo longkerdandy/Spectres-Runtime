@@ -13,6 +13,7 @@ Spectres Runtime is the middle layer that hosts AI agents, orchestrates tasks, m
 
 - Python 3.13.x
 - [uv](https://docs.astral.sh/uv/) package manager
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for local PostgreSQL)
 - VSCode (recommended, settings are provided)
 
 ## Local Setup
@@ -20,7 +21,7 @@ Spectres Runtime is the middle layer that hosts AI agents, orchestrates tasks, m
 Install the project with development dependencies:
 
 ```bash
-uv sync
+uv sync --extra dev
 ```
 
 Install Git hooks so quality checks run automatically on every commit:
@@ -28,6 +29,18 @@ Install Git hooks so quality checks run automatically on every commit:
 ```bash
 uv run pre-commit install
 ```
+
+### Start the local database
+
+Spectres Runtime uses PostgreSQL with the pgvector extension for session and chat-history storage. Start it in Docker Desktop:
+
+```bash
+cp .env.example .env
+# Optionally edit .env to change database credentials.
+docker compose up -d
+```
+
+The database will be available at `localhost:5532` by default.
 
 ## Development Commands
 
@@ -66,13 +79,24 @@ Open the project in VSCode. The repository includes recommended extensions and w
 ├── .vscode/            # VSCode settings and recommended extensions
 ├── .editorconfig       # Editor configuration for consistent coding style
 ├── docs/               # Plans and documentation
-├── src/spectres/       # Application source code (to be implemented)
+├── src/spectres/       # Application source code
+│   ├── agents/         # Agent definitions
+│   ├── db/             # Database adapters
+│   ├── sessions/       # Session management
+│   ├── tools/          # Tool registrations
+│   ├── config.py       # Typed application settings
+│   └── main.py         # AgentOS entry point stub
 ├── tests/              # Test suite
+├── docker-compose.yml  # Local PostgreSQL service (Docker Desktop)
 ├── pyproject.toml      # Project metadata and tool configuration
 ├── uv.lock             # Locked dependency versions
 ├── LICENSE             # MIT license
 └── README.md           # This file
 ```
+
+## Current Status
+
+`v0.2.0` is a structural skeleton. It defines the Agno/AgentOS-based runtime structure, session storage, and a small set of built-in tools, but it is not yet a runnable server. Memory and knowledge-base features are planned for later milestones.
 
 ## License
 

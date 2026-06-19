@@ -1,0 +1,21 @@
+services:
+  spectres-db:
+    image: agnohq/pgvector:18
+    container_name: spectres-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-ai}
+      POSTGRES_PASSWORD: ${DB_PASS:-ai}
+      POSTGRES_DB: ${DB_DATABASE:-ai}
+    volumes:
+      - spectres-pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5532}:5432"
+    networks:
+      - spectres
+
+networks:
+  spectres:
+
+volumes:
+  spectres-pgdata:

@@ -21,7 +21,14 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = []
+dependencies = [
+    "agno>=1.0",
+    "fastapi[standard]>=0.115.0",
+    "openai>=1.0",
+    "pydantic-settings>=2.0",
+    "psycopg[binary]>=3.0",
+    "sqlalchemy>=2.0",
+]
 
 [project.optional-dependencies]
 dev = [
