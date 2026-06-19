@@ -146,3 +146,6 @@ cython_debug/
 
 # Local notes
 *.local
+
+# Kimi Code local settings
+.kimi-code/
