@@ -9,5 +9,4 @@ def get_postgres_db() -> PostgresDb:
     """Return a configured Agno PostgreSQL database adapter."""
     return PostgresDb(
         db_url=settings.database_url,
-        session_table="spectres_sessions",
     )
