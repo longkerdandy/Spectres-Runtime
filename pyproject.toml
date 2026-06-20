@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spectres-runtime"
-version = "0.1.0"
+version = "0.2.0"
 description = "Agent core runtime for the Spectres AI personal assistant system."
 readme = "README.md"
 license = { text = "MIT" }
@@ -22,9 +22,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "agno>=1.0",
-    "fastapi[standard]>=0.115.0",
-    "openai>=1.0",
+    "agno>=2.0",
+    "fastapi[standard]>=0.137.0",
+    "openai>=2.0",
     "pydantic-settings>=2.0",
     "psycopg[binary]>=3.0",
     "sqlalchemy>=2.0",
@@ -32,11 +32,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.24.0",
-    "ruff>=0.6.0",
-    "mypy>=1.11.0",
-    "pre-commit>=3.8.0",
+    "pytest>=9.0",
+    "pytest-asyncio>=1.0",
+    "ruff>=0.15.0",
+    "mypy>=2.0",
+    "pre-commit>=4.0",
 ]
 
 [project.urls]
