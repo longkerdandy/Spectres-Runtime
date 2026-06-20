@@ -42,6 +42,20 @@ docker compose up -d
 
 The database will be available at `localhost:5532` by default.
 
+### Reset the local database
+
+To drop and recreate the development database (configured in `.env`) and reinstall the pgvector extension:
+
+```bash
+uv run python scripts/reset_db.py
+```
+
+Use `--force` to skip the confirmation prompt:
+
+```bash
+uv run python scripts/reset_db.py --force
+```
+
 ## Run AgentOS
 
 `v0.2.1` exposes the Team Leader Agent through the AG-UI protocol. Start the server with:
@@ -83,13 +97,13 @@ All quality checks and tests are run directly through `uv run` (no Makefile requ
 
 ```bash
 uv run pytest                      # Run tests
-uv run ruff check src tests        # Run linter
-uv run ruff format src tests       # Format code
-uv run ruff format --check src tests  # Check formatting without modifying files
-uv run mypy src tests              # Run type checker
-uv run ruff check src tests && \
-  uv run ruff format --check src tests && \
-  uv run mypy src tests && \
+uv run ruff check src tests scripts        # Run linter
+uv run ruff format src tests scripts       # Format code
+uv run ruff format --check src tests scripts  # Check formatting without modifying files
+uv run mypy src tests scripts              # Run type checker
+uv run ruff check src tests scripts && \
+  uv run ruff format --check src tests scripts && \
+  uv run mypy src tests scripts && \
   uv run pytest                    # Run all quality checks
 
 # Run pre-commit hooks manually against all files

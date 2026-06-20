@@ -49,7 +49,7 @@ packages = ["src/spectres"]
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = [

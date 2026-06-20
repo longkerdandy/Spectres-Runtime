@@ -31,13 +31,13 @@ jobs:
         run: uv sync --dev
 
       - name: Run linter
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
 
       - name: Check formatting
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests scripts
 
       - name: Run type checker
-        run: uv run mypy src tests
+        run: uv run mypy src tests scripts
 
       - name: Run tests
         run: uv run pytest
