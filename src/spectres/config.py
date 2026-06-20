@@ -20,8 +20,10 @@ class Settings(BaseSettings):
     db_pass: str = Field(default="ai", alias="DB_PASS")
     db_database: str = Field(default="ai", alias="DB_DATABASE")
 
-    # Model providers
-    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    # Team Leader Agent (OpenAI-compatible API for open-source / self-hosted LLMs)
+    team_leader_llm_model: str = Field(default="gpt-4o", alias="TEAM_LEADER_LLM_MODEL")
+    team_leader_llm_api_key: str | None = Field(default=None, alias="TEAM_LEADER_LLM_API_KEY")
+    team_leader_llm_base_url: str | None = Field(default=None, alias="TEAM_LEADER_LLM_BASE_URL")
 
     @property
     def database_url(self) -> str:

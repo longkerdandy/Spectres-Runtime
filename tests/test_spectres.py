@@ -6,7 +6,7 @@ from agno.tools.shell import ShellTools
 from fastapi import FastAPI
 
 import spectres
-from spectres.agents.master import create_master_agent
+from spectres.agents.team_leader import create_team_leader_agent
 from spectres.config import Settings
 from spectres.db.postgres import get_postgres_db
 from spectres.main import app as main_app
@@ -41,11 +41,11 @@ def test_builtin_tools() -> None:
     assert any(isinstance(tool, ShellTools) for tool in tools)
 
 
-def test_create_master_agent() -> None:
-    """Verify the Master Agent stub can be created."""
+def test_create_team_leader_agent() -> None:
+    """Verify the Team Leader Agent stub can be created."""
     db = get_postgres_db()
-    agent = create_master_agent(db)
-    assert agent.id == "master"
+    agent = create_team_leader_agent(db)
+    assert agent.id == "team-leader"
     assert agent.add_history_to_context is True
 
 
