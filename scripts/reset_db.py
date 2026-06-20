@@ -7,26 +7,15 @@ drops the configured database, recreates it, and installs the pgvector extension
 Usage:
     uv run python scripts/reset_db.py
     uv run python scripts/reset_db.py --force
-    SPECTRES_ENV_FILE=.env.test uv run python scripts/reset_db.py --force
 """
 
 import argparse
-import os
 import sys
-from pathlib import Path
 
-from dotenv import load_dotenv
+import psycopg
+from psycopg.sql import SQL, Identifier
 
-# Load optional local env overrides (e.g., .env.test.local) before importing settings.
-_env_file = os.getenv("SPECTRES_ENV_FILE", ".env")
-_local_env = Path(_env_file + ".local")
-if _local_env.exists():
-    load_dotenv(_local_env, override=False)
-
-import psycopg  # noqa: E402
-from psycopg.sql import SQL, Identifier  # noqa: E402
-
-from spectres.config import settings  # noqa: E402
+from spectres.config import settings
 
 
 def _confirm(database_name: str) -> bool:
@@ -62,10 +51,10 @@ def reset_database(force: bool = False) -> None:
             print(f"Terminating existing connections to '{database_name}'...")
             cur.execute(
                 """
-                    SELECT pg_terminate_backend(pid)
-                    FROM pg_stat_activity
-                    WHERE datname = %s AND pid <> pg_backend_pid()
-                    """,
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = %s AND pid <> pg_backend_pid()
+                """,
                 (database_name,),
             )
 
