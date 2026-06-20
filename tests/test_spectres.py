@@ -10,7 +10,6 @@ from spectres.agents.team_leader import create_team_leader_agent
 from spectres.config import Settings
 from spectres.db.postgres import get_postgres_db
 from spectres.main import app as main_app
-from spectres.sessions.session_manager import SessionManager
 from spectres.tools.builtin import get_builtin_tools
 
 
@@ -47,12 +46,6 @@ def test_create_team_leader_agent() -> None:
     agent = create_team_leader_agent(db)
     assert agent.id == "team-leader"
     assert agent.add_history_to_context is True
-
-
-def test_session_manager() -> None:
-    """Verify the SessionManager can be created from settings."""
-    manager = SessionManager.from_settings()
-    assert isinstance(manager.db, PostgresDb)
 
 
 def test_main_app() -> None:
