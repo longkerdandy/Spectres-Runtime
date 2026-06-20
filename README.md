@@ -42,6 +42,41 @@ docker compose up -d
 
 The database will be available at `localhost:5532` by default.
 
+## Run AgentOS
+
+`v0.2.1` exposes the Team Leader Agent through the AG-UI protocol. Start the server with:
+
+```bash
+docker compose up -d              # Start PostgreSQL if you need persistent sessions
+uv run python -m spectres.main    # Or: uv run python src/spectres/main.py
+```
+
+By default AgentOS listens on `http://localhost:7777`. Override the bind address or port with `AGENT_OS_HOST` and `AGENT_OS_PORT` in `.env`.
+
+### Manual AG-UI test
+
+With the server running, verify the endpoints with `curl`:
+
+```bash
+# Health / status check
+curl http://localhost:7777/status
+
+# AG-UI streaming run (requires a configured LLM in .env)
+curl -N -X POST http://localhost:7777/agui \
+  -H "Content-Type: application/json" \
+  -d '{
+    "thread_id": "test-thread",
+    "run_id": "test-run",
+    "state": {},
+    "messages": [{"id": "msg-1", "role": "user", "content": "你好"}],
+    "tools": [],
+    "context": [],
+    "forwarded_props": {}
+  }'
+```
+
+The `/agui` endpoint returns a streaming `text/event-stream` response containing AG-UI events such as `RUN_STARTED`, `TEXT_MESSAGE_CONTENT`, and `RUN_FINISHED`.
+
 ## Development Commands
 
 All quality checks and tests are run directly through `uv run` (no Makefile required):
@@ -96,7 +131,7 @@ Open the project in VSCode. The repository includes recommended extensions and w
 
 ## Current Status
 
-`v0.2.0` is a structural skeleton. It defines the Agno/AgentOS-based runtime structure, session storage, and a small set of built-in tools, but it is not yet a runnable server. Memory and knowledge-base features are planned for later milestones.
+`v0.2.1` adds AG-UI protocol support to the `v0.2.0` skeleton, exposing the Team Leader Agent through a streaming `/agui` endpoint. Memory and knowledge-base features are planned for later milestones.
 
 ## License
 

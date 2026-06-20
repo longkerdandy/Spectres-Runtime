@@ -3,6 +3,18 @@ revision = 3
 requires-python = "==3.13.*"
 
 [[package]]
+name = "ag-ui-protocol"
+version = "0.1.19"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/10/4ad299267a7d04b89935aa99eef62979758fcf95aee9f8bb5d70c35b1be1/ag_ui_protocol-0.1.19.tar.gz", hash = "sha256:43c27f60d41712dcad0e9e0a203cbdf1c8e248b22417374c5c68321c448af4ea", size = 10720, upload-time = "2026-06-02T17:26:15.627Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/0a/bcad8116eb058e4b4a305e3fc37ebd7efc879deeb86b854f1c5b8b6e97dd/ag_ui_protocol-0.1.19-py3-none-any.whl", hash = "sha256:898843b1410d378824da0c6a776486288b9c5828689d0bf563118868e37f390f", size = 13490, upload-time = "2026-06-02T17:26:16.313Z" },
+]
+
+[[package]]
 name = "agno"
 version = "2.6.18"
 source = { registry = "https://pypi.org/simple" }
@@ -24,6 +36,12 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f3/82/442e6377753bfc8f532107d20776aebcfd6f4d077b9d7f67782e0adb3cf4/agno-2.6.18.tar.gz", hash = "sha256:2a10f3aec66afe7ed4fcab655a35da3f190bc1e638dcaf41d425878e5cde1946", size = 2155365, upload-time = "2026-06-18T20:37:36.458Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d3/e4/d1e895cb85b8e675f68bda54e52f419acaf8a2fff935f118f54b9c1fd774/agno-2.6.18-py3-none-any.whl", hash = "sha256:4e4ac7d5f74afefda51c998121d3fa7b8cc591e96ba7ebd4f54a0328a9072c06", size = 2543984, upload-time = "2026-06-18T20:37:34.136Z" },
+]
+
+[package.optional-dependencies]
+agui = [
+    { name = "ag-ui-protocol" },
+    { name = "jsonpatch" },
 ]
 
 [[package]]
@@ -471,6 +489,27 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/00/55/90b0c7b9c6896c0f2a591dd36d36b71d22e09674bfef178fa03ba3f81499/jiter-0.15.0-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:553fcac2ef2cb990877f9fc0833b8b629a3e6a5670b6b5fd58219b41a653ddc4", size = 347779, upload-time = "2026-05-19T10:08:26.408Z" },
     { url = "https://files.pythonhosted.org/packages/51/6b/69666cec5000fd57734c118437394516c749ae8dbeea9fb66d6fef9c4775/jiter-0.15.0-cp313-cp313t-win_amd64.whl", hash = "sha256:774f93f65031856bf14ad9f59bdcab8b8cad501e5ceabd51ba3525f76937a25b", size = 200395, upload-time = "2026-05-19T10:08:28.055Z" },
     { url = "https://files.pythonhosted.org/packages/39/04/a6aa62cd27e8149b0d28df5561f10f6cceaf7935a9ccf3f1c5a05f9a0cd8/jiter-0.15.0-cp313-cp313t-win_arm64.whl", hash = "sha256:f1e1754960f38ec40613a07e5e372df67acb3b890fb383b6fb3de3e49ddbf3c7", size = 190516, upload-time = "2026-05-19T10:08:29.35Z" },
+]
+
+[[package]]
+name = "jsonpatch"
+version = "1.33"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonpointer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/78/18813351fe5d63acad16aec57f94ec2b70a09e53ca98145589e185423873/jsonpatch-1.33.tar.gz", hash = "sha256:9fcd4009c41e6d12348b4a0ff2563ba56a2923a7dfee731d004e212e1ee5030c", size = 21699, upload-time = "2023-06-26T12:07:29.144Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/07/02e16ed01e04a374e644b575638ec7987ae846d25ad97bcc9945a3ee4b0e/jsonpatch-1.33-py2.py3-none-any.whl", hash = "sha256:0ae28c0cd062bbd8b8ecc26d7d164fbbea9652a1a3693f3b956c1eae5145dade", size = 12898, upload-time = "2023-06-16T21:01:28.466Z" },
+]
+
+[[package]]
+name = "jsonpointer"
+version = "3.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/c7/af399a2e7a67fd18d63c40c5e62d3af4e67b836a2107468b6a5ea24c4304/jsonpointer-3.1.1.tar.gz", hash = "sha256:0b801c7db33a904024f6004d526dcc53bbb8a4a0f4e32bfd10beadf60adf1900", size = 9068, upload-time = "2026-03-23T22:32:32.458Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/6a/a83720e953b1682d2d109d3c2dbb0bc9bf28cc1cbc205be4ef4be5da709d/jsonpointer-3.1.1-py3-none-any.whl", hash = "sha256:8ff8b95779d071ba472cf5bc913028df06031797532f08a7d5b602d8b2a488ca", size = 7659, upload-time = "2026-03-23T22:32:31.568Z" },
 ]
 
 [[package]]
@@ -971,7 +1010,7 @@ name = "spectres-runtime"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "agno" },
+    { name = "agno", extra = ["agui"] },
     { name = "fastapi", extra = ["standard"] },
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
@@ -990,7 +1029,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agno", specifier = ">=2.0" },
+    { name = "agno", extras = ["agui"], specifier = ">=2.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.137.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "openai", specifier = ">=2.0" },

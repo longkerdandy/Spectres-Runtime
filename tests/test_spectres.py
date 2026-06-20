@@ -19,8 +19,13 @@ def test_package_importable() -> None:
 
 
 def test_settings_load_with_defaults() -> None:
-    """Verify settings load with expected default values."""
-    settings = Settings()
+    """Verify settings load with expected default values when .env is not used."""
+
+    class _TestSettings(Settings):
+        model_config = Settings.model_config.copy()
+        model_config["env_file"] = None
+
+    settings = _TestSettings()
     assert settings.db_host == "localhost"
     assert settings.db_port == 5532
     assert settings.db_user == "ai"

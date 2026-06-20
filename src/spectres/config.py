@@ -1,6 +1,9 @@
 """Typed configuration for Spectres Runtime."""
 
-from pydantic import Field
+import json
+from typing import Any, cast
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +23,10 @@ class Settings(BaseSettings):
     db_pass: str = Field(default="ai", alias="DB_PASS")
     db_database: str = Field(default="ai", alias="DB_DATABASE")
 
+    # AgentOS server
+    agent_os_host: str = Field(default="localhost", alias="AGENT_OS_HOST")
+    agent_os_port: int = Field(default=7777, alias="AGENT_OS_PORT")
+
     # Team Leader Agent (OpenAI-compatible API for open-source / self-hosted LLMs)
     team_leader_llm_model: str = Field(default="gpt-4o", alias="TEAM_LEADER_LLM_MODEL")
     team_leader_llm_api_key: str | None = Field(default=None, alias="TEAM_LEADER_LLM_API_KEY")
@@ -28,6 +35,19 @@ class Settings(BaseSettings):
     team_leader_llm_max_completion_tokens: int | None = Field(
         default=None, alias="TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS"
     )
+    team_leader_llm_extra_headers: dict[str, str] | None = Field(default=None, alias="TEAM_LEADER_LLM_EXTRA_HEADERS")
+
+    @field_validator("team_leader_llm_extra_headers", mode="before")
+    @classmethod
+    def _parse_extra_headers(cls, value: Any) -> dict[str, str] | None:
+        """Parse the extra headers value from a JSON string or dict."""
+        if value is None or value == "":
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            return cast(dict[str, str], json.loads(value))
+        raise ValueError("TEAM_LEADER_LLM_EXTRA_HEADERS must be a JSON object mapping header names to values")
 
     @property
     def database_url(self) -> str:

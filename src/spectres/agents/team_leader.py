@@ -26,6 +26,7 @@ def create_team_leader_agent(db: PostgresDb) -> Agent:
             base_url=settings.team_leader_llm_base_url,
             temperature=settings.team_leader_llm_temperature,
             max_completion_tokens=settings.team_leader_llm_max_completion_tokens,
+            extra_headers=settings.team_leader_llm_extra_headers,
         ),
         db=db,
         tools=get_builtin_tools(),
