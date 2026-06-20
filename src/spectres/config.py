@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         env_file=os.getenv("SPECTRES_ENV_FILE", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     # Database

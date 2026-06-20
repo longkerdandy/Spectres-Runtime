@@ -92,6 +92,13 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "unit: Fast unit tests that do not require external services (default).",
+    "integration: Tests that require external services such as a database or LLM API.",
+    "db: Tests that require a running PostgreSQL database.",
+    "llm: Tests that call a real LLM API.",
+]
+addopts = "-m 'not integration'"
 
 [tool.coverage.run]
 source = ["src"]

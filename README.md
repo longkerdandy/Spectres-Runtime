@@ -100,6 +100,16 @@ uv run pre-commit run --all-files
 
 Tests use the committed `.env.test` file instead of your local `.env`. This keeps CI stable and configures the test suite to use GitHub Models rather than your production LLM.
 
+By default, `uv run pytest` runs only fast unit tests. Integration tests that require external services are excluded unless explicitly selected:
+
+```bash
+uv run pytest                       # Run unit tests only
+uv run pytest -m integration        # Run integration tests only
+uv run pytest -m ''                 # Run all tests
+uv run pytest -m db                 # Run database integration tests
+uv run pytest -m llm                # Run real-LLM integration tests
+```
+
 For tests that call a real LLM API, place the API key in the gitignored `.env.test.local` file:
 
 ```bash
@@ -107,7 +117,7 @@ For tests that call a real LLM API, place the API key in the gitignored `.env.te
 TEAM_LEADER_LLM_API_KEY=ghp_xxxxxxxxxxxxxxxxxxxx
 ```
 
-`tests/conftest.py` loads `.env.test.local` automatically when pytest runs. If the API key is missing, the optional real-LLM integration tests are skipped.
+`tests/conftest.py` loads `.env.test.local` automatically when pytest runs. The real-LLM integration tests require the API key to be set in that file.
 
 If you need to point tests at a different environment file:
 
