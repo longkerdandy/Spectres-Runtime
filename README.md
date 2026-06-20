@@ -124,14 +124,30 @@ uv run pytest -m db                 # Run database integration tests
 uv run pytest -m llm                # Run real-LLM integration tests
 ```
 
-For tests that call a real LLM API, place the API key in the gitignored `.env.test.local` file:
+The committed `.env.test` contains only non-sensitive configuration. Sensitive credentials for integration tests are provided differently in local development and CI:
+
+**Local development**
+
+Create the gitignored `.env.test.local` file next to `.env.test`:
 
 ```bash
 # .env.test.local (do not commit)
+DB_USER=ai
+DB_PASS=ai
 TEAM_LEADER_LLM_API_KEY=ghp_xxxxxxxxxxxxxxxxxxxx
 ```
 
-`tests/conftest.py` loads `.env.test.local` automatically when pytest runs. The real-LLM integration tests require the API key to be set in that file.
+`tests/conftest.py` loads `.env.test.local` automatically when pytest runs.
+
+**GitHub Actions**
+
+The `.github/workflows/integration.yml` workflow reads sensitive values from repository secrets:
+
+- `DB_USER`
+- `DB_PASS`
+- `TEAM_LEADER_LLM_API_KEY`
+
+Set these under Settings → Secrets and variables → Actions.
 
 If you need to point tests at a different environment file:
 

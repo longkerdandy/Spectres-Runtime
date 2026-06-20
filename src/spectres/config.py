@@ -19,25 +19,23 @@ class Settings(BaseSettings):
     )
 
     # Database
-    db_host: str = Field(default="localhost", alias="DB_HOST")
-    db_port: int = Field(default=5532, alias="DB_PORT")
-    db_user: str = Field(default="ai", alias="DB_USER")
-    db_pass: str = Field(default="ai", alias="DB_PASS")
-    db_database: str = Field(default="ai", alias="DB_DATABASE")
+    db_host: str = Field(alias="DB_HOST")
+    db_port: int = Field(alias="DB_PORT")
+    db_user: str = Field(alias="DB_USER")
+    db_pass: str = Field(alias="DB_PASS")
+    db_database: str = Field(alias="DB_DATABASE")
 
     # AgentOS server
-    agent_os_host: str = Field(default="localhost", alias="AGENT_OS_HOST")
-    agent_os_port: int = Field(default=7777, alias="AGENT_OS_PORT")
+    agent_os_host: str = Field(alias="AGENT_OS_HOST")
+    agent_os_port: int = Field(alias="AGENT_OS_PORT")
 
     # Team Leader Agent (OpenAI-compatible API for open-source / self-hosted LLMs)
-    team_leader_llm_model: str = Field(default="gpt-4o", alias="TEAM_LEADER_LLM_MODEL")
-    team_leader_llm_api_key: str | None = Field(default=None, alias="TEAM_LEADER_LLM_API_KEY")
-    team_leader_llm_base_url: str | None = Field(default=None, alias="TEAM_LEADER_LLM_BASE_URL")
-    team_leader_llm_temperature: float | None = Field(default=None, alias="TEAM_LEADER_LLM_TEMPERATURE")
-    team_leader_llm_max_completion_tokens: int | None = Field(
-        default=None, alias="TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS"
-    )
-    team_leader_llm_extra_headers: dict[str, str] | None = Field(default=None, alias="TEAM_LEADER_LLM_EXTRA_HEADERS")
+    team_leader_llm_model: str = Field(alias="TEAM_LEADER_LLM_MODEL")
+    team_leader_llm_api_key: str | None = Field(alias="TEAM_LEADER_LLM_API_KEY")
+    team_leader_llm_base_url: str | None = Field(alias="TEAM_LEADER_LLM_BASE_URL")
+    team_leader_llm_temperature: float | None = Field(alias="TEAM_LEADER_LLM_TEMPERATURE")
+    team_leader_llm_max_completion_tokens: int | None = Field(alias="TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS")
+    team_leader_llm_extra_headers: dict[str, str] | None = Field(alias="TEAM_LEADER_LLM_EXTRA_HEADERS")
 
     @field_validator("team_leader_llm_extra_headers", mode="before")
     @classmethod
@@ -57,4 +55,4 @@ class Settings(BaseSettings):
         return f"postgresql+psycopg://{self.db_user}:{self.db_pass}@{self.db_host}:{self.db_port}/{self.db_database}"
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

@@ -1,0 +1,59 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Start PostgreSQL
+        run: docker compose --env-file .env.test up -d
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            docker exec spectres-db pg_isready -U "$DB_USER" && exit 0
+            sleep 1
+          done
+          echo "PostgreSQL did not become ready in time"
+          exit 1
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+
+      - name: Reset test database
+        run: SPECTRES_ENV_FILE=.env.test uv run python scripts/reset_db.py --force
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+
+      - name: Run integration tests
+        run: uv run pytest -m integration
+        env:
+          SPECTRES_ENV_FILE: .env.test
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+          TEAM_LEADER_LLM_API_KEY: ${{ secrets.TEAM_LEADER_LLM_API_KEY }}
