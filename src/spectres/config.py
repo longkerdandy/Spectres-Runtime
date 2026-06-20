@@ -1,6 +1,7 @@
 """Typed configuration for Spectres Runtime."""
 
 import json
+import os
 from typing import Any, cast
 
 from pydantic import Field, field_validator
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=os.getenv("SPECTRES_ENV_FILE", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

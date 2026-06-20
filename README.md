@@ -96,6 +96,25 @@ uv run ruff check src tests && \
 uv run pre-commit run --all-files
 ```
 
+### Test environment
+
+Tests use the committed `.env.test` file instead of your local `.env`. This keeps CI stable and configures the test suite to use GitHub Models rather than your production LLM.
+
+For tests that call a real LLM API, place the API key in the gitignored `.env.test.local` file:
+
+```bash
+# .env.test.local (do not commit)
+TEAM_LEADER_LLM_API_KEY=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+`tests/conftest.py` loads `.env.test.local` automatically when pytest runs. If the API key is missing, the optional real-LLM integration tests are skipped.
+
+If you need to point tests at a different environment file:
+
+```bash
+SPECTRES_ENV_FILE=.env.custom uv run pytest
+```
+
 ## VSCode
 
 Open the project in VSCode. The repository includes recommended extensions and workspace settings. When prompted, install the recommended extensions for Python, Ruff, and MyPy.
