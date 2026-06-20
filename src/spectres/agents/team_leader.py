@@ -24,6 +24,8 @@ def create_team_leader_agent(db: PostgresDb) -> Agent:
             id=settings.team_leader_llm_model,
             api_key=settings.team_leader_llm_api_key,
             base_url=settings.team_leader_llm_base_url,
+            temperature=settings.team_leader_llm_temperature,
+            max_completion_tokens=settings.team_leader_llm_max_completion_tokens,
         ),
         db=db,
         tools=get_builtin_tools(),
@@ -32,6 +34,7 @@ def create_team_leader_agent(db: PostgresDb) -> Agent:
             "Answer user questions using the available tools when needed.",
         ],
         add_history_to_context=True,
-        num_history_runs=5,
+        num_history_runs=3,
+        add_datetime_to_context=True,
         markdown=True,
     )

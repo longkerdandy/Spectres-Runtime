@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     team_leader_llm_model: str = Field(default="gpt-4o", alias="TEAM_LEADER_LLM_MODEL")
     team_leader_llm_api_key: str | None = Field(default=None, alias="TEAM_LEADER_LLM_API_KEY")
     team_leader_llm_base_url: str | None = Field(default=None, alias="TEAM_LEADER_LLM_BASE_URL")
+    team_leader_llm_temperature: float | None = Field(default=None, alias="TEAM_LEADER_LLM_TEMPERATURE")
+    team_leader_llm_max_completion_tokens: int | None = Field(
+        default=None, alias="TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS"
+    )
 
     @property
     def database_url(self) -> str:
