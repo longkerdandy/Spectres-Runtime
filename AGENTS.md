@@ -128,6 +128,7 @@ The following belong to other subprojects or services. Runtime uses them through
 
 - **Language**: Python; use type annotations wherever practical.
 - **Framework**: Prefer Agno's Agent, Tool, Memory, Storage, Team, and Workflow abstractions rather than rebuilding equivalent primitives.
+- **Virtual environment**: The project uses `uv` and a `.venv` directory. Because each `Bash` invocation runs in a fresh shell, use `.venv/bin/python` or `source .venv/bin/activate && python ...` instead of relying on a globally available `python` command.
 - **Configuration**: Manage configuration through environment variables and a typed configuration library. Secrets must not be committed.
 - **Testing**: New functionality requires unit tests; changes to agent orchestration require integration tests.
 - **Monitoring**: Use Agno's monitoring and evaluation hooks where available to track agent performance and quality.
