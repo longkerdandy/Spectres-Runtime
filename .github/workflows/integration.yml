@@ -44,12 +44,6 @@ jobs:
         env:
           DB_USER: ${{ secrets.DB_USER }}
 
-      - name: Reset test database
-        run: SPECTRES_ENV_FILE=.env.test uv run python scripts/reset_db.py --force
-        env:
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASS: ${{ secrets.DB_PASS }}
-
       - name: Run integration tests
         run: uv run pytest -m integration
         env:
