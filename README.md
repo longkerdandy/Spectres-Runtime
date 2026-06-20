@@ -40,7 +40,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-The database will be available at `localhost:5532` by default.
+The PostgreSQL server will be available at `localhost:5532` by default, with both `spectres_runtime` and `spectres_runtime_test` databases created and the `pgvector` extension installed.
 
 ### Reset the local database
 

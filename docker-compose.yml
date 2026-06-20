@@ -6,9 +6,10 @@ services:
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASS}
-      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_DB: postgres
     volumes:
       - spectres-pgdata:/var/lib/postgresql
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     ports:
       - "${DB_PORT}:5432"
     networks:
