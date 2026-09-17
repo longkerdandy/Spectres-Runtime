@@ -13,6 +13,7 @@
     "ruff.organizeImports": true,
     "ruff.fixAll": true,
     "mypy-type-checker.args": ["--config-file", "pyproject.toml"],
+    "python.analysis.typeCheckingMode": "off",
     "files.exclude": {
         "**/__pycache__": true,
         "**/.pytest_cache": true,
