@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from agno.db.postgres import PostgresDb
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -19,10 +18,17 @@ def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
         if False:
             yield None
 
-    mock_db = MagicMock(spec=PostgresDb)
+    # No spec: agno 3.x touches db attributes (e.g. `id`) beyond the
+    # PostgresDb class interface, and a spec'd mock rejects them.
+    mock_db = MagicMock()
+    # A fresh thread has no persisted session; agno 3.x's user-scope check
+    # probes db.get_session() and refuses the run if a row with a different
+    # owner comes back.
+    mock_db.get_session.return_value = None
     mock_agent = MagicMock()
     mock_agent.id = "team-leader"
     mock_agent.name = "Team Leader Agent"
+    mock_agent.db = mock_db
     mock_agent.arun = _fake_arun
 
     monkeypatch.setattr("spectres.main.get_postgres_db", lambda: mock_db)
