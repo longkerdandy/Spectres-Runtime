@@ -2,7 +2,7 @@
 
 > This document is for coding agents working on the project. It defines the project background, high-level architecture, module boundaries, and the scope of the current subproject: Runtime.
 >
-> Last updated: 2026-06-17
+> Last updated: 2026-09-19
 
 ---
 
@@ -18,6 +18,11 @@
 ---
 
 ## 2. High-Level Architecture
+
+> The detailed, continuously updated system design lives in
+> [`docs/architecture.md`](docs/architecture.md); this section keeps the
+> five-minute boundary overview. Decision rationale is frozen in
+> [`docs/adr/`](docs/adr/README.md).
 
 The system is split into three layers:
 
@@ -60,7 +65,7 @@ The system is split into three layers:
   - `calendar-agent`: schedules and queries events.
   - `weather-agent`: weather lookup and travel advice.
   - `knowledge-agent`: answers questions based on the knowledge base.
-- Slave Agents are invoked by the Master Agent through Agno's built-in mechanisms or a thin custom dispatcher.
+- Slave Agents are invoked by the Master Agent through Agno's `Team` abstraction (`coordinate` mode); no custom dispatcher (see [ADR 0001](docs/adr/0001-agno-team-as-multi-agent-foundation.md)).
 
 ---
 
@@ -145,6 +150,11 @@ The following decisions are confirmed by the project owner:
 2. **Multi-tenancy**: The architecture must support **multi-tenant** usage, but the first implementation targets a **single-user** scenario.
 3. **LLM**: Use **online model APIs** rather than local inference or self-hosted models.
 4. **Long-term memory**: Integrate third-party memory systems (e.g., **Mem0**, **Hindsight**) to support complex and persistent user profiles.
+5. **Multi-agent foundation**: Use Agno `Team` (`coordinate` mode) as the Master/Slave carrier; no custom orchestration dispatcher. Framework gaps (per-member state isolation, per-member tool ACL, per-member tenant isolation, remote members) are owned by Runtime code. See [ADR 0001](docs/adr/0001-agno-team-as-multi-agent-foundation.md).
+6. **Single Master**: Exactly one logical Master Agent per user — this is an architectural red line. Proactive behavior is modeled as scheduler/event-triggered runs of the same Master or as Workflows, never as a second user-facing agent. See [ADR 0002](docs/adr/0002-single-master-agent.md).
+7. **Automation**: Triggers are handled in three layers (deterministic rules with zero LLM calls; judgment-needed triggers as Master runs in isolated sessions; high-frequency events filtered at Edge). Session isolation is by `session_id`; the user profile aggregates by `user_id`. See [ADR 0003](docs/adr/0003-automation-trigger-layers-and-session-isolation.md).
+8. **AG-UI visibility**: Phase 1 accepts the framework's flattened single-voice stream with a custom dispatch-card renderer; per-Slave attribution is a later custom-mapping effort; protocol-native Subagent Events are the end state. See [ADR 0004](docs/adr/0004-ag-ui-team-visibility-strategy.md).
+9. **Deployment topology**: Clients reach Runtime only via AG-UI over HTTP(S) against a configurable endpoint (deployment location is a variable). Phase 1 runs the full stack at home over Tailscale; a cloud entry point is added only when mini-program, public access, or multi-tenancy requires it; Runtime is never publicly exposed. See [ADR 0005](docs/adr/0005-deployment-topology-and-client-access.md).
 
 ---
 
@@ -215,6 +225,9 @@ docs(readme): update setup instructions for python 3.13
 
 ## 8. References
 
+- Architecture (living document): [`docs/architecture.md`](docs/architecture.md)
+- Architecture Decision Records: [`docs/adr/`](docs/adr/README.md)
+- Milestone plans: [`docs/plan/`](docs/plan/)
 - Agno documentation: https://docs.agno.com/
 - Agno LLMs reference: https://www.agno.com/llms.txt
 - Repository: current directory `Spectres-Runtime`
