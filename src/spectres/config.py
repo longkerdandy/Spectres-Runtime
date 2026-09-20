@@ -37,6 +37,21 @@ class Settings(BaseSettings):
     team_leader_llm_max_completion_tokens: int | None = Field(alias="TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS")
     team_leader_llm_extra_headers: dict[str, str] | None = Field(alias="TEAM_LEADER_LLM_EXTRA_HEADERS")
 
+    # CORS
+    cors_allowed_origins: list[str] | None = Field(alias="CORS_ALLOWED_ORIGINS")
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def _parse_cors_allowed_origins(cls, value: Any) -> list[str] | None:
+        """Parse the CORS origins value from a comma-separated string or list."""
+        if value is None or value == "":
+            return None
+        if isinstance(value, list):
+            return cast(list[str], value)
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        raise ValueError("CORS_ALLOWED_ORIGINS must be a comma-separated list of origins")
+
     @field_validator("team_leader_llm_extra_headers", mode="before")
     @classmethod
     def _parse_extra_headers(cls, value: Any) -> dict[str, str] | None:

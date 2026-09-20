@@ -83,3 +83,28 @@ def test_agui_endpoint_rejects_invalid_payload(test_client: TestClient) -> None:
     """POST /agui returns 422 for a payload that fails validation."""
     response = test_client.post("/agui", json={"invalid": "payload"})
     assert response.status_code == 422
+
+
+def test_cors_preflight_allows_configured_origin(test_client: TestClient) -> None:
+    """CORS preflight reflects an origin from CORS_ALLOWED_ORIGINS (.env.test: http://localhost:3000)."""
+    response = test_client.options(
+        "/agui",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_cors_preflight_rejects_unlisted_origin(test_client: TestClient) -> None:
+    """CORS preflight from an origin outside the allowlist gets no allow header."""
+    response = test_client.options(
+        "/agui",
+        headers={
+            "Origin": "http://evil.example.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") != "http://evil.example.com"

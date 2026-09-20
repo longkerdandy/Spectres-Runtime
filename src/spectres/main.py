@@ -20,6 +20,7 @@ def create_agent_os() -> AgentOS:
         name="Spectres Runtime",
         agents=[team_leader_agent],
         interfaces=[AGUI(agent=team_leader_agent)],
+        cors_allowed_origins=settings.cors_allowed_origins,
     )
 
 

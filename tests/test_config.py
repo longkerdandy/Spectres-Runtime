@@ -22,6 +22,7 @@ def base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TEAM_LEADER_LLM_TEMPERATURE", "0.5")
     monkeypatch.setenv("TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS", "100")
     monkeypatch.setenv("TEAM_LEADER_LLM_EXTRA_HEADERS", "")
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "")
 
 
 class TestSettingsRequirements:
@@ -44,6 +45,7 @@ class TestSettingsRequirements:
             "TEAM_LEADER_LLM_TEMPERATURE",
             "TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS",
             "TEAM_LEADER_LLM_EXTRA_HEADERS",
+            "CORS_ALLOWED_ORIGINS",
         ):
             monkeypatch.delenv(key, raising=False)
 
@@ -110,6 +112,26 @@ class TestSettingsValidation:
         monkeypatch.setenv("TEAM_LEADER_LLM_EXTRA_HEADERS", "not-json")
         with pytest.raises(ValidationError):
             Settings(_env_file=None)  # type: ignore[call-arg]
+
+    @pytest.mark.parametrize(
+        ("input_value", "expected"),
+        [
+            ("", None),
+            ("http://localhost:3000", ["http://localhost:3000"]),
+            ("http://a.example.com, http://b.example.com", ["http://a.example.com", "http://b.example.com"]),
+        ],
+    )
+    def test_cors_allowed_origins_parsing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+        input_value: str,
+        expected: list[str] | None,
+    ) -> None:
+        """CORS_ALLOWED_ORIGINS accepts a comma-separated string or empty string."""
+        monkeypatch.setenv("CORS_ALLOWED_ORIGINS", input_value)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.cors_allowed_origins == expected
 
     def test_database_url_property(
         self,
