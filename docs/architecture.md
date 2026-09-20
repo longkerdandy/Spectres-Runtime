@@ -6,7 +6,7 @@
 > ADRs explain *why*.
 >
 > For project background, layer responsibilities, and the full Runtime scope,
-> see [`AGENTS.md`](../AGENTS.md). Last updated: 2026-09-19.
+> see [`AGENTS.md`](../AGENTS.md). Last updated: 2026-09-20.
 
 ---
 
@@ -119,7 +119,15 @@ decision.** Clients talk to Runtime only via AG-UI over HTTP(S) against a
 configurable endpoint; the Web UI's proxy layer is separable from its static
 frontend.
 
-### Phase 1 — full home stack (current target)
+### MVP — single PC (current milestone)
+
+Runtime (`localhost:7777`) and the independently served Web Client
+(`localhost:3000`) run on the same home PC; the browser is on that PC too.
+Cross-origin calls are handled by the Runtime's `CORS_ALLOWED_ORIGINS`
+allowlist (a browser convenience, not a security boundary). No tunneling,
+no remote access.
+
+### Phase 1 — full home stack (remote access)
 
 ```
 Owner devices (laptop, phone — Tailscale installed)

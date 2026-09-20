@@ -2,7 +2,7 @@
 
 > This document is for coding agents working on the project. It defines the project background, high-level architecture, module boundaries, and the scope of the current subproject: Runtime.
 >
-> Last updated: 2026-09-19
+> Last updated: 2026-09-20
 
 ---
 
@@ -84,7 +84,7 @@ This repository implements the Runtime layer.
 2. **Task Orchestration**
    - Route user requests to the Master Agent.
    - Let the Master Agent decide whether to respond directly, call one Slave Agent, or call multiple agents in parallel.
-   - Leverage Agno's multi-agent team and workflow primitives where they fit; keep a thin custom dispatcher only when needed.
+   - Leverage Agno's multi-agent team and workflow primitives where they fit; no custom dispatcher (see [ADR 0001](docs/adr/0001-agno-team-as-multi-agent-foundation.md)).
    - Support synchronous, asynchronous, parallel, and fallback invocation patterns as the project evolves.
 
 3. **Tool Registry**
@@ -154,7 +154,7 @@ The following decisions are confirmed by the project owner:
 6. **Single Master**: Exactly one logical Master Agent per user — this is an architectural red line. Proactive behavior is modeled as scheduler/event-triggered runs of the same Master or as Workflows, never as a second user-facing agent. See [ADR 0002](docs/adr/0002-single-master-agent.md).
 7. **Automation**: Triggers are handled in three layers (deterministic rules with zero LLM calls; judgment-needed triggers as Master runs in isolated sessions; high-frequency events filtered at Edge). Session isolation is by `session_id`; the user profile aggregates by `user_id`. See [ADR 0003](docs/adr/0003-automation-trigger-layers-and-session-isolation.md).
 8. **AG-UI visibility**: Phase 1 accepts the framework's flattened single-voice stream with a custom dispatch-card renderer; per-Slave attribution is a later custom-mapping effort; protocol-native Subagent Events are the end state. See [ADR 0004](docs/adr/0004-ag-ui-team-visibility-strategy.md).
-9. **Deployment topology**: Clients reach Runtime only via AG-UI over HTTP(S) against a configurable endpoint (deployment location is a variable). Phase 1 runs the full stack at home over Tailscale; a cloud entry point is added only when mini-program, public access, or multi-tenancy requires it; Runtime is never publicly exposed. See [ADR 0005](docs/adr/0005-deployment-topology-and-client-access.md).
+9. **Deployment topology**: Clients reach Runtime only via AG-UI over HTTP(S) against a configurable endpoint (deployment location is a variable). The MVP phase runs the full stack on a single home PC (no tunneling); remote access phases add Tailscale/overlay networking, then a cloud entry point when mini-program, public access, or multi-tenancy requires it; Runtime is never publicly exposed. See [ADR 0005](docs/adr/0005-deployment-topology-and-client-access.md).
 
 ---
 
@@ -228,6 +228,7 @@ docs(readme): update setup instructions for python 3.13
 - Architecture (living document): [`docs/architecture.md`](docs/architecture.md)
 - Architecture Decision Records: [`docs/adr/`](docs/adr/README.md)
 - Milestone plans: [`docs/plan/`](docs/plan/)
+- Web client project (Client layer): `../Spectres-Web-Client`
 - Agno documentation: https://docs.agno.com/
 - Agno LLMs reference: https://www.agno.com/llms.txt
 - Repository: current directory `Spectres-Runtime`
