@@ -4,8 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "saturday"
       time: "09:00"
+      timezone: "Asia/Shanghai"
     open-pull-requests-limit: 10
     reviewers:
       - "longkerdandy"
@@ -25,8 +26,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "wednesday"
+      day: "saturday"
       time: "09:00"
+      timezone: "Asia/Shanghai"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -44,8 +46,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "friday"
+      day: "saturday"
       time: "09:00"
+      timezone: "Asia/Shanghai"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
