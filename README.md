@@ -91,6 +91,26 @@ curl -N -X POST http://localhost:7777/agui \
 
 The `/agui` endpoint returns a streaming `text/event-stream` response containing AG-UI events such as `RUN_STARTED`, `TEXT_MESSAGE_CONTENT`, and `RUN_FINISHED`.
 
+## Run the MVP (Runtime + Web Client on one PC)
+
+The MVP pairs this Runtime with the independently served [Spectres-Web-Client](../Spectres-Web-Client). Both run on the same PC; the browser calls the Runtime cross-origin, so `CORS_ALLOWED_ORIGINS` in `.env` must include the client's origin (default `http://localhost:3000`).
+
+```bash
+# Terminal 1: PostgreSQL
+docker compose up -d
+
+# Terminal 2: Runtime (AG-UI on http://localhost:7777)
+uv run python -m spectres.main
+
+# Terminal 3: Web Client (on http://localhost:3000)
+cd ../Spectres-Web-Client
+npm install
+npm run dev                      # dev server
+# or: npm run build && npx serve dist -l 3000   # static build
+```
+
+Open `http://localhost:3000` in a browser: send a message for a streaming reply, ask for a calculation to see the tool-call card, reload the page to continue the same thread, and use "New conversation" to start a fresh one.
+
 ## Development Commands
 
 All quality checks and tests are run directly through `uv run` (no Makefile required):
@@ -190,7 +210,7 @@ Open the project in VSCode. The repository includes recommended extensions and w
 
 ## Current Status
 
-`v0.2.1` adds AG-UI protocol support to the `v0.2.0` skeleton, exposing the Team Leader Agent through a streaming `/agui` endpoint. Memory and knowledge-base features are planned for later milestones.
+`v0.3.0` completes the single-user MVP: CORS support lets the independently served [Spectres-Web-Client](../Spectres-Web-Client) call the AG-UI endpoint cross-origin, verified end-to-end in a browser on one PC against the real LLM (streaming chat, visible tool calls, thread continuity across reloads). Team/Slave agents, long-term memory, and the knowledge base are planned for later milestones.
 
 ## License
 
