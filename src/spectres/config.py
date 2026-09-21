@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # CORS
     cors_allowed_origins: list[str] | None = Field(alias="CORS_ALLOWED_ORIGINS")
 
+    # Web search (Tavily API)
+    tavily_api_key: str | None = Field(alias="TAVILY_API_KEY", default=None)
+
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
     def _parse_cors_allowed_origins(cls, value: Any) -> list[str] | None:

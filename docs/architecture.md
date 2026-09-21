@@ -180,10 +180,13 @@ auto-start, power settings) are recorded in ADR 0005.
 
 ## 7. Current Implementation State
 
-Implemented (v0.2.0–v0.2.1): single Team Leader agent stub, `OpenAILike` model
+Implemented (v0.2.0–v0.3.1): single Team Leader agent stub, `OpenAILike` model
 configuration (verified against Kimi Code API), PostgreSQL session/history
-persistence, `CalculatorTools` + `ShellTools`, AgentOS with AG-UI interface,
-dockerized dev database.
+persistence, built-in tools (`CalculatorTools`, `ShellTools`, `WebsiteTools`,
+and Tavily web search registered when `TAVILY_API_KEY` is configured — see
+[ADR 0006](adr/0006-web-search-tool-tavily.md)), AgentOS with AG-UI
+interface, CORS allowlist for the independent web client, dockerized dev
+database.
 
 Not yet implemented: Slave Agents, long-term memory (Mem0/Hindsight),
 knowledge base/RAG, tool ACL, automation/scheduler, Edge proxy, notification

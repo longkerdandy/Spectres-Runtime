@@ -147,3 +147,23 @@ class TestSettingsValidation:
 
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.database_url == "postgresql+psycopg://user:secret@db.example.com:5432/spectres"
+
+    def test_tavily_api_key_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+    ) -> None:
+        """TAVILY_API_KEY defaults to None when unset."""
+        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.tavily_api_key is None
+
+    def test_tavily_api_key_override(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+    ) -> None:
+        """TAVILY_API_KEY can be set from the environment."""
+        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.tavily_api_key == "tvly-test-key"

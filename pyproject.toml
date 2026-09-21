@@ -28,6 +28,8 @@ dependencies = [
     "pydantic-settings>=2.0",
     "psycopg[binary]>=3.0",
     "sqlalchemy>=2.0",
+    "beautifulsoup4>=4.15.0",
+    "tavily-python>=0.8.4",
 ]
 
 [project.optional-dependencies]

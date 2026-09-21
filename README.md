@@ -210,6 +210,8 @@ Open the project in VSCode. The repository includes recommended extensions and w
 
 ## Current Status
 
+`v0.3.1` adds web search and page fetching to the Team Leader Agent: official Tavily Search API (registered when `TAVILY_API_KEY` is configured) plus `read_url` full-page reads — replacing a ddgs meta-search prototype that proved unreliable in testing (see `docs/adr/0006-web-search-tool-tavily.md`).
+
 `v0.3.0` completes the single-user MVP: CORS support lets the independently served [Spectres-Web-Client](../Spectres-Web-Client) call the AG-UI endpoint cross-origin, verified end-to-end in a browser on one PC against the real LLM (streaming chat, visible tool calls, thread continuity across reloads). Team/Slave agents, long-term memory, and the knowledge base are planned for later milestones.
 
 ## License
