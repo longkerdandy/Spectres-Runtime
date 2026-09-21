@@ -11,9 +11,11 @@ from spectres.agents.team_leader import create_team_leader_agent
 from spectres.config import settings
 
 
-def test_create_team_leader_agent_returns_agent(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Team Leader Agent factory returns a configured Agent instance."""
+def test_create_team_leader_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Team Leader Agent factory returns an Agent configured from settings."""
+    monkeypatch.setattr(settings, "team_leader_llm_model", "test-model")
     monkeypatch.setattr(settings, "team_leader_llm_api_key", "test-api-key")
+    monkeypatch.setattr(settings, "team_leader_llm_base_url", "https://test.example.com/v1")
 
     db = MagicMock(spec=PostgresDb)
     agent = create_team_leader_agent(db)
@@ -27,17 +29,6 @@ def test_create_team_leader_agent_returns_agent(monkeypatch: pytest.MonkeyPatch)
     assert agent.markdown is True
     assert agent.db is db
 
-
-def test_create_team_leader_agent_uses_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The created agent is configured from application settings."""
-    monkeypatch.setattr(settings, "team_leader_llm_model", "test-model")
-    monkeypatch.setattr(settings, "team_leader_llm_api_key", "test-api-key")
-    monkeypatch.setattr(settings, "team_leader_llm_base_url", "https://test.example.com/v1")
-
-    db = MagicMock(spec=PostgresDb)
-    agent = create_team_leader_agent(db)
-
-    assert agent.model is not None
     assert isinstance(agent.model, OpenAILike)
     assert agent.model.id == "test-model"
     assert agent.model.api_key == "test-api-key"

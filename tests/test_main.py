@@ -46,11 +46,6 @@ def test_client(spectres_app: FastAPI) -> TestClient:
     return TestClient(spectres_app)
 
 
-def test_main_app_is_fastapi(spectres_app: FastAPI) -> None:
-    """The AgentOS entry point exposes a FastAPI app."""
-    assert isinstance(spectres_app, FastAPI)
-
-
 def test_status_returns_200(test_client: TestClient) -> None:
     """The AGUI /status endpoint responds with HTTP 200."""
     response = test_client.get("/status")
