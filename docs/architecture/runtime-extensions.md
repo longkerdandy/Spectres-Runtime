@@ -124,6 +124,23 @@ Rules:
   agent under the Master Team is a designed future option (§9), deferred
   until the Team milestone (coordinate mode, ADR 0001) lands.
 
+### 4.1 Naming convention
+
+The extension id is defined once, in snake_case (`etf_grid`), and every
+surface derives from it. Rule of thumb: **snake_case everywhere, except
+URLs which use kebab-case** — the only surface that transforms the id.
+
+| Surface | Form | Example |
+|---------|------|---------|
+| Python package / directory | snake_case (must be a valid identifier) | `spectres/extensions/etf_grid/` |
+| Database table prefix | snake_case | `etf_grid_trades` |
+| Tool function names | snake_case (provider tool-name charset limits) | `etf_grid_get_signals` |
+| Env var prefix | UPPER_SNAKE | `ETF_GRID_...` |
+| URL paths | kebab-case | `/api/v1/extensions/etf-grid/...` |
+
+The registry rejects ids that are not valid snake_case Python identifiers
+at load time, before any `register()` call.
+
 ## 5. Discovery and loading
 
 Both mechanisms the name suggests are used: **auto-discovery** finds
