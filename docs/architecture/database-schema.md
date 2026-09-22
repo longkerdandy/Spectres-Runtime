@@ -65,7 +65,7 @@ average cost are derived by replaying it
 |--------|------|-------|
 | `id` | BigInteger PK | autoincrement |
 | `trade_date` | Date NOT NULL | execution date |
-| `symbol` | String(6) NOT NULL | six-digit ETF code |
+| `symbol` | String(16) NOT NULL | FTShare full code, e.g. `513330.XSHG` |
 | `side` | String(8) NOT NULL | CHECK in (`buy`, `sell`), generated from the `Side` enum |
 | `price` | Numeric(10,4) NOT NULL | execution price per share |
 | `quantity` | Integer NOT NULL | shares |
@@ -92,7 +92,7 @@ re-adjustments self-heal. Model:
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `symbol` | String(6) PK | six-digit ETF code (composite PK, part 1) |
+| `symbol` | String(16) PK | FTShare full code, e.g. `513330.XSHG` (composite PK, part 1) |
 | `trade_date` | Date PK | trading day (composite PK, part 2) |
 | `open`/`high`/`low`/`close` | Numeric(10,4) NOT NULL | forward-adjusted OHLC |
 | `volume` | BigInteger NOT NULL | shares (800M+ values exist in history) |

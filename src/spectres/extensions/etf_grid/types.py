@@ -1,9 +1,28 @@
 """Shared enums and value objects for the ETF grid extension (standard library only)."""
 
+import re
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
+
+_SYMBOL_PATTERN = re.compile(r"[A-Z0-9]+\.[A-Z]+")
+
+
+def normalize_symbol(raw: str) -> str:
+    """Normalize (strip + upper) and loosely validate an FTShare-style symbol.
+
+    Only the ``<code>.<exchange>`` structure is enforced — the suffix value
+    itself is deliberately unrestricted (beyond XSHG/XSHE, other exchanges
+    may appear in the future).
+
+    Raises:
+        ValueError: If the symbol has no ``.SUFFIX`` form.
+    """
+    symbol = raw.strip().upper()
+    if not _SYMBOL_PATTERN.fullmatch(symbol):
+        raise ValueError(f"symbol must be FTShare-style '<code>.<exchange>', e.g. '513330.XSHG', got {raw!r}")
+    return symbol
 
 
 class Side(StrEnum):

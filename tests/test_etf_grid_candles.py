@@ -14,7 +14,7 @@ pytestmark = pytest.mark.unit
 def candle(**overrides: object) -> CandleInput:
     """Build a valid candle input with per-field overrides."""
     values: dict[str, object] = {
-        "symbol": "513330",
+        "symbol": "513330.XSHG",
         "trade_date": date(2026, 9, 22),
         "open": Decimal("0.4000"),
         "high": Decimal("0.4100"),
@@ -61,6 +61,11 @@ class TestUpsertCandlesValidation:
         """Validation scans the whole batch; an invalid later row fails fast."""
         with pytest.raises(ValueError, match="candle prices must be positive"):
             service().upsert_candles([candle(), candle(open=Decimal("0"))])
+
+    def test_suffixless_symbol_rejected(self) -> None:
+        """A bare short code without exchange suffix is rejected."""
+        with pytest.raises(ValueError, match="FTShare-style"):
+            service().upsert_candles([candle(symbol="513330")])
 
     def test_empty_batch_is_a_noop(self) -> None:
         """An empty batch writes nothing and does not touch the database."""

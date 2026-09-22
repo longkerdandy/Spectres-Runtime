@@ -14,7 +14,7 @@ from spectres.extensions.etf_grid.core.ledger import (
 )
 from spectres.extensions.etf_grid.models import EtfGridBase
 from spectres.extensions.etf_grid.service import _SORTABLE_COLUMNS, EtfGridLedgerService, _order_clauses
-from spectres.extensions.etf_grid.types import Side, SortDirection, SortSpec, TradeSortField
+from spectres.extensions.etf_grid.types import Side, SortDirection, SortSpec, TradeSortField, normalize_symbol
 
 pytestmark = pytest.mark.unit
 
@@ -241,6 +241,28 @@ class _FailingSessionFactory:
         raise AssertionError("session factory must not be touched on validation failure")
 
 
+class TestNormalizeSymbol:
+    """normalize_symbol enforces the loose FTShare-style '<code>.<exchange>' form."""
+
+    def test_full_code_passes_through(self) -> None:
+        """An already-canonical full code is returned unchanged."""
+        assert normalize_symbol("513330.XSHG") == "513330.XSHG"
+
+    def test_lowercase_and_whitespace_normalized(self) -> None:
+        """Lowercase suffix and surrounding whitespace normalize to upper/stripped."""
+        assert normalize_symbol("  513330.xshg ") == "513330.XSHG"
+
+    def test_suffixless_code_rejected(self) -> None:
+        """A bare six-digit code without a suffix is rejected."""
+        with pytest.raises(ValueError, match="FTShare-style"):
+            normalize_symbol("513330")
+
+    def test_other_exchange_suffixes_allowed(self) -> None:
+        """The suffix value is deliberately unrestricted beyond XSHG/XSHE."""
+        assert normalize_symbol("513330.XSHE") == "513330.XSHE"
+        assert normalize_symbol("513330.XHKG") == "513330.XHKG"
+
+
 class TestRecordTradeValidation:
     """record_trade rejects invalid input before touching the database."""
 
@@ -252,12 +274,17 @@ class TestRecordTradeValidation:
         """Return a baseline of valid record_trade arguments."""
         return {
             "trade_date": date(2026, 9, 22),
-            "symbol": "513330",
+            "symbol": "513330.XSHG",
             "side": Side.BUY,
             "price": Decimal("0.4100"),
             "quantity": 24300,
             "commission_rate": Decimal("0.001"),
         }
+
+    def test_suffixless_symbol_rejected(self) -> None:
+        """A bare short code without exchange suffix is rejected."""
+        with pytest.raises(ValueError, match="FTShare-style"):
+            self.service().record_trade(**{**self.valid_kwargs(), "symbol": "513330"})  # type: ignore[arg-type]
 
     def test_non_positive_price(self) -> None:
         """A zero price is rejected."""

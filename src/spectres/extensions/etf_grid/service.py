@@ -25,6 +25,7 @@ from spectres.extensions.etf_grid.types import (
     SortSpec,
     Source,
     TradeSortField,
+    normalize_symbol,
 )
 
 _SORTABLE_COLUMNS: dict[TradeSortField, InstrumentedAttribute[Any]] = {
@@ -106,8 +107,9 @@ class EtfGridLedgerService:
             The persisted trade as a structured dict.
 
         Raises:
-            ValueError: If any numeric input fails validation.
+            ValueError: If the symbol or any numeric input fails validation.
         """
+        symbol = normalize_symbol(symbol)
         if price <= 0:
             raise ValueError(f"price must be positive, got {price}")
         if quantity <= 0:
@@ -162,7 +164,7 @@ class EtfGridLedgerService:
         """
         stmt = select(EtfGridTrade).order_by(*_order_clauses(order_by))
         if symbol is not None:
-            stmt = stmt.where(EtfGridTrade.symbol == symbol)
+            stmt = stmt.where(EtfGridTrade.symbol == normalize_symbol(symbol))
         with self._session_factory() as session:
             return [_trade_to_dict(trade) for trade in session.scalars(stmt)]
 
@@ -242,12 +244,12 @@ class EtfGridCandleService:
             The number of rows written.
 
         Raises:
-            ValueError: If any price is not positive, or any volume
-                negative.
+            ValueError: If any symbol fails validation, any price is not
+                positive, or any volume negative.
         """
         rows = []
         for candle in candles:
-            symbol = candle.symbol
+            symbol = normalize_symbol(candle.symbol)
             if candle.open <= 0 or candle.high <= 0 or candle.low <= 0 or candle.close <= 0:
                 raise ValueError(f"{symbol} {candle.trade_date}: candle prices must be positive, got O={candle.open} H={candle.high} L={candle.low} C={candle.close}")
             if candle.volume < 0:
@@ -307,7 +309,7 @@ class EtfGridCandleService:
             The candles as structured dicts in the requested order.
         """
         direction = EtfGridCandle.trade_date.desc() if descending else EtfGridCandle.trade_date.asc()
-        stmt = select(EtfGridCandle).where(EtfGridCandle.symbol == symbol).order_by(direction)
+        stmt = select(EtfGridCandle).where(EtfGridCandle.symbol == normalize_symbol(symbol)).order_by(direction)
         if limit is not None:
             stmt = stmt.limit(limit)
         with self._session_factory() as session:

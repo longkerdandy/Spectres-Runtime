@@ -48,7 +48,7 @@ class EtfGridTrade(EtfGridBase):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     trade_date: Mapped[date] = mapped_column(Date, comment="Execution date of the trade")
-    symbol: Mapped[str] = mapped_column(String(6), comment="Six-digit fund code, e.g. '513330'")
+    symbol: Mapped[str] = mapped_column(String(16), comment="FTShare-style symbol, e.g. '513330.XSHG'")
     side: Mapped[str] = mapped_column(String(8), comment="Trade direction: buy | sell (values generated from the Side enum)")
     price: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="Execution price per share")
     quantity: Mapped[int] = mapped_column(Integer, comment="Number of shares (round lots of 100)")
@@ -83,13 +83,13 @@ class EtfGridCandle(EtfGridBase):
     - The composite PK is the upsert key and covers the only access
       pattern (history per symbol, date-ordered) — no surrogate id, no
       extra indexes.
-    - Sole data source: FTShare. The 6-digit ``symbol`` maps to
-      FTShare's exchange-suffixed form (``513330.XSHG``) in config.
+    - Sole data source: FTShare. ``symbol`` stores the FTShare full code
+      (e.g. ``513330.XSHG``) directly — no short-code mapping layer.
     """
 
     __tablename__ = "etf_grid_candles"
 
-    symbol: Mapped[str] = mapped_column(String(6), primary_key=True, comment="Six-digit fund code, e.g. '513330'")
+    symbol: Mapped[str] = mapped_column(String(16), primary_key=True, comment="FTShare-style symbol, e.g. '513330.XSHG'")
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True, comment="Trading day of the bar")
     open: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="Forward-adjusted open price")
     high: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="Forward-adjusted high price")

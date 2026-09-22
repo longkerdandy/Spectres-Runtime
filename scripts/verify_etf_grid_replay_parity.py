@@ -119,7 +119,9 @@ def main() -> None:
     original = run_original(python, csv_paths)
     failures = 0
     for csv_path in csv_paths:
-        sym = csv_path.stem.removeprefix("trades_")
+        # The legacy CSVs use bare short codes; all three portfolio symbols
+        # are Shanghai-listed, so they map to the .XSHG full-code form.
+        sym = f"{csv_path.stem.removeprefix('trades_')}.XSHG"
         old = original[str(csv_path)]
         new = run_new(csv_path)
         old_lots: list[list[Any]] = old["lots"]
