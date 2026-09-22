@@ -30,6 +30,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "beautifulsoup4>=4.15.0",
     "tavily-python>=0.8.4",
+    "ftshare",
 ]
 
 [project.optional-dependencies]
@@ -106,3 +107,6 @@ addopts = "-m 'not integration'"
 [tool.coverage.run]
 source = ["src"]
 branch = true
+
+[tool.uv.sources]
+ftshare = { git = "https://github.com/ftshare-lab/ftshare-python-sdk", rev = "v1.0.8" }
