@@ -4,11 +4,11 @@
 > Every table that actually exists in the Runtime's PostgreSQL database,
 > and its purpose. Runtime does not define core tables of its own:
 > session/agent state is managed by Agno (`agno_*` defaults, uncustomized).
-> Domain data will live in extension-owned tables (`<extension>_*` prefix
-> convention — see [Runtime Extensions §6.2](runtime-extensions.md)); none
-> exist yet, and they are registered here only once implemented.
+> Domain data lives in extension-owned tables (`<extension>_*` prefix
+> convention — see [Runtime Extensions §6.2](runtime-extensions.md)),
+> registered here once implemented.
 >
-> Last updated: 2026-09-21.
+> Last updated: 2026-09-22.
 
 ---
 
@@ -46,7 +46,42 @@ extension code; access goes through Agno's db handle.
 | `agno_mcp_oauth_refresh_tokens` | MCP OAuth refresh tokens | Unused |
 | `agno_mcp_oauth_keys` | MCP OAuth signing keys | Unused |
 
-## 2. Notes
+## 2. Extension tables
+
+Owned by Runtime extensions under the `<extension>_*` prefix convention.
+Created by the owning extension (SQLAlchemy `create_all`), never by Agno.
+
+### `etf_grid_trades` (ETF Grid Trading extension)
+
+Append-only trades ledger: every executed buy/sell of the ETF grid
+portfolio. An opening-position backfill is recorded as a plain `buy`
+(it replays identically; the backfill semantics go in `note`). The
+ledger is the single source of truth for positions; holdings and
+average cost are derived by replaying it
+(`spectres.extensions.etf_grid.core.ledger.replay_ledger`). Model:
+`src/spectres/extensions/etf_grid/models.py`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | BigInteger PK | autoincrement |
+| `trade_date` | Date NOT NULL | execution date |
+| `symbol` | String(6) NOT NULL | six-digit ETF code |
+| `side` | String(8) NOT NULL | CHECK in (`buy`, `sell`), generated from the `Side` enum |
+| `price` | Numeric(10,4) NOT NULL | execution price per share |
+| `quantity` | Integer NOT NULL | shares |
+| `gross_amount` | Numeric(12,2) NOT NULL | `price x quantity` |
+| `commission_rate` | Numeric(8,6) NOT NULL | broker commission rate |
+| `commission` | Numeric(10,2) NOT NULL | `ROUND_HALF_UP(gross_amount x commission_rate, 2)` unless overridden |
+| `net_amount` | Numeric(12,2) NOT NULL | buy: `gross + commission`; sell: `gross - commission` |
+| `source` | String(32) NOT NULL | `manual` / `agent`, default `manual` |
+| `note` | Text NULL | free-form note |
+| `created_at` | DateTime(tz) NOT NULL | `server_default=func.now()` |
+
+Index: `(symbol, trade_date)`. No CSV migration: the quant-advisor
+history is considered potentially inaccurate and will be re-entered
+manually (owner decision).
+
+## 3. Notes
 
 - Single PostgreSQL database (dockerized, `agnohq/pgvector` image),
   currently used only by Agno; future extensions share it under the
