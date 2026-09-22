@@ -10,10 +10,16 @@ _session_factory: sessionmaker[Session] | None = None
 
 
 def get_engine() -> Engine:
-    """Return the shared SQLAlchemy engine, creating it lazily on first use."""
+    """Return the shared SQLAlchemy engine, creating it lazily on first use.
+
+    ``pool_pre_ping`` checks out connections with a cheap ping first, so
+    pooled connections killed externally (DB restart, or the integration
+    test fixture terminating backends before recreating the test database)
+    are transparently recycled instead of failing the next query.
+    """
     global _engine
     if _engine is None:
-        _engine = create_engine(settings.database_url)
+        _engine = create_engine(settings.database_url, pool_pre_ping=True)
     return _engine
 
 
