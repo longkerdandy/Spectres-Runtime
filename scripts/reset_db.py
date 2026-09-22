@@ -41,9 +41,7 @@ def reset_database(force: bool = False) -> None:
         print("Aborted.")
         sys.exit(0)
 
-    admin_url = (
-        f"postgresql://{settings.db_user}:{settings.db_pass}@{settings.db_host}:{settings.db_port}/{admin_database}"
-    )
+    admin_url = f"postgresql://{settings.db_user}:{settings.db_pass}@{settings.db_host}:{settings.db_port}/{admin_database}"
     target_url = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
 
     try:
