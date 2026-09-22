@@ -10,8 +10,9 @@ from spectres.config import settings
 from spectres.tools.builtin import get_builtin_tools
 
 
-def test_get_builtin_tools_without_tavily_key() -> None:
+def test_get_builtin_tools_without_tavily_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Without TAVILY_API_KEY, built-in tools exclude web search."""
+    monkeypatch.setattr(settings, "tavily_api_key", None)
     tools = get_builtin_tools()
     assert len(tools) == 3
     assert any(isinstance(tool, CalculatorTools) for tool in tools)
