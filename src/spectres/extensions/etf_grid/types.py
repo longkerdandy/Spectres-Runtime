@@ -1,6 +1,8 @@
 """Shared enums and value objects for the ETF grid extension (standard library only)."""
 
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from enum import StrEnum
 
 
@@ -46,3 +48,22 @@ class SortSpec:
 
     field: TradeSortField
     direction: SortDirection = SortDirection.ASC
+
+
+@dataclass(frozen=True)
+class CandleInput:
+    """One daily candle to upsert.
+
+    Provider-agnostic: the marketdata layer translates FTShare bars into
+    this shape; the service layer never sees provider specifics. ``symbol``
+    is an FTShare-style full code (e.g. ``513330.XSHG``); the service
+    normalizes (strip + upper) and validates it on write.
+    """
+
+    symbol: str
+    trade_date: date
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int

@@ -81,6 +81,26 @@ Index: `(symbol, trade_date)`. No CSV migration: the quant-advisor
 history is considered potentially inaccurate and will be re-entered
 manually (owner decision).
 
+### `etf_grid_candles` (ETF Grid Trading extension)
+
+Forward-adjusted (qfq) daily-K cache, sourced solely from FTShare
+`ft_v1_etf_candlesticks` (`adjust_kind=Forward`). A dividend recomputes
+all historical bars, so rows are **upserted, never append-only** — sync
+refetches a trailing ~90-day window (covering the MA60 window) so
+re-adjustments self-heal. Model:
+`src/spectres/extensions/etf_grid/models.py`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `symbol` | String(6) PK | six-digit ETF code (composite PK, part 1) |
+| `trade_date` | Date PK | trading day (composite PK, part 2) |
+| `open`/`high`/`low`/`close` | Numeric(10,4) NOT NULL | forward-adjusted OHLC |
+| `volume` | BigInteger NOT NULL | shares (800M+ values exist in history) |
+| `fetched_at` | DateTime(tz) NOT NULL | `server_default=func.now()`, refreshed on every upsert |
+
+The composite PK is the upsert key and covers the only access pattern
+(history per symbol, date-ordered); no surrogate id, no extra indexes.
+
 ## 3. Notes
 
 - Single PostgreSQL database (dockerized, `agnohq/pgvector` image),

@@ -5,7 +5,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import InstrumentedAttribute, Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -16,8 +17,15 @@ from spectres.extensions.etf_grid.core.ledger import (
     replay_ledger,
 )
 from spectres.extensions.etf_grid.db import get_session_factory
-from spectres.extensions.etf_grid.models import EtfGridTrade
-from spectres.extensions.etf_grid.types import Side, SortDirection, SortSpec, Source, TradeSortField
+from spectres.extensions.etf_grid.models import EtfGridCandle, EtfGridTrade
+from spectres.extensions.etf_grid.types import (
+    CandleInput,
+    Side,
+    SortDirection,
+    SortSpec,
+    Source,
+    TradeSortField,
+)
 
 _SORTABLE_COLUMNS: dict[TradeSortField, InstrumentedAttribute[Any]] = {
     TradeSortField.ID: EtfGridTrade.id,
@@ -81,7 +89,8 @@ class EtfGridLedgerService:
 
         Args:
             trade_date: Execution date of the trade.
-            symbol: Six-digit ETF symbol.
+            symbol: FTShare-style symbol (``<code>.<exchange>``); normalized
+                with strip + upper and loosely validated.
             side: Trade side (an opening-position backfill is a plain buy;
                 use ``note`` to record the backfill semantics).
             price: Execution price per share (must be positive).
@@ -206,4 +215,114 @@ def _trade_to_dict(trade: EtfGridTrade) -> dict[str, Any]:
         "source": trade.source,
         "note": trade.note,
         "created_at": trade.created_at,
+    }
+
+
+class EtfGridCandleService:
+    """Stores and reads the local forward-adjusted (qfq) daily candle cache."""
+
+    def __init__(self, session_factory: sessionmaker[Session] | None = None) -> None:
+        """Create the service; defaults to the extension's shared session factory."""
+        self._session_factory = session_factory or get_session_factory()
+
+    def upsert_candles(self, candles: Sequence[CandleInput]) -> int:
+        """Upsert a batch of daily candles in a single transaction.
+
+        Upsert contract: on conflict of the ``(symbol, trade_date)`` primary
+        key the OHLCV values are overwritten and ``fetched_at`` is refreshed.
+        This overwrite-and-refresh behavior is deliberate self-healing, not
+        just idempotency: on the qfq basis a dividend recomputes ALL
+        historical bars, so re-syncing a trailing window must replace stale
+        rows rather than skip them.
+
+        Args:
+            candles: The candles to write (provider-translated inputs).
+
+        Returns:
+            The number of rows written.
+
+        Raises:
+            ValueError: If any price is not positive, or any volume
+                negative.
+        """
+        rows = []
+        for candle in candles:
+            symbol = candle.symbol
+            if candle.open <= 0 or candle.high <= 0 or candle.low <= 0 or candle.close <= 0:
+                raise ValueError(f"{symbol} {candle.trade_date}: candle prices must be positive, got O={candle.open} H={candle.high} L={candle.low} C={candle.close}")
+            if candle.volume < 0:
+                raise ValueError(f"{symbol} {candle.trade_date}: volume must be non-negative, got {candle.volume}")
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "trade_date": candle.trade_date,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+            )
+        if not rows:
+            return 0
+        stmt = pg_insert(EtfGridCandle).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["symbol", "trade_date"],
+            set_={
+                "open": stmt.excluded.open,
+                "high": stmt.excluded.high,
+                "low": stmt.excluded.low,
+                "close": stmt.excluded.close,
+                "volume": stmt.excluded.volume,
+                "fetched_at": func.now(),
+            },
+        )
+        with self._session_factory() as session, session.begin():
+            session.execute(stmt)
+        return len(candles)
+
+    def list_candles(
+        self,
+        symbol: str,
+        *,
+        descending: bool = False,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return one symbol's candles ordered by trade date.
+
+        Time is the only meaningful sort dimension for candles, and the
+        ``(symbol, trade_date)`` primary key already guarantees uniqueness —
+        so unlike ``list_trades`` there is no ``SortSpec`` machinery and no
+        stable-suffix rule here. If a genuine multi-dimensional need ever
+        appears, add it following the trades template. ``limit`` is pushed
+        down into SQL; combine with ``descending=True`` for the latest N
+        bars.
+
+        Args:
+            symbol: The symbol whose history to read.
+            descending: Newest first when True (default: chronological).
+            limit: Optional maximum number of rows, pushed down into SQL.
+
+        Returns:
+            The candles as structured dicts in the requested order.
+        """
+        direction = EtfGridCandle.trade_date.desc() if descending else EtfGridCandle.trade_date.asc()
+        stmt = select(EtfGridCandle).where(EtfGridCandle.symbol == symbol).order_by(direction)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        with self._session_factory() as session:
+            return [_candle_to_dict(candle) for candle in session.scalars(stmt)]
+
+
+def _candle_to_dict(candle: EtfGridCandle) -> dict[str, Any]:
+    """Convert a candle ORM row into a structured dict."""
+    return {
+        "symbol": candle.symbol,
+        "trade_date": candle.trade_date,
+        "open": candle.open,
+        "high": candle.high,
+        "low": candle.low,
+        "close": candle.close,
+        "volume": candle.volume,
+        "fetched_at": candle.fetched_at,
     }

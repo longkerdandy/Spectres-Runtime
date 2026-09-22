@@ -8,9 +8,16 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
 from spectres.extensions.etf_grid.db import get_engine
-from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridTrade
-from spectres.extensions.etf_grid.service import EtfGridLedgerService
-from spectres.extensions.etf_grid.types import Side, SortDirection, SortSpec, Source, TradeSortField
+from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridTrade
+from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridLedgerService
+from spectres.extensions.etf_grid.types import (
+    CandleInput,
+    Side,
+    SortDirection,
+    SortSpec,
+    Source,
+    TradeSortField,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.db]
 
@@ -24,6 +31,31 @@ def service() -> EtfGridLedgerService:
     with session_factory() as session, session.begin():
         session.execute(delete(EtfGridTrade))
     return EtfGridLedgerService(session_factory=session_factory)
+
+
+@pytest.fixture
+def candle_service() -> EtfGridCandleService:
+    """Provide a candle service over a freshly created etf_grid_candles table."""
+    engine = get_engine()
+    EtfGridBase.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+    with session_factory() as session, session.begin():
+        session.execute(delete(EtfGridCandle))
+    return EtfGridCandleService(session_factory=session_factory)
+
+
+def _candle(symbol: str, day: int, close: str, volume: int = 1000) -> CandleInput:
+    """Build a candle for 2026-09-<day> with flat OHLC around the close."""
+    price = Decimal(close)
+    return CandleInput(
+        symbol=symbol,
+        trade_date=date(2026, 9, day),
+        open=price,
+        high=price,
+        low=price,
+        close=price,
+        volume=volume,
+    )
 
 
 def test_record_trade_persists_computed_amounts(service: EtfGridLedgerService) -> None:
@@ -194,3 +226,75 @@ def test_session_is_usable_after_record(service: EtfGridLedgerService) -> None:
     )
     with Session(get_engine()) as session:
         assert session.query(EtfGridTrade).count() == 1
+
+
+class TestUpsertCandles:
+    """upsert_candles insert and conflict-overwrite paths against real Postgres."""
+
+    def test_insert_then_read_back(self, candle_service: EtfGridCandleService) -> None:
+        """New (symbol, trade_date) rows are inserted and readable."""
+        written = candle_service.upsert_candles([_candle("513330", 8, "0.4000"), _candle("513330", 9, "0.4100")])
+        assert written == 2
+        rows = candle_service.list_candles("513330")
+        assert [(r["trade_date"].day, r["close"]) for r in rows] == [(8, Decimal("0.4000")), (9, Decimal("0.4100"))]
+        assert all(r["fetched_at"] is not None for r in rows)
+
+    def test_conflict_overwrites_ohlcv_and_refreshes_fetched_at(self, candle_service: EtfGridCandleService) -> None:
+        """A second write of the same key overwrites OHLCV (qfq self-healing)."""
+        candle_service.upsert_candles([_candle("513330", 8, "0.4000", volume=1000)])
+        first = candle_service.list_candles("513330")[0]
+
+        candle_service.upsert_candles(
+            [
+                CandleInput(
+                    symbol="513330",
+                    trade_date=date(2026, 9, 8),
+                    open=Decimal("0.3500"),
+                    high=Decimal("0.3600"),
+                    low=Decimal("0.3400"),
+                    close=Decimal("0.3550"),
+                    volume=2000,
+                )
+            ]
+        )
+        rows = candle_service.list_candles("513330")
+        assert len(rows) == 1
+        second = rows[0]
+        assert second["open"] == Decimal("0.3500")
+        assert second["high"] == Decimal("0.3600")
+        assert second["low"] == Decimal("0.3400")
+        assert second["close"] == Decimal("0.3550")
+        assert second["volume"] == 2000
+        # PostgreSQL now() is transaction time, so a later transaction can
+        # tie at best; the overwrite above is the strict part of the check.
+        assert second["fetched_at"] >= first["fetched_at"]
+
+
+class TestListCandles:
+    """list_candles ordering and limit push-down against real Postgres."""
+
+    def test_default_chronological(self, candle_service: EtfGridCandleService) -> None:
+        """Default order is trade_date ascending."""
+        candle_service.upsert_candles([_candle("513330", 9, "0.41"), _candle("513330", 8, "0.40")])
+        assert [r["trade_date"].day for r in candle_service.list_candles("513330")] == [8, 9]
+
+    def test_descending(self, candle_service: EtfGridCandleService) -> None:
+        """descending=True returns newest first."""
+        candle_service.upsert_candles([_candle("513330", 8, "0.40"), _candle("513330", 9, "0.41")])
+        assert [r["trade_date"].day for r in candle_service.list_candles("513330", descending=True)] == [9, 8]
+
+    def test_limit(self, candle_service: EtfGridCandleService) -> None:
+        """Limit caps the result, applied after the ordering."""
+        candle_service.upsert_candles([_candle("513330", day, "0.40") for day in (8, 9, 10)])
+        assert [r["trade_date"].day for r in candle_service.list_candles("513330", limit=2)] == [8, 9]
+
+    def test_descending_limit_one_returns_latest(self, candle_service: EtfGridCandleService) -> None:
+        """Descending + limit=1 yields the single most recent candle."""
+        candle_service.upsert_candles([_candle("513330", day, "0.40") for day in (8, 9, 10)])
+        rows = candle_service.list_candles("513330", descending=True, limit=1)
+        assert [r["trade_date"].day for r in rows] == [10]
+
+    def test_symbol_isolation(self, candle_service: EtfGridCandleService) -> None:
+        """list_candles only returns the requested symbol."""
+        candle_service.upsert_candles([_candle("513330", 8, "0.40"), _candle("513120", 8, "1.20")])
+        assert [r["symbol"] for r in candle_service.list_candles("513330")] == ["513330"]

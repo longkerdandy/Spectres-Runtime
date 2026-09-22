@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import CheckConstraint
+from sqlalchemy import BigInteger, CheckConstraint
 
 from spectres.extensions.etf_grid.core.ledger import (
     LedgerTrade,
@@ -168,6 +168,26 @@ class TestModelConstraints:
         assert str(constraint.sqltext) == "side IN ('buy', 'sell')"
 
 
+class TestCandlesModel:
+    """The candles table is keyed for upsert-based sync."""
+
+    def test_composite_primary_key_is_symbol_and_trade_date(self) -> None:
+        """The PK is exactly (symbol, trade_date) — the natural upsert key."""
+        table = EtfGridBase.metadata.tables["etf_grid_candles"]
+        assert [c.name for c in table.primary_key.columns] == ["symbol", "trade_date"]
+
+    def test_no_surrogate_id_and_no_extra_indexes(self) -> None:
+        """The PK covers the only access pattern; nothing else is indexed."""
+        table = EtfGridBase.metadata.tables["etf_grid_candles"]
+        assert "id" not in table.c
+        assert list(table.indexes) == []
+
+    def test_volume_uses_big_integer(self) -> None:
+        """Volume must be BigInteger — history contains 800M+ share bars."""
+        table = EtfGridBase.metadata.tables["etf_grid_candles"]
+        assert isinstance(table.c.volume.type, BigInteger)
+
+
 def _rendered(order_by: list[SortSpec] | None) -> list[str]:
     """Render ORDER BY clauses as SQL strings for assertion."""
     return [str(clause) for clause in _order_clauses(order_by)]
@@ -222,7 +242,7 @@ class _FailingSessionFactory:
 
 
 class TestRecordTradeValidation:
-    """record_trade rejects invalid numeric input before touching the database."""
+    """record_trade rejects invalid input before touching the database."""
 
     def service(self) -> EtfGridLedgerService:
         """Build a service whose session factory fails if ever called."""
