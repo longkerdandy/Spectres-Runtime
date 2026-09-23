@@ -98,7 +98,10 @@ class TestSyncCandles:
     def test_missing_api_key_fails_at_call_time(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A missing key raises a clear ValueError only when sync is invoked."""
         monkeypatch.delenv("ETF_GRID_FTSHARE_API_KEY", raising=False)
-        monkeypatch.delenv("FTSHARE_API_KEY", raising=False)
+        monkeypatch.setenv("ETF_GRID_PORTFOLIO", "[]")
+        monkeypatch.setenv("ETF_GRID_CANDLE_LOOKBACK_DAYS", "90")
+        monkeypatch.setenv("ETF_GRID_BACKFILL_START_DATE", "2021-01-01")
+        monkeypatch.setenv("ETF_GRID_GRID_STEP", "0.05")
         config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
         with pytest.raises(ValueError, match="ETF_GRID_FTSHARE_API_KEY is required"):
             sync_candles(["513330.XSHG"], config=config, candle_service=FakeCandleService(None))
@@ -137,7 +140,7 @@ class TestSyncCandles:
         """An existing symbol refetches latest_date - candle_lookback_days."""
         client = MockClient([])
         service = FakeCandleService(latest=date(2026, 9, 22))
-        config = EtfGridConfig(candle_lookback_days=90)
+        config = EtfGridConfig(candle_lookback_days=90)  # type: ignore[call-arg]  # remaining fields from .env.test
         result = sync_candles(["513330.XSHG"], client=client, candle_service=service, config=config)
 
         expected_since_ms = int(datetime(2026, 6, 24, tzinfo=CST).timestamp() * 1000)  # 2026-09-22 minus 90 days
@@ -181,9 +184,9 @@ def test_live_ftshare_fetch() -> None:
     """Live smoke: the real SDK fetches recent daily bars for one symbol."""
     import ftshare as ft
 
-    config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
-    if not config.ftshare_api_key:
-        pytest.skip("no FTSHARE API key configured")
+    config = EtfGridConfig()  # type: ignore[call-arg]  # reads SPECTRES_ENV_FILE for portfolio; real key from os.environ
+    if not config.ftshare_api_key or config.ftshare_api_key.startswith("FAKE"):
+        pytest.skip("no real FTSHARE API key configured")
     client = ft.market_api(api_key=config.ftshare_api_key)
     bars = client.etf_candlesticks(
         symbol="513330.XSHG",

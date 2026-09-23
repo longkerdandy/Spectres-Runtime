@@ -78,7 +78,7 @@ def sync_candles(
         ValueError: If the API key is missing when a client must be
             created, or a symbol fails validation.
     """
-    config = config or EtfGridConfig()
+    config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
     candle_service = candle_service or EtfGridCandleService()
     if symbols is None:
         symbols = [item.symbol for item in config.portfolio]
