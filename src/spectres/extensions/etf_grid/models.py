@@ -72,7 +72,7 @@ class EtfGridCandle(EtfGridBase):
     """One forward-adjusted (qfq) daily candle for a tracked symbol.
 
     Local cache of FTShare ``ft_v1_etf_candlesticks`` (``adjust_kind=
-    Forward``). Contracts:
+    forward``). Contracts:
 
     - **qfq basis**: a dividend recomputes ALL historical bars, so rows
       are **upserted, never append-only** — sync refetches a trailing

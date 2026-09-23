@@ -21,6 +21,10 @@ from spectres.extensions.etf_grid.types import CandleInput, normalize_symbol
 CST = timezone(timedelta(hours=8))
 PRICE_QUANTUM = Decimal("0.0001")
 
+# FTShare rejects daily-K queries spanning more than 12 calendar months;
+# stay safely below that when chunking long backfills.
+MAX_WINDOW_DAYS = 360
+
 
 def bar_to_candle(symbol: str, bar: dict[str, Any]) -> CandleInput:
     """Translate one FTShare bar row into a CandleInput.
@@ -68,7 +72,7 @@ def sync_candles(
         config: Extension settings; loaded from the environment when None.
 
     Returns:
-        A mapping of symbol to the number of rows written.
+        A mapping of symbol to the number of distinct trading days written.
 
     Raises:
         ValueError: If the API key is missing when a client must be
@@ -83,21 +87,31 @@ def sync_candles(
             raise ValueError("ETF_GRID_FTSHARE_API_KEY is required for market data sync")
         client = ft.market_api(api_key=config.ftshare_api_key)
 
-    until_ms = int(datetime.now(CST).timestamp() * 1000)
+    until_dt = datetime.now(CST)
     written: dict[str, int] = {}
     for raw_symbol in symbols:
         symbol = normalize_symbol(raw_symbol)
         latest = candle_service.list_candles(symbol, descending=True, limit=1)
         since = latest[0]["trade_date"] - timedelta(days=config.candle_lookback_days) if latest else config.backfill_start_date
-        since_ms = int(datetime.combine(since, datetime.min.time(), tzinfo=CST).timestamp() * 1000)
-        bars = client.etf_candlesticks(
-            symbol=symbol,
-            interval_unit="Day",
-            adjust_kind="Forward",
-            since_ts_millis=since_ms,
-            until_ts_millis=until_ms,
-            as_dataframe=False,
-        )
-        candles = [bar_to_candle(symbol, bar) for bar in bars]
-        written[symbol] = candle_service.upsert_candles(candles) if candles else 0
+
+        # Chunk long ranges: FTShare caps daily-K queries at 12 calendar
+        # months. Chunks may overlap by one boundary day; dedupe below.
+        bars: list[dict[str, Any]] = []
+        window_start = datetime.combine(since, datetime.min.time(), tzinfo=CST)
+        while window_start < until_dt:
+            window_end = min(window_start + timedelta(days=MAX_WINDOW_DAYS), until_dt)
+            bars.extend(
+                client.etf_candlesticks(
+                    symbol=symbol,
+                    interval_unit="Day",
+                    adjust_kind="forward",
+                    since_ts_millis=int(window_start.timestamp() * 1000),
+                    until_ts_millis=int(window_end.timestamp() * 1000),
+                    as_dataframe=False,
+                )
+            )
+            window_start = window_end
+
+        candles = {c.trade_date: c for c in (bar_to_candle(symbol, bar) for bar in bars)}
+        written[symbol] = candle_service.upsert_candles(list(candles.values())) if candles else 0
     return written

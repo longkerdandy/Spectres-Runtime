@@ -2,14 +2,14 @@
 
 import os
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 import pytest
 
 from spectres.extensions.etf_grid.config import EtfGridConfig
-from spectres.extensions.etf_grid.marketdata import CST, bar_to_candle, sync_candles
+from spectres.extensions.etf_grid.marketdata import CST, MAX_WINDOW_DAYS, bar_to_candle, sync_candles
 from spectres.extensions.etf_grid.service import EtfGridCandleService
 from spectres.extensions.etf_grid.types import CandleInput
 
@@ -113,7 +113,7 @@ class TestSyncCandles:
         expected_since_ms = int(datetime(2021, 1, 1, tzinfo=CST).timestamp() * 1000)
         assert call["symbol"] == "513330.XSHG"
         assert call["interval_unit"] == "Day"
-        assert call["adjust_kind"] == "Forward"
+        assert call["adjust_kind"] == "forward"
         assert call["since_ts_millis"] == expected_since_ms
         assert call["as_dataframe"] is False
         assert call["until_ts_millis"] > expected_since_ms
@@ -150,8 +150,21 @@ class TestSyncCandles:
         client = MockClient([])
         service = FakeCandleService(latest=None)
         result = sync_candles(client=client, candle_service=service)
-        assert [call["symbol"] for call in client.calls] == ["513330.XSHG", "513120.XSHG", "513530.XSHG"]
+        assert {call["symbol"] for call in client.calls} == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
         assert set(result) == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
+
+    def test_backfill_chunks_into_sub_year_windows(self) -> None:
+        """Long backfills are split into contiguous <=12-month chunks (FTShare server limit)."""
+        client = MockClient([])
+        service = FakeCandleService(latest=None)
+        sync_candles(["513330.XSHG"], client=client, candle_service=service)
+
+        assert len(client.calls) > 1
+        for call in client.calls:
+            assert call["until_ts_millis"] - call["since_ts_millis"] <= MAX_WINDOW_DAYS * 86_400_000
+        assert client.calls[0]["since_ts_millis"] == int(datetime(2021, 1, 1, tzinfo=CST).timestamp() * 1000)
+        for prev, nxt in zip(client.calls, client.calls[1:], strict=False):
+            assert nxt["since_ts_millis"] == prev["until_ts_millis"]
 
     def test_symbol_normalized_before_fetch(self) -> None:
         """Lowercase symbols are normalized before hitting client and service."""
@@ -175,7 +188,8 @@ def test_live_ftshare_fetch() -> None:
     bars = client.etf_candlesticks(
         symbol="513330.XSHG",
         interval_unit="Day",
-        adjust_kind="Forward",
+        adjust_kind="forward",
+        since_ts_millis=int((datetime.now(CST) - timedelta(days=30)).timestamp() * 1000),
         until_ts_millis=int(datetime.now(CST).timestamp() * 1000),
         limit=3,
         as_dataframe=False,
