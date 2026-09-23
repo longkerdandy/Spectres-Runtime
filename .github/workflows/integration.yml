@@ -51,3 +51,6 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASS: ${{ secrets.DB_PASS }}
           TEAM_LEADER_LLM_API_KEY: ${{ secrets.TEAM_LEADER_LLM_API_KEY }}
+          # Live FTShare smoke test: guards against silent SDK/API drift
+          # (mocked tests cannot catch provider-side contract changes).
+          ETF_GRID_FTSHARE_API_KEY: ${{ secrets.FTSHARE_API_KEY }}

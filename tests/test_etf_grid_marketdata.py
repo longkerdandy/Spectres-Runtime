@@ -1,6 +1,5 @@
 """Unit tests for the ETF grid market data sync orchestration (mocked client/service)."""
 
-import os
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -179,7 +178,7 @@ class TestSyncCandles:
         assert result == {"513330.XSHG": 1}
 
 
-@pytest.mark.skipif(os.environ.get("FTSHARE_RUN_INTEGRATION") != "1", reason="live FTShare call; set FTSHARE_RUN_INTEGRATION=1 to enable")
+@pytest.mark.integration
 def test_live_ftshare_fetch() -> None:
     """Live smoke: the real SDK fetches recent daily bars for one symbol."""
     import ftshare as ft
