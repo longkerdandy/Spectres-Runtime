@@ -39,14 +39,6 @@ class Source(StrEnum):
     AGENT = "agent"
 
 
-class SignalAction(StrEnum):
-    """Next-day-open operation advised by a daily signal snapshot."""
-
-    NONE = "none"
-    BUY = "buy"
-    SELL = "sell"
-
-
 class BlockReason(StrEnum):
     """Why a level change was not actionable in a daily signal snapshot."""
 
@@ -78,8 +70,6 @@ class SignalSortField(StrEnum):
     SYMBOL = "symbol"
     CLOSE = "close"
     LEVEL = "level"
-    ACTION = "action"
-    GRIDS = "grids"
     COMPUTED_AT = "computed_at"
 
 
@@ -96,6 +86,28 @@ class SortSpec[F: StrEnum]:
 
     field: F
     direction: SortDirection = SortDirection.ASC
+
+
+@dataclass(frozen=True)
+class OrderAdvice:
+    """One actionable limit order advised by a daily signal snapshot.
+
+    ``kind='triggered'`` means the close already crossed the grid boundary
+    (the limit is the crossed boundary — if the price recovers past it the
+    signal is gone and the order should not fill); ``kind='pending'`` is a
+    standing order for the next level. ``limit_price`` is tick-rounded
+    (0.001, buys down / sells up) and directly placeable. ``shares_est`` is
+    the estimated share count via the original's ``lot_shares`` formula
+    (per-grid shares rounded down to round lots of 100); for sells it is
+    capped at actual holdings.
+    """
+
+    side: str  # "buy" | "sell"
+    limit_price: Decimal
+    grids: int
+    shares_est: int
+    kind: str  # "triggered" | "pending"
+    note: str | None  # e.g. "cost_protection", "gate_closed"
 
 
 @dataclass(frozen=True)

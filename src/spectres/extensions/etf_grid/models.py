@@ -2,8 +2,10 @@
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Index, Integer, Numeric, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from spectres.extensions.etf_grid.types import Side
@@ -126,7 +128,7 @@ class EtfGridValuation(EtfGridBase):
 
 
 class EtfGridSignal(EtfGridBase):
-    """Computed daily grid signal snapshot for one symbol.
+    """Computed daily grid state snapshot plus the advised limit orders.
 
     Persisted by ``service.compute_daily_signals()``; makes "why buy /
     not buy that day" auditable and UI-renderable. Contracts:
@@ -137,6 +139,11 @@ class EtfGridSignal(EtfGridBase):
       audit trail lives in the append-only ``etf_grid_trades`` ledger.
     - **No position columns**: holdings are derived from the ledger on
       demand; duplicating them here would drift.
+    - ``orders`` is a JSONB list of order advices (side, limit_price,
+      grids, shares_est, kind, note): the output is actionable limit
+      orders at grid boundaries, NOT the backtest's next-open operation
+      — an owner-approved deviation from the backtest execution model
+      (the owner trades intraday on-exchange with limit orders).
     - ``gate_*`` columns are all NULL for symbols without a valuation
       gate configured.
     """
@@ -149,11 +156,8 @@ class EtfGridSignal(EtfGridBase):
     anchor_ma60: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="MA60 anchor")
     level: Mapped[int] = mapped_column(Integer, comment="Grid level today (clamped to +/- max_grids)")
     prev_level: Mapped[int] = mapped_column(Integer, comment="Grid level yesterday (clamped to +/- max_grids)")
-    action: Mapped[str] = mapped_column(String(8), comment="Next-day-open operation: none | buy | sell")
-    grids: Mapped[int] = mapped_column(Integer, comment="Grid units to trade (0 when action=none)")
+    orders: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, comment="Advised limit orders: [{side, limit_price, grids, shares_est, kind, note}] (triggered first, then pending buy, pending sell)")
     block_reason: Mapped[str | None] = mapped_column(String(32), comment="Why a level change was not actionable: gate_closed | max_grids_reached | cost_protection | no_position")
-    next_buy_trigger: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), comment="Close below this price -> buy 1 grid at next open")
-    next_sell_trigger: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), comment="max(grid boundary, cheapest lot cost x (1+step))")
     gate_metric_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), comment="Current gate metric (e.g. dyr 0.0532)")
     gate_percentile: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), comment="Metric percentile over full history, 0-1")
     gate_closed: Mapped[bool | None] = mapped_column(Boolean, comment="Whether the gate blocks opening new grids; NULL for gateless symbols")

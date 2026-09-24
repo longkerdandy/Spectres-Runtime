@@ -41,7 +41,9 @@ SYMBOLS: dict[str, dict[str, Any]] = {
     "513120": {"full_code": "513120.XSHG", "per_grid_amount": 10000, "max_grids": 8},
 }
 GRID_STEP = Decimal("0.05")
-PRICE_TOLERANCE = Decimal("0.001")
+# Covers the Runtime's tick quantization (<= 0.001, direction-aware) plus
+# the original's 4-decimal print rounding (<= 0.00005).
+PRICE_TOLERANCE = Decimal("0.0011")
 
 ORIGINAL_RUNNER = """
 import io, json, re, sys
@@ -142,6 +144,9 @@ def run_new(short: str, data_dir: Path) -> dict[str, Any]:
         ),
         GRID_STEP,
     )
+    triggered = next((o for o in snapshot.orders if o.kind == "triggered"), None)
+    pending_buy = next((o for o in snapshot.orders if o.kind == "pending" and o.side == "buy"), None)
+    pending_sell = next((o for o in snapshot.orders if o.kind == "pending" and o.side == "sell"), None)
     return {
         "date": str(dates[-1]),
         "close": closes[-1],
@@ -150,14 +155,14 @@ def run_new(short: str, data_dir: Path) -> dict[str, Any]:
         "prev_level": snapshot.prev_level,
         "shares": position.shares,
         "avg_cost": position.avg_cost,
-        "action": snapshot.action.value,
-        "grids": snapshot.grids,
-        "next_buy_trigger": snapshot.next_buy_trigger,
-        "next_sell_trigger": snapshot.next_sell_trigger,
+        "triggered_side": triggered.side if triggered else None,
+        "triggered_grids": triggered.grids if triggered else 0,
+        "pending_buy_limit": pending_buy.limit_price if pending_buy else None,
+        "pending_sell_limit": pending_sell.limit_price if pending_sell else None,
     }
 
 
-_ACTION_MAP = {"买入": "buy", "卖出": "sell", "无": "none"}
+_ACTION_MAP = {"买入": "buy", "卖出": "sell", "无": None}
 
 
 def close_enough(decimal_value: Decimal | None, float_value: Any) -> bool:
@@ -187,10 +192,10 @@ def main() -> None:
             "prev_level": old["prev_level"] == new["prev_level"],
             "shares": old["shares"] == new["shares"],
             "avg_cost": close_enough(new["avg_cost"], old["avg_cost"]),
-            "action": _ACTION_MAP[old["action"]] == new["action"],
-            "grids": old["grids"] == new["grids"],
-            "next_buy_trigger": close_enough(new["next_buy_trigger"], old["next_buy_trigger"]),
-            "next_sell_trigger": close_enough(new["next_sell_trigger"], old["next_sell_trigger"]),
+            "triggered_side": _ACTION_MAP[old["action"]] == new["triggered_side"],
+            "triggered_grids": old["grids"] == new["triggered_grids"],
+            "pending_buy_limit": close_enough(new["pending_buy_limit"], old["next_buy_trigger"]),
+            "pending_sell_limit": close_enough(new["pending_sell_limit"], old["next_sell_trigger"]),
         }
         ok = all(checks.values())
         print(f"== {SYMBOLS[short]['full_code']} ({old['date']}) ==")
@@ -200,7 +205,7 @@ def main() -> None:
         )
         print(
             f"  new: close={new['close']} anchor={new['anchor']:.6f} level={new['level']} prev={new['prev_level']} "
-            f"action={new['action']}x{new['grids']} buy_trig={new['next_buy_trigger']} sell_trig={new['next_sell_trigger']}"
+            f"triggered={new['triggered_side']}x{new['triggered_grids']} pending_buy={new['pending_buy_limit']} pending_sell={new['pending_sell_limit']}"
         )
         print(f"  position: old shares={old['shares']} avg={old['avg_cost']} | new shares={new['shares']} avg={new['avg_cost']}")
         print(f"  -> {'OK' if ok else 'MISMATCH: ' + json.dumps(checks)}")

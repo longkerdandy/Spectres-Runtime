@@ -28,6 +28,7 @@ from spectres.extensions.etf_grid.db import get_session_factory
 from spectres.extensions.etf_grid.models import EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.types import (
     CandleInput,
+    OrderAdvice,
     Side,
     SignalSortField,
     SortDirection,
@@ -400,8 +401,6 @@ _SIGNAL_SORTABLE_COLUMNS: dict[SignalSortField, InstrumentedAttribute[Any]] = {
     SignalSortField.SYMBOL: EtfGridSignal.symbol,
     SignalSortField.CLOSE: EtfGridSignal.close,
     SignalSortField.LEVEL: EtfGridSignal.level,
-    SignalSortField.ACTION: EtfGridSignal.action,
-    SignalSortField.GRIDS: EtfGridSignal.grids,
     SignalSortField.COMPUTED_AT: EtfGridSignal.computed_at,
 }
 
@@ -461,11 +460,8 @@ class EtfGridSignalService:
                 "anchor_ma60": stmt.excluded.anchor_ma60,
                 "level": stmt.excluded.level,
                 "prev_level": stmt.excluded.prev_level,
-                "action": stmt.excluded.action,
-                "grids": stmt.excluded.grids,
+                "orders": stmt.excluded.orders,
                 "block_reason": stmt.excluded.block_reason,
-                "next_buy_trigger": stmt.excluded.next_buy_trigger,
-                "next_sell_trigger": stmt.excluded.next_sell_trigger,
                 "gate_metric_value": stmt.excluded.gate_metric_value,
                 "gate_percentile": stmt.excluded.gate_percentile,
                 "gate_closed": stmt.excluded.gate_closed,
@@ -502,6 +498,18 @@ class EtfGridSignalService:
             return _signal_to_dict(row) if row else None
 
 
+def _order_to_json(order: OrderAdvice) -> dict[str, Any]:
+    """Serialize one order advice for the JSONB column (Decimals as strings)."""
+    return {
+        "side": order.side,
+        "limit_price": str(order.limit_price),
+        "grids": order.grids,
+        "shares_est": order.shares_est,
+        "kind": order.kind,
+        "note": order.note,
+    }
+
+
 def _snapshot_to_row(snapshot: SignalSnapshot) -> dict[str, Any]:
     """Convert a computed signal snapshot into row values for upsert."""
     return {
@@ -511,11 +519,8 @@ def _snapshot_to_row(snapshot: SignalSnapshot) -> dict[str, Any]:
         "anchor_ma60": snapshot.anchor_ma60,
         "level": snapshot.level,
         "prev_level": snapshot.prev_level,
-        "action": snapshot.action.value,
-        "grids": snapshot.grids,
+        "orders": [_order_to_json(order) for order in snapshot.orders],
         "block_reason": snapshot.block_reason.value if snapshot.block_reason else None,
-        "next_buy_trigger": snapshot.next_buy_trigger,
-        "next_sell_trigger": snapshot.next_sell_trigger,
         "gate_metric_value": snapshot.gate_metric_value,
         "gate_percentile": snapshot.gate_percentile,
         "gate_closed": snapshot.gate_closed,
@@ -531,11 +536,8 @@ def _signal_to_dict(signal: EtfGridSignal) -> dict[str, Any]:
         "anchor_ma60": signal.anchor_ma60,
         "level": signal.level,
         "prev_level": signal.prev_level,
-        "action": signal.action,
-        "grids": signal.grids,
+        "orders": signal.orders,
         "block_reason": signal.block_reason,
-        "next_buy_trigger": signal.next_buy_trigger,
-        "next_sell_trigger": signal.next_sell_trigger,
         "gate_metric_value": signal.gate_metric_value,
         "gate_percentile": signal.gate_percentile,
         "gate_closed": signal.gate_closed,

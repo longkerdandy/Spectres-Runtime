@@ -122,9 +122,12 @@ csindex history revisions self-heal.
 
 ### `etf_grid_signals` (ETF Grid Trading extension)
 
-Computed daily grid signal snapshot per symbol, persisted by
-`compute_daily_signals()`. Makes "why buy / not buy that day" auditable
-and UI-renderable. Model: `src/spectres/extensions/etf_grid/models.py`.
+Computed daily grid state snapshot plus the advised limit orders per
+symbol, persisted by `compute_daily_signals()`. Makes "why buy / not
+buy that day" auditable and UI-renderable. Execution model (owner
+decision): actionable limit orders at grid boundaries, not the
+backtest's next-day-open operation. Model:
+`src/spectres/extensions/etf_grid/models.py`.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -133,11 +136,8 @@ and UI-renderable. Model: `src/spectres/extensions/etf_grid/models.py`.
 | `close` | Numeric(10,4) NOT NULL | qfq close used for the computation |
 | `anchor_ma60` | Numeric(10,4) NOT NULL | MA60 anchor |
 | `level` / `prev_level` | Integer NOT NULL | grid level today / yesterday (clamped to ±max_grids) |
-| `action` | String(8) NOT NULL | `none` / `buy` / `sell` (next-day-open operation) |
-| `grids` | Integer NOT NULL | grid units to trade (0 when action=`none`) |
+| `orders` | JSONB NOT NULL | advised limit orders `[{side, limit_price, grids, shares_est, kind, note}]` (triggered first, then pending buy, pending sell) |
 | `block_reason` | String(32) NULL | `gate_closed` / `max_grids_reached` / `cost_protection` / `no_position` |
-| `next_buy_trigger` | Numeric(10,4) NULL | close below → buy 1 grid at next open |
-| `next_sell_trigger` | Numeric(10,4) NULL | max(grid boundary, cheapest lot cost × (1+step)) |
 | `gate_metric_value` | Numeric(8,4) NULL | current gate metric |
 | `gate_percentile` | Numeric(6,4) NULL | metric percentile over full history, 0~1 |
 | `gate_closed` | Boolean NULL | NULL for gateless symbols |

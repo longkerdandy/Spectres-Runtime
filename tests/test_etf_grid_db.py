@@ -20,10 +20,9 @@ from spectres.extensions.etf_grid.service import (
     get_portfolio_status,
 )
 from spectres.extensions.etf_grid.types import (
-    BlockReason,
     CandleInput,
+    OrderAdvice,
     Side,
-    SignalAction,
     SignalSortField,
     SortDirection,
     SortSpec,
@@ -370,7 +369,7 @@ class TestListCandles:
         assert [r["symbol"] for r in rows] == ["513330.XSHG"]
 
 
-def _snapshot(symbol: str, day: int, action: SignalAction = SignalAction.NONE, grids: int = 0, level: int = 0) -> SignalSnapshot:
+def _snapshot(symbol: str, day: int, orders: tuple[OrderAdvice, ...] = (), level: int = 0) -> SignalSnapshot:
     """Build a signal snapshot for 2026-09-<day> with plausible flat values."""
     return SignalSnapshot(
         symbol=symbol,
@@ -379,15 +378,15 @@ def _snapshot(symbol: str, day: int, action: SignalAction = SignalAction.NONE, g
         anchor_ma60=Decimal("1.0000"),
         level=level,
         prev_level=level,
-        action=action,
-        grids=grids,
-        block_reason=BlockReason.NO_POSITION if action is SignalAction.NONE else None,
-        next_buy_trigger=Decimal("0.9500"),
-        next_sell_trigger=None,
+        orders=orders,
+        block_reason=None,
         gate_metric_value=None,
         gate_percentile=None,
         gate_closed=None,
     )
+
+
+_BUY_ORDER = OrderAdvice(side="buy", limit_price=Decimal("0.9500"), grids=3, shares_est=30000, kind="triggered", note=None)
 
 
 class TestValuationService:
@@ -420,21 +419,23 @@ class TestSignalService:
 
     def test_upsert_read_and_latest(self, services: Services) -> None:
         """Snapshots round-trip in canonical order; latest_signal reads the newest."""
-        services.signals.upsert_signals([_snapshot("513330.XSHG", 2), _snapshot("513330.XSHG", 1, SignalAction.BUY, 2, -3)])
+        services.signals.upsert_signals([_snapshot("513330.XSHG", 2), _snapshot("513330.XSHG", 1, orders=(_BUY_ORDER,), level=-3)])
         rows = services.signals.list_signals("513330.XSHG")
-        assert [(r["trade_date"].day, r["action"], r["grids"]) for r in rows] == [(1, "buy", 2), (2, "none", 0)]
+        assert [(r["trade_date"].day, len(r["orders"]), r["level"]) for r in rows] == [(1, 1, -3), (2, 0, 0)]
+        # JSONB roundtrip: Decimals are stored as strings
+        assert rows[0]["orders"] == [{"side": "buy", "limit_price": "0.9500", "grids": 3, "shares_est": 30000, "kind": "triggered", "note": None}]
         latest = services.signals.latest_signal("513330.XSHG")
         assert latest is not None and latest["trade_date"] == date(2026, 9, 2)
 
     def test_recompute_overwrites_same_day(self, services: Services) -> None:
         """A same-day recomputation overwrites the row (advice, not fact)."""
-        services.signals.upsert_signals([_snapshot("513330.XSHG", 1, SignalAction.NONE, 0)])
+        services.signals.upsert_signals([_snapshot("513330.XSHG", 1)])
         first = services.signals.latest_signal("513330.XSHG")
-        services.signals.upsert_signals([_snapshot("513330.XSHG", 1, SignalAction.BUY, 3, -3)])
+        services.signals.upsert_signals([_snapshot("513330.XSHG", 1, orders=(_BUY_ORDER,), level=-3)])
         rows = services.signals.list_signals("513330.XSHG")
         assert len(rows) == 1
-        assert rows[0]["action"] == "buy"
-        assert rows[0]["grids"] == 3
+        assert len(rows[0]["orders"]) == 1
+        assert rows[0]["orders"][0]["grids"] == 3
         assert rows[0]["level"] == -3
         assert first is not None and rows[0]["computed_at"] >= first["computed_at"]
 
@@ -492,13 +493,17 @@ class TestComputeDailySignals:
         signal = result["signals"]["513330.XSHG"]
         assert signal["level"] == -3
         assert signal["prev_level"] == 0
-        assert signal["action"] == "buy"
-        assert signal["grids"] == 3
+        triggered = next(o for o in signal["orders"] if o["kind"] == "triggered")
+        assert triggered["side"] == "buy"
+        assert triggered["grids"] == 3
+        pending_buy = next(o for o in signal["orders"] if o["kind"] == "pending" and o["side"] == "buy")
+        assert pending_buy["grids"] == 1
 
         persisted = services.signals.latest_signal("513330.XSHG")
         assert persisted is not None
-        assert persisted["action"] == "buy"
-        assert persisted["grids"] == 3
+        assert len(persisted["orders"]) == 2  # triggered buy + pending buy
+        assert persisted["orders"][0]["kind"] == "triggered"
+        assert persisted["orders"][0]["grids"] == 3
         assert persisted["computed_at"] is not None
 
     def test_insufficient_history_is_skipped_not_crashing(self, services: Services) -> None:
@@ -555,7 +560,8 @@ class TestComputeDailySignals:
         )
         assert result["skipped"] == {}
         signal = result["signals"]["513530.XSHG"]
-        assert signal["action"] == "buy"  # gate open: dyr percentile 1.0 >= 0.2
+        triggered = next(o for o in signal["orders"] if o["kind"] == "triggered")
+        assert triggered["side"] == "buy"  # gate open: dyr percentile 1.0 >= 0.2
         assert signal["gate_metric_value"] == Decimal("0.0500")
         assert signal["gate_closed"] is False
 
@@ -586,7 +592,7 @@ class TestGetPortfolioStatus:
                 )
             ]
         )
-        services.signals.upsert_signals([_snapshot("513120.XSHG", 22, SignalAction.NONE, 0)])
+        services.signals.upsert_signals([_snapshot("513120.XSHG", 22, orders=(_BUY_ORDER,))])
         config = EtfGridConfig()  # type: ignore[call-arg]
         status = get_portfolio_status(
             config=config,
@@ -601,6 +607,7 @@ class TestGetPortfolioStatus:
         assert row["close"] == Decimal("1.3000")
         assert row["market_value"] == Decimal("1.3000") * 8000
         assert row["signal"]["trade_date"] == date(2026, 9, 22)
+        assert row["signal"]["orders"][0]["side"] == "buy"
         empty = next(r for r in status if r["symbol"] == "513530.XSHG")
         assert empty["shares"] == 0
         assert empty["market_value"] is None
