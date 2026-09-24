@@ -8,7 +8,7 @@
 > convention — see [Runtime Extensions §6.2](runtime-extensions.md)),
 > registered here once implemented.
 >
-> Last updated: 2026-09-22.
+> Last updated: 2026-09-24.
 
 ---
 
@@ -100,6 +100,52 @@ re-adjustments self-heal. Model:
 
 The composite PK is the upsert key and covers the only access pattern
 (history per symbol, date-ordered); no surrogate id, no extra indexes.
+
+### `etf_grid_valuation` (ETF Grid Trading extension)
+
+Valuation series of the 930914 index — the input of the valuation gate
+(pause opening new grids when the index is expensive). Sourced solely
+from the csindex.com.cn public JSON API (`csindex.py`); `dyr` is
+reconstructed locally from the price index and its H20914 total-return
+twin. Model: `src/spectres/extensions/etf_grid/models.py`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `trade_date` | Date PK | trading day |
+| `close` | Numeric(10,2) NOT NULL | price index close |
+| `pe_ttm` | Numeric(10,2) NOT NULL | PE-TTM |
+| `dyr` | Numeric(8,4) NULL | trailing-12m dividend yield (0.0532 = 5.32%); NULL for the first 252 trading days |
+| `fetched_at` | DateTime(tz) NOT NULL | `server_default=func.now()`, refreshed on every upsert |
+
+Single-index table (930914 only). Upsert semantics like candles so
+csindex history revisions self-heal.
+
+### `etf_grid_signals` (ETF Grid Trading extension)
+
+Computed daily grid signal snapshot per symbol, persisted by
+`compute_daily_signals()`. Makes "why buy / not buy that day" auditable
+and UI-renderable. Model: `src/spectres/extensions/etf_grid/models.py`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `symbol` | String(16) PK | FTShare full code (composite PK, part 1) |
+| `trade_date` | Date PK | trading day the signal is for (composite PK, part 2) |
+| `close` | Numeric(10,4) NOT NULL | qfq close used for the computation |
+| `anchor_ma60` | Numeric(10,4) NOT NULL | MA60 anchor |
+| `level` / `prev_level` | Integer NOT NULL | grid level today / yesterday (clamped to ±max_grids) |
+| `action` | String(8) NOT NULL | `none` / `buy` / `sell` (next-day-open operation) |
+| `grids` | Integer NOT NULL | grid units to trade (0 when action=`none`) |
+| `block_reason` | String(32) NULL | `gate_closed` / `max_grids_reached` / `cost_protection` / `no_position` |
+| `next_buy_trigger` | Numeric(10,4) NULL | close below → buy 1 grid at next open |
+| `next_sell_trigger` | Numeric(10,4) NULL | max(grid boundary, cheapest lot cost × (1+step)) |
+| `gate_metric_value` | Numeric(8,4) NULL | current gate metric |
+| `gate_percentile` | Numeric(6,4) NULL | metric percentile over full history, 0~1 |
+| `gate_closed` | Boolean NULL | NULL for gateless symbols |
+| `computed_at` | DateTime(tz) NOT NULL | `server_default=func.now()` |
+
+Upsert on recompute: a same-day recomputation overwrites the row (the
+signal is advice, not fact; the audit trail lives in `etf_grid_trades`).
+No position columns — holdings derive from the ledger on demand.
 
 ## 3. Notes
 

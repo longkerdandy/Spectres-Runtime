@@ -4,10 +4,19 @@ import json
 import os
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+class GateConfig(BaseModel):
+    """Valuation gate: pause opening new grids when the index valuation is extreme."""
+
+    index_code: str  # csindex index code, e.g. "930914"
+    metric: str  # column of etf_grid_valuation: "dyr" | "pe_ttm"
+    threshold: float  # historical percentile, 0~1
+    block_when: Literal["below", "above"]  # "below": percentile < threshold closes the gate (dyr); "above": > closes it (pe_ttm)
 
 
 class PortfolioItem(BaseModel):
@@ -17,6 +26,7 @@ class PortfolioItem(BaseModel):
     name: str
     per_grid_amount: int
     max_grids: int
+    gate: GateConfig | None = None  # no valuation gate when unset
 
 
 class EtfGridConfig(BaseSettings):

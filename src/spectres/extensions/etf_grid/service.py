@@ -1,4 +1,4 @@
-"""Application service for the ETF grid trades ledger."""
+"""Application services for the ETF grid extension."""
 
 from collections.abc import Sequence
 from datetime import date
@@ -10,6 +10,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import InstrumentedAttribute, Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
+from spectres.extensions.etf_grid.config import EtfGridConfig
+from spectres.extensions.etf_grid.core.grid import (
+    GridSignalInput,
+    SignalSnapshot,
+    compute_signal,
+    gate_state,
+    moving_average,
+)
 from spectres.extensions.etf_grid.core.ledger import (
     LedgerTrade,
     Position,
@@ -17,14 +25,16 @@ from spectres.extensions.etf_grid.core.ledger import (
     replay_ledger,
 )
 from spectres.extensions.etf_grid.db import get_session_factory
-from spectres.extensions.etf_grid.models import EtfGridCandle, EtfGridTrade
+from spectres.extensions.etf_grid.models import EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.types import (
     CandleInput,
     Side,
+    SignalSortField,
     SortDirection,
     SortSpec,
     Source,
     TradeSortField,
+    ValuationInput,
     normalize_symbol,
 )
 
@@ -41,13 +51,13 @@ _SORTABLE_COLUMNS: dict[TradeSortField, InstrumentedAttribute[Any]] = {
     TradeSortField.CREATED_AT: EtfGridTrade.created_at,
 }
 
-_DEFAULT_ORDER: tuple[SortSpec, ...] = (
+_DEFAULT_ORDER: tuple[SortSpec[TradeSortField], ...] = (
     SortSpec(TradeSortField.SYMBOL),
     SortSpec(TradeSortField.TRADE_DATE),
 )
 
 
-def _order_clauses(order_by: Sequence[SortSpec] | None) -> list[ColumnElement[Any]]:
+def _order_clauses(order_by: Sequence[SortSpec[TradeSortField]] | None) -> list[ColumnElement[Any]]:
     """Translate sort specs into ORDER BY clauses via the column whitelist.
 
     ``None`` selects the replay-canonical default order (symbol, trade_date).
@@ -145,7 +155,7 @@ class EtfGridLedgerService:
         self,
         symbol: str | None = None,
         *,
-        order_by: Sequence[SortSpec] | None = None,
+        order_by: Sequence[SortSpec[TradeSortField]] | None = None,
     ) -> list[dict[str, Any]]:
         """Return ledger trades, optionally filtered by symbol and sorted.
 
@@ -328,3 +338,325 @@ def _candle_to_dict(candle: EtfGridCandle) -> dict[str, Any]:
         "volume": candle.volume,
         "fetched_at": candle.fetched_at,
     }
+
+
+class EtfGridValuationService:
+    """Stores and reads the 930914 index valuation series (gate input)."""
+
+    def __init__(self, session_factory: sessionmaker[Session] | None = None) -> None:
+        """Create the service; defaults to the extension's shared session factory."""
+        self._session_factory = session_factory or get_session_factory()
+
+    def upsert_valuation(self, rows: Sequence[ValuationInput]) -> int:
+        """Upsert valuation rows in a single transaction.
+
+        Upsert semantics match candles: on conflict of the ``trade_date``
+        primary key the values are overwritten and ``fetched_at`` refreshed,
+        so csindex history revisions self-heal.
+
+        Returns:
+            The number of rows written.
+        """
+        if not rows:
+            return 0
+        stmt = pg_insert(EtfGridValuation).values([{"trade_date": row.trade_date, "close": row.close, "pe_ttm": row.pe_ttm, "dyr": row.dyr} for row in rows])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["trade_date"],
+            set_={"close": stmt.excluded.close, "pe_ttm": stmt.excluded.pe_ttm, "dyr": stmt.excluded.dyr, "fetched_at": func.now()},
+        )
+        with self._session_factory() as session, session.begin():
+            session.execute(stmt)
+        return len(rows)
+
+    def latest_valuation(self) -> dict[str, Any] | None:
+        """Return the most recent valuation row, or None when the table is empty."""
+        stmt = select(EtfGridValuation).order_by(EtfGridValuation.trade_date.desc()).limit(1)
+        with self._session_factory() as session:
+            row = session.scalars(stmt).first()
+            return _valuation_to_dict(row) if row else None
+
+    def list_valuation(self, limit: int | None = None) -> list[dict[str, Any]]:
+        """Return valuation rows oldest-first (the gate needs the full series for percentiles)."""
+        stmt = select(EtfGridValuation).order_by(EtfGridValuation.trade_date.asc())
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        with self._session_factory() as session:
+            return [_valuation_to_dict(row) for row in session.scalars(stmt)]
+
+
+def _valuation_to_dict(row: EtfGridValuation) -> dict[str, Any]:
+    """Convert a valuation ORM row into a structured dict."""
+    return {
+        "trade_date": row.trade_date,
+        "close": row.close,
+        "pe_ttm": row.pe_ttm,
+        "dyr": row.dyr,
+        "fetched_at": row.fetched_at,
+    }
+
+
+_SIGNAL_SORTABLE_COLUMNS: dict[SignalSortField, InstrumentedAttribute[Any]] = {
+    SignalSortField.TRADE_DATE: EtfGridSignal.trade_date,
+    SignalSortField.SYMBOL: EtfGridSignal.symbol,
+    SignalSortField.CLOSE: EtfGridSignal.close,
+    SignalSortField.LEVEL: EtfGridSignal.level,
+    SignalSortField.ACTION: EtfGridSignal.action,
+    SignalSortField.GRIDS: EtfGridSignal.grids,
+    SignalSortField.COMPUTED_AT: EtfGridSignal.computed_at,
+}
+
+_SIGNAL_DEFAULT_ORDER: tuple[SortSpec[SignalSortField], ...] = (
+    SortSpec(SignalSortField.SYMBOL),
+    SortSpec(SignalSortField.TRADE_DATE),
+)
+
+_SIGNAL_STABLE_KEYS = (SignalSortField.SYMBOL, SignalSortField.TRADE_DATE)
+
+
+def _signal_order_clauses(order_by: Sequence[SortSpec[SignalSortField]] | None) -> list[ColumnElement[Any]]:
+    """Translate signal sort specs into ORDER BY clauses via the column whitelist.
+
+    Same pattern as the trades ledger: ``None`` selects the canonical
+    ``(symbol, trade_date)`` order. The stable suffix is the composite
+    primary key (whichever of its parts the caller did not sort by) —
+    there is no surrogate id here because the PK already guarantees
+    uniqueness.
+    """
+    specs = list(_SIGNAL_DEFAULT_ORDER if order_by is None else order_by)
+    for key in _SIGNAL_STABLE_KEYS:
+        if not any(spec.field is key for spec in specs):
+            specs.append(SortSpec(key))
+    clauses: list[ColumnElement[Any]] = []
+    for spec in specs:
+        column = _SIGNAL_SORTABLE_COLUMNS[spec.field]
+        clauses.append(column.desc() if spec.direction is SortDirection.DESC else column.asc())
+    return clauses
+
+
+class EtfGridSignalService:
+    """Stores and reads computed daily signal snapshots."""
+
+    def __init__(self, session_factory: sessionmaker[Session] | None = None) -> None:
+        """Create the service; defaults to the extension's shared session factory."""
+        self._session_factory = session_factory or get_session_factory()
+
+    def upsert_signals(self, snapshots: Sequence[SignalSnapshot]) -> int:
+        """Upsert signal snapshots in a single transaction.
+
+        Upsert on recompute: on conflict of the ``(symbol, trade_date)``
+        primary key the row is overwritten and ``computed_at`` refreshed —
+        the signal is advice, not fact, and the latest computation is
+        always the most accurate (e.g. after recording a trade).
+
+        Returns:
+            The number of rows written.
+        """
+        if not snapshots:
+            return 0
+        stmt = pg_insert(EtfGridSignal).values([_snapshot_to_row(snapshot) for snapshot in snapshots])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["symbol", "trade_date"],
+            set_={
+                "close": stmt.excluded.close,
+                "anchor_ma60": stmt.excluded.anchor_ma60,
+                "level": stmt.excluded.level,
+                "prev_level": stmt.excluded.prev_level,
+                "action": stmt.excluded.action,
+                "grids": stmt.excluded.grids,
+                "block_reason": stmt.excluded.block_reason,
+                "next_buy_trigger": stmt.excluded.next_buy_trigger,
+                "next_sell_trigger": stmt.excluded.next_sell_trigger,
+                "gate_metric_value": stmt.excluded.gate_metric_value,
+                "gate_percentile": stmt.excluded.gate_percentile,
+                "gate_closed": stmt.excluded.gate_closed,
+                "computed_at": func.now(),
+            },
+        )
+        with self._session_factory() as session, session.begin():
+            session.execute(stmt)
+        return len(snapshots)
+
+    def list_signals(
+        self,
+        symbol: str | None = None,
+        *,
+        order_by: Sequence[SortSpec[SignalSortField]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return signal snapshots, optionally filtered by symbol and sorted.
+
+        ``order_by=None`` keeps the canonical ``(symbol, trade_date)``
+        order; the composite primary key (whichever parts are not explicit
+        sort keys) is appended as the stable suffix.
+        """
+        stmt = select(EtfGridSignal).order_by(*_signal_order_clauses(order_by))
+        if symbol is not None:
+            stmt = stmt.where(EtfGridSignal.symbol == normalize_symbol(symbol))
+        with self._session_factory() as session:
+            return [_signal_to_dict(signal) for signal in session.scalars(stmt)]
+
+    def latest_signal(self, symbol: str) -> dict[str, Any] | None:
+        """Return the symbol's most recent signal snapshot, or None."""
+        stmt = select(EtfGridSignal).where(EtfGridSignal.symbol == normalize_symbol(symbol)).order_by(EtfGridSignal.trade_date.desc()).limit(1)
+        with self._session_factory() as session:
+            row = session.scalars(stmt).first()
+            return _signal_to_dict(row) if row else None
+
+
+def _snapshot_to_row(snapshot: SignalSnapshot) -> dict[str, Any]:
+    """Convert a computed signal snapshot into row values for upsert."""
+    return {
+        "symbol": snapshot.symbol,
+        "trade_date": snapshot.trade_date,
+        "close": snapshot.close,
+        "anchor_ma60": snapshot.anchor_ma60,
+        "level": snapshot.level,
+        "prev_level": snapshot.prev_level,
+        "action": snapshot.action.value,
+        "grids": snapshot.grids,
+        "block_reason": snapshot.block_reason.value if snapshot.block_reason else None,
+        "next_buy_trigger": snapshot.next_buy_trigger,
+        "next_sell_trigger": snapshot.next_sell_trigger,
+        "gate_metric_value": snapshot.gate_metric_value,
+        "gate_percentile": snapshot.gate_percentile,
+        "gate_closed": snapshot.gate_closed,
+    }
+
+
+def _signal_to_dict(signal: EtfGridSignal) -> dict[str, Any]:
+    """Convert a signal ORM row into a structured dict."""
+    return {
+        "symbol": signal.symbol,
+        "trade_date": signal.trade_date,
+        "close": signal.close,
+        "anchor_ma60": signal.anchor_ma60,
+        "level": signal.level,
+        "prev_level": signal.prev_level,
+        "action": signal.action,
+        "grids": signal.grids,
+        "block_reason": signal.block_reason,
+        "next_buy_trigger": signal.next_buy_trigger,
+        "next_sell_trigger": signal.next_sell_trigger,
+        "gate_metric_value": signal.gate_metric_value,
+        "gate_percentile": signal.gate_percentile,
+        "gate_closed": signal.gate_closed,
+        "computed_at": signal.computed_at,
+    }
+
+
+def compute_daily_signals(
+    symbols: Sequence[str] | None = None,
+    *,
+    config: EtfGridConfig | None = None,
+    ledger_service: EtfGridLedgerService | None = None,
+    candle_service: EtfGridCandleService | None = None,
+    valuation_service: EtfGridValuationService | None = None,
+    signal_service: EtfGridSignalService | None = None,
+) -> dict[str, Any]:
+    """Compute and persist daily grid signals for the portfolio.
+
+    For each configured symbol: read the candle history (61+ bars are
+    required — MA60 today plus MA60 yesterday), replay the ledger for the
+    position and lot queue, resolve the valuation gate when configured,
+    compute the signal via ``core.grid``, and upsert the snapshot.
+
+    Symbols with insufficient candle history are skipped (not crashed)
+    and recorded under ``skipped``; a symbol with a configured gate but no
+    usable valuation series is skipped too — emitting un-gated buy advice
+    for a gated symbol would defeat the gate's purpose.
+
+    Returns:
+        ``{"signals": {symbol: signal dict}, "skipped": {symbol: reason}}``.
+    """
+    config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+    ledger_service = ledger_service or EtfGridLedgerService()
+    candle_service = candle_service or EtfGridCandleService()
+    valuation_service = valuation_service or EtfGridValuationService()
+    signal_service = signal_service or EtfGridSignalService()
+
+    items = [item for item in config.portfolio if symbols is None or item.symbol in {normalize_symbol(s) for s in symbols}]
+    positions = ledger_service.get_positions()
+    valuation_rows: list[dict[str, Any]] | None = None
+
+    signals: dict[str, Any] = {}
+    skipped: dict[str, str] = {}
+    for item in items:
+        candles = candle_service.list_candles(item.symbol)
+        if len(candles) < 61:
+            skipped[item.symbol] = "insufficient_candles"
+            continue
+
+        gate = None
+        if item.gate is not None:
+            if valuation_rows is None:
+                valuation_rows = valuation_service.list_valuation()
+            values = [row[item.gate.metric] for row in valuation_rows if row[item.gate.metric] is not None]
+            gate = gate_state(values, Decimal(str(item.gate.threshold)), item.gate.block_when)
+            if gate is None:
+                skipped[item.symbol] = "no_valuation_data"
+                continue
+
+        closes = [candle["close"] for candle in candles]
+        anchor = moving_average(closes)
+        prev_anchor = moving_average(closes[:-1])
+        assert anchor is not None and prev_anchor is not None  # guaranteed by the >=61 candle check
+        position = positions.get(item.symbol)
+        snapshot = compute_signal(
+            GridSignalInput(
+                symbol=item.symbol,
+                trade_date=candles[-1]["trade_date"],
+                close=closes[-1],
+                prev_close=closes[-2],
+                anchor=anchor,
+                prev_anchor=prev_anchor,
+                shares=position.shares if position else 0,
+                lots=position.lots if position else (),
+                per_grid_amount=item.per_grid_amount,
+                max_grids=item.max_grids,
+                gate=gate,
+            ),
+            config.grid_step,
+        )
+        signal_service.upsert_signals([snapshot])
+        signals[item.symbol] = _snapshot_to_row(snapshot)
+    return {"signals": signals, "skipped": skipped}
+
+
+def get_portfolio_status(
+    *,
+    config: EtfGridConfig | None = None,
+    ledger_service: EtfGridLedgerService | None = None,
+    candle_service: EtfGridCandleService | None = None,
+    signal_service: EtfGridSignalService | None = None,
+) -> list[dict[str, Any]]:
+    """Per-symbol portfolio summary for presentation surfaces (toolkit/UI).
+
+    Combines the ledger-derived position (shares, average cost, realized
+    P&L) with the latest close (market value) and the latest persisted
+    signal snapshot. Positions always come from the ledger — never from
+    stored snapshots.
+    """
+    config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+    ledger_service = ledger_service or EtfGridLedgerService()
+    candle_service = candle_service or EtfGridCandleService()
+    signal_service = signal_service or EtfGridSignalService()
+
+    positions = ledger_service.get_positions()
+    status = []
+    for item in config.portfolio:
+        position = positions.get(item.symbol)
+        latest = candle_service.list_candles(item.symbol, descending=True, limit=1)
+        close = latest[0]["close"] if latest else None
+        status.append(
+            {
+                "symbol": item.symbol,
+                "name": item.name,
+                "shares": position.shares if position else 0,
+                "avg_cost": position.avg_cost if position else None,
+                "realized": position.realized if position else Decimal(0),
+                "close": close,
+                "close_date": latest[0]["trade_date"] if latest else None,
+                "market_value": close * position.shares if close is not None and position else None,
+                "signal": signal_service.latest_signal(item.symbol),
+            }
+        )
+    return status

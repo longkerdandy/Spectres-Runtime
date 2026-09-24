@@ -73,3 +73,36 @@ class TestPortfolioParsing:
         required_env.setenv("ETF_GRID_PORTFOLIO", "")
         with pytest.raises(ValidationError):
             EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+
+
+class TestGateConfig:
+    """The optional per-symbol valuation gate parses from the portfolio JSON."""
+
+    def test_gate_parsed(self, required_env: pytest.MonkeyPatch) -> None:
+        """A gate object becomes a typed GateConfig."""
+        required_env.setenv(
+            "ETF_GRID_PORTFOLIO",
+            '[{"symbol": "513530.XSHG", "name": "港股通红利ETF", "per_grid_amount": 10000, "max_grids": 7,'
+            ' "gate": {"index_code": "930914", "metric": "dyr", "threshold": 0.2, "block_when": "below"}}]',
+        )
+        config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+        gate = config.portfolio[0].gate
+        assert gate is not None
+        assert gate.index_code == "930914"
+        assert gate.metric == "dyr"
+        assert gate.threshold == 0.2
+        assert gate.block_when == "below"
+
+    def test_gate_optional(self, required_env: pytest.MonkeyPatch) -> None:
+        """A portfolio entry without a gate parses with gate=None."""
+        config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+        assert config.portfolio[0].gate is None
+
+    def test_invalid_block_when_rejected(self, required_env: pytest.MonkeyPatch) -> None:
+        """block_when outside the Literal values fails validation."""
+        required_env.setenv(
+            "ETF_GRID_PORTFOLIO",
+            '[{"symbol": "513530.XSHG", "name": "x", "per_grid_amount": 10000, "max_grids": 7, "gate": {"index_code": "930914", "metric": "dyr", "threshold": 0.2, "block_when": "near"}}]',
+        )
+        with pytest.raises(ValidationError):
+            EtfGridConfig(_env_file=None)  # type: ignore[call-arg]

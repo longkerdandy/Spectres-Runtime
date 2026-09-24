@@ -39,6 +39,23 @@ class Source(StrEnum):
     AGENT = "agent"
 
 
+class SignalAction(StrEnum):
+    """Next-day-open operation advised by a daily signal snapshot."""
+
+    NONE = "none"
+    BUY = "buy"
+    SELL = "sell"
+
+
+class BlockReason(StrEnum):
+    """Why a level change was not actionable in a daily signal snapshot."""
+
+    GATE_CLOSED = "gate_closed"
+    MAX_GRIDS_REACHED = "max_grids_reached"
+    COST_PROTECTION = "cost_protection"
+    NO_POSITION = "no_position"
+
+
 class TradeSortField(StrEnum):
     """Ledger columns that list_trades can sort by (whitelist)."""
 
@@ -54,6 +71,18 @@ class TradeSortField(StrEnum):
     CREATED_AT = "created_at"
 
 
+class SignalSortField(StrEnum):
+    """Signal snapshot columns that list_signals can sort by (whitelist)."""
+
+    TRADE_DATE = "trade_date"
+    SYMBOL = "symbol"
+    CLOSE = "close"
+    LEVEL = "level"
+    ACTION = "action"
+    GRIDS = "grids"
+    COMPUTED_AT = "computed_at"
+
+
 class SortDirection(StrEnum):
     """Sort direction for a SortSpec."""
 
@@ -62,10 +91,10 @@ class SortDirection(StrEnum):
 
 
 @dataclass(frozen=True)
-class SortSpec:
+class SortSpec[F: StrEnum]:
     """One sort key: a whitelisted field plus a direction (asc by default)."""
 
-    field: TradeSortField
+    field: F
     direction: SortDirection = SortDirection.ASC
 
 
@@ -86,3 +115,18 @@ class CandleInput:
     low: Decimal
     close: Decimal
     volume: int
+
+
+@dataclass(frozen=True)
+class ValuationInput:
+    """One daily index valuation row to upsert.
+
+    Provider-agnostic: the csindex layer reconstructs rows into this shape.
+    ``dyr`` is None for the first 252 trading days of the series (a full
+    trailing-12m window does not exist yet).
+    """
+
+    trade_date: date
+    close: Decimal
+    pe_ttm: Decimal
+    dyr: Decimal | None

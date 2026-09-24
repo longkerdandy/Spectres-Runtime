@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, Index, Integer, Numeric, String, Text, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Index, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from spectres.extensions.etf_grid.types import Side
@@ -97,3 +97,64 @@ class EtfGridCandle(EtfGridBase):
     close: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="Forward-adjusted close price")
     volume: Mapped[int] = mapped_column(BigInteger, comment="Volume in shares (800M+ values exist in history)")
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="When this row was last refreshed by sync (data freshness marker)")
+
+
+class EtfGridValuation(EtfGridBase):
+    """One day's valuation of the 930914 index (gate input series).
+
+    Sourced solely from the csindex.com.cn public JSON API (see
+    ``csindex.py``). Contracts:
+
+    - **Single-index table** (930914 only, no ``index_code`` column; add
+      one when a second index is actually needed).
+    - **Upsert, not append-only**: csindex history revisions self-heal
+      the same way candle re-adjustments do; ``fetched_at`` marks the
+      last refresh.
+    - ``dyr`` (trailing-12m dividend yield, 0.0532 = 5.32%) is
+      reconstructed locally from the price index and its H20914
+      total-return twin; it is NULL for the first 252 trading days of
+      the series, where no full trailing window exists.
+    """
+
+    __tablename__ = "etf_grid_valuation"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True, comment="Trading day of the valuation row")
+    close: Mapped[Decimal] = mapped_column(Numeric(10, 2), comment="Price index close")
+    pe_ttm: Mapped[Decimal] = mapped_column(Numeric(10, 2), comment="PE-TTM of the index")
+    dyr: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), comment="Trailing-12m dividend yield (0.0532 = 5.32%); NULL for the first 252 trading days")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="When this row was last refreshed by sync (data freshness marker)")
+
+
+class EtfGridSignal(EtfGridBase):
+    """Computed daily grid signal snapshot for one symbol.
+
+    Persisted by ``service.compute_daily_signals()``; makes "why buy /
+    not buy that day" auditable and UI-renderable. Contracts:
+
+    - **Upsert on recompute**: a same-day recomputation overwrites the
+      row — the signal is advice, not fact, and the latest computation
+      is always the most accurate (e.g. after recording a trade). The
+      audit trail lives in the append-only ``etf_grid_trades`` ledger.
+    - **No position columns**: holdings are derived from the ledger on
+      demand; duplicating them here would drift.
+    - ``gate_*`` columns are all NULL for symbols without a valuation
+      gate configured.
+    """
+
+    __tablename__ = "etf_grid_signals"
+
+    symbol: Mapped[str] = mapped_column(String(16), primary_key=True, comment="FTShare-style symbol, e.g. '513330.XSHG'")
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True, comment="Trading day the signal is for")
+    close: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="qfq close used for the computation")
+    anchor_ma60: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="MA60 anchor")
+    level: Mapped[int] = mapped_column(Integer, comment="Grid level today (clamped to +/- max_grids)")
+    prev_level: Mapped[int] = mapped_column(Integer, comment="Grid level yesterday (clamped to +/- max_grids)")
+    action: Mapped[str] = mapped_column(String(8), comment="Next-day-open operation: none | buy | sell")
+    grids: Mapped[int] = mapped_column(Integer, comment="Grid units to trade (0 when action=none)")
+    block_reason: Mapped[str | None] = mapped_column(String(32), comment="Why a level change was not actionable: gate_closed | max_grids_reached | cost_protection | no_position")
+    next_buy_trigger: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), comment="Close below this price -> buy 1 grid at next open")
+    next_sell_trigger: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), comment="max(grid boundary, cheapest lot cost x (1+step))")
+    gate_metric_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), comment="Current gate metric (e.g. dyr 0.0532)")
+    gate_percentile: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), comment="Metric percentile over full history, 0-1")
+    gate_closed: Mapped[bool | None] = mapped_column(Boolean, comment="Whether the gate blocks opening new grids; NULL for gateless symbols")
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), comment="When the signal was computed")

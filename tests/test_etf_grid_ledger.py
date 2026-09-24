@@ -188,7 +188,7 @@ class TestCandlesModel:
         assert isinstance(table.c.volume.type, BigInteger)
 
 
-def _rendered(order_by: list[SortSpec] | None) -> list[str]:
+def _rendered(order_by: list[SortSpec[TradeSortField]] | None) -> list[str]:
     """Render ORDER BY clauses as SQL strings for assertion."""
     return [str(clause) for clause in _order_clauses(order_by)]
 
