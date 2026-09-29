@@ -15,7 +15,8 @@ from typing import Any
 import ftshare as ft
 
 from spectres.extensions.etf_grid.config import EtfGridConfig
-from spectres.extensions.etf_grid.service import EtfGridCandleService
+from spectres.extensions.etf_grid.csindex import fetch_index_perf, sync_valuation
+from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridValuationService
 from spectres.extensions.etf_grid.types import CandleInput, normalize_symbol
 
 CST = timezone(timedelta(hours=8))
@@ -115,3 +116,42 @@ def sync_candles(
         candles = {c.trade_date: c for c in (bar_to_candle(symbol, bar) for bar in bars)}
         written[symbol] = candle_service.upsert_candles(list(candles.values())) if candles else 0
     return written
+
+
+def sync_market_data(
+    *,
+    config: EtfGridConfig | None = None,
+    candle_service: EtfGridCandleService | None = None,
+    valuation_service: EtfGridValuationService | None = None,
+    client: Any | None = None,
+    fetcher: Any = fetch_index_perf,
+) -> dict[str, Any]:
+    """Run the network refresh pipeline: candles from FTShare, valuation from csindex.
+
+    Per-source failure is captured in the response instead of raised —
+    a provider outage must not abort the other source (the API returns
+    this body without a 500; the toolkit echoes it in chat). Signal
+    recomputation is deliberately NOT part of this pipeline: it is a
+    local-only step triggered separately (``compute_daily_signals``).
+
+    Args:
+        config: Extension settings; loaded from the environment when None.
+        candle_service: Candle persistence target.
+        valuation_service: Valuation persistence target.
+        client: FTShare client; created from the configured key when None.
+        fetcher: csindex fetch function; injectable for tests.
+
+    Returns:
+        ``{"candles": {symbol: rows} | None, "valuation": rows | None,
+        "errors": {source: message}}`` — a source is None when it failed.
+    """
+    result: dict[str, Any] = {"candles": None, "valuation": None, "errors": {}}
+    try:
+        result["candles"] = sync_candles(config=config, candle_service=candle_service, client=client)
+    except Exception as exc:  # provider/network failure must not abort the pipeline
+        result["errors"]["candles"] = str(exc)
+    try:
+        result["valuation"] = sync_valuation(valuation_service=valuation_service, fetcher=fetcher)
+    except Exception as exc:  # provider/network failure must not abort the pipeline
+        result["errors"]["valuation"] = str(exc)
+    return result

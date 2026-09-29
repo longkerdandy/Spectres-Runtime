@@ -7,9 +7,9 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
+from spectres.db.postgres import get_postgres_db
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.core.grid import SignalSnapshot
-from spectres.extensions.etf_grid.db import get_engine
 from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
@@ -37,7 +37,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.db]
 @pytest.fixture
 def service() -> EtfGridLedgerService:
     """Provide a ledger service over a freshly created etf_grid_trades table."""
-    engine = get_engine()
+    engine = get_postgres_db().db_engine
     EtfGridBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     with session_factory() as session, session.begin():
@@ -48,7 +48,7 @@ def service() -> EtfGridLedgerService:
 @pytest.fixture
 def candle_service() -> EtfGridCandleService:
     """Provide a candle service over a freshly created etf_grid_candles table."""
-    engine = get_engine()
+    engine = get_postgres_db().db_engine
     EtfGridBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     with session_factory() as session, session.begin():
@@ -70,7 +70,7 @@ class Services:
 @pytest.fixture
 def services() -> Services:
     """Provide all services over freshly created, emptied extension tables."""
-    engine = get_engine()
+    engine = get_postgres_db().db_engine
     EtfGridBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     with session_factory() as session, session.begin():
@@ -287,7 +287,7 @@ def test_session_is_usable_after_record(service: EtfGridLedgerService) -> None:
         quantity=7800,
         commission_rate=Decimal("0.001"),
     )
-    with Session(get_engine()) as session:
+    with Session(get_postgres_db().db_engine) as session:
         assert session.query(EtfGridTrade).count() == 1
 
 

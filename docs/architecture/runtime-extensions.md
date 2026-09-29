@@ -1,10 +1,11 @@
 # Runtime Extensions — Architecture
 
 > Topic deep-dive companion to [`../architecture.md`](../architecture.md).
-> Status: **proposed design** — not yet implemented. The first extension
-> (ETF Grid Trading) both motivates and validates this design.
+> Status: **implemented** (v0.4.1) — the first extension (ETF Grid
+> Trading) runs on this contract: in-tree loader, toolkit on the Team
+> Leader, versioned router.
 >
-> Last updated: 2026-09-21.
+> Last updated: 2026-09-24.
 
 ---
 
@@ -54,7 +55,7 @@ code may live elsewhere, and no core code may import from an extension
 ```
 src/spectres/extensions/
 ├── __init__.py
-├── registry.py               # discovery + loading (extension-agnostic)
+├── loader.py                 # discovery + loading (extension-agnostic)
 ├── base.py                   # Extension protocol, ExtensionContext, ExtensionContribution
 └── etf_grid/                 # ← one directory per extension
     ├── __init__.py           # exposes the module-level `extension` object
@@ -96,8 +97,8 @@ agent factory directly.
 class ExtensionContext:
     """Runtime infrastructure injected into each extension at load time."""
     settings: Settings
-    db: PostgresDb          # Agno db handle (sessions/memory)
-    engine: Engine          # SQLAlchemy engine for the extension's own tables
+    db: PostgresDb          # Agno db handle; its public ``db_engine``
+                            # attribute backs the extension's own tables
 
 @dataclass
 class ExtensionContribution:
@@ -138,7 +139,7 @@ URLs which use kebab-case** — the only surface that transforms the id.
 | Env var prefix | UPPER_SNAKE | `ETF_GRID_...` |
 | URL paths | kebab-case | `/api/v1/extensions/etf-grid/...` |
 
-The registry rejects ids that are not valid snake_case Python identifiers
+The loader rejects ids that are not valid snake_case Python identifiers
 at load time, before any `register()` call.
 
 ## 5. Discovery and loading
@@ -148,7 +149,7 @@ candidates, **dependency injection** wires them.
 
 ### 5.1 Discovery
 
-`registry.py` scans the `spectres.extensions` namespace with
+`loader.py` scans the `spectres.extensions` namespace with
 `pkgutil.iter_modules`; every package exposing a module-level `extension`
 object conforming to the `Extension` protocol is loaded. **Discovery is
 loading** — there is deliberately no enable/disable gating in this first
@@ -169,16 +170,14 @@ mount onto the FastAPI app that `agent_os.get_app()` returns, before
 `serve()`:
 
 ```python
-def create_agent_os() -> AgentOS:
+def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     db = get_postgres_db()
-    contributions = load_extensions(           # discovery + DI, one call
-        settings, db, ExtensionContext(...),
-    )
+    contributions = load_extensions(settings, db)  # discovery + DI, one call
     toolkits = [t for c in contributions for t in c.toolkits]
     team_leader_agent = create_team_leader_agent(db, extra_tools=toolkits)
-    return AgentOS(..., agents=[team_leader_agent], ...)
+    return AgentOS(..., agents=[team_leader_agent], ...), contributions
 
-agent_os = create_agent_os()
+agent_os, contributions = create_agent_os()
 app = agent_os.get_app()
 for router in (r for c in contributions for r in c.routers):
     app.include_router(router)
@@ -203,8 +202,12 @@ dependent capability fails with an explicit error at call time instead.
 
 - Same PostgreSQL database as core; **table names prefixed `<name>_`**
   (`etf_grid_trades`, `etf_grid_signals`, ...). No extension may touch
-  Agno-managed tables or another extension's tables.
-- MVP: `metadata.create_all(engine)` during `register()`. The project has
+  Agno-managed tables or another extension's tables. All data access —
+  Agno's own tables and extension tables alike — flows through the single
+  process-wide `PostgresDb` handle (`get_postgres_db()`); extensions reach
+  the underlying SQLAlchemy engine via its public `db_engine` attribute,
+  so the whole Runtime shares one connection pool.
+- MVP: `metadata.create_all(ctx.db.db_engine)` during `register()`. The project has
   no migration tooling yet; when it adopts Alembic, each extension keeps
   its revisions in its own directory.
 - The extension's tables are the **only** source of truth for its domain
@@ -214,10 +217,11 @@ dependent capability fails with an explicit error at call time instead.
 ### 6.3 Agent surface (tools)
 
 - One Agno `Toolkit` subclass per extension, returned from `register()`.
-- Tool function names are prefixed — `etf_grid_get_signals`,
-  `etf_grid_record_trade` — collision-proof by convention and, just as
-  importantly, giving the Client **stable names** to register custom card
-  renderers against (§7).
+- Tool function names are descriptive and stable —
+  `get_grid_status`, `record_grid_trade` — giving the Client **stable
+  names** to register custom card renderers against (§7). (The first
+  extension ships unprefixed names; introduce a prefix convention if a
+  collision ever appears.)
 - Tools return structured JSON (dicts), not prose; the agent narrates, the
   Client renders. The toolkit adapts — it contains no domain logic.
 - Sensitive mutations follow the shared HITL path (architecture.md §6):

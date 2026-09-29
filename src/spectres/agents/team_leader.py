@@ -1,5 +1,7 @@
 """Team Leader Agent stub for Spectres Runtime."""
 
+from typing import Any
+
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai.like import OpenAILike
@@ -8,11 +10,13 @@ from spectres.config import settings
 from spectres.tools.builtin import get_builtin_tools
 
 
-def create_team_leader_agent(db: PostgresDb) -> Agent:
+def create_team_leader_agent(db: PostgresDb, extra_tools: list[Any] | None = None) -> Agent:
     """Create and return the Team Leader Agent stub.
 
     Args:
         db: Persistent PostgreSQL storage for sessions and chat history.
+        extra_tools: Extension toolkits appended after the built-in tools
+            (loaded via ``spectres.extensions.loader``).
 
     Returns:
         Configured Agno Agent instance.
@@ -29,7 +33,7 @@ def create_team_leader_agent(db: PostgresDb) -> Agent:
             extra_headers=settings.team_leader_llm_extra_headers,
         ),
         db=db,
-        tools=get_builtin_tools(),
+        tools=[*get_builtin_tools(), *(extra_tools or [])],
         instructions=[
             "You are the Team Leader Agent for Spectres Runtime.",
             "Answer user questions using the available tools when needed.",

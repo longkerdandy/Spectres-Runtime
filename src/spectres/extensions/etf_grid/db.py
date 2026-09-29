@@ -1,31 +1,20 @@
-"""Engine and session factory for the ETF grid extension's PostgreSQL tables."""
+"""Session factory for the ETF grid extension's PostgreSQL tables.
 
-from sqlalchemy import Engine, create_engine
+Bound lazily to the process-wide Agno db handle's engine
+(``get_postgres_db().db_engine``) so the whole Runtime shares one
+connection pool; this module only caches the session factory.
+"""
+
 from sqlalchemy.orm import Session, sessionmaker
 
-from spectres.config import settings
+from spectres.db.postgres import get_postgres_db
 
-_engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
 
 
-def get_engine() -> Engine:
-    """Return the shared SQLAlchemy engine, creating it lazily on first use.
-
-    ``pool_pre_ping`` checks out connections with a cheap ping first, so
-    pooled connections killed externally (DB restart, or the integration
-    test fixture terminating backends before recreating the test database)
-    are transparently recycled instead of failing the next query.
-    """
-    global _engine
-    if _engine is None:
-        _engine = create_engine(settings.database_url, pool_pre_ping=True)
-    return _engine
-
-
 def get_session_factory() -> sessionmaker[Session]:
-    """Return the shared session factory bound to the extension engine."""
+    """Return the shared session factory bound to the Runtime's engine."""
     global _session_factory
     if _session_factory is None:
-        _session_factory = sessionmaker(bind=get_engine())
+        _session_factory = sessionmaker(bind=get_postgres_db().db_engine)
     return _session_factory

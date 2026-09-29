@@ -31,13 +31,17 @@ def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     mock_agent.db = mock_db
     mock_agent.arun = _fake_arun
 
-    monkeypatch.setattr("spectres.main.get_postgres_db", lambda: mock_db)
-    monkeypatch.setattr("spectres.main.create_team_leader_agent", lambda db: mock_agent)
+    monkeypatch.setattr("spectres.db.postgres.get_postgres_db", lambda: mock_db)
+    monkeypatch.setattr("spectres.extensions.loader.load_extensions", lambda *args, **kwargs: [])
+    monkeypatch.setattr("spectres.agents.team_leader.create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
 
-    # Import main inside the fixture so module-level creation uses the patched deps.
+    # Patch the source modules, then import: module-level create_agent_os()
+    # runs at import time and binds whatever the `from ... import` names point
+    # at, so patching `spectres.main.*` afterwards would be too late.
     from spectres.main import create_agent_os
 
-    return create_agent_os().get_app()
+    agent_os, _contributions = create_agent_os()
+    return agent_os.get_app()
 
 
 @pytest.fixture
