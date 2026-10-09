@@ -11,6 +11,7 @@ deferred (§9).
 """
 
 import importlib
+import logging
 import pkgutil
 import re
 from typing import cast
@@ -20,6 +21,8 @@ from agno.db.postgres import PostgresDb
 import spectres.extensions
 from spectres.config import Settings
 from spectres.extensions.base import Extension, ExtensionContext, ExtensionContribution
+
+logger = logging.getLogger(__name__)
 
 _NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 
@@ -49,5 +52,6 @@ def load_extensions(settings: Settings, db: PostgresDb) -> list[ExtensionContrib
         try:
             contributions.append(cast(Extension, candidate).register(ctx))
         except Exception as exc:
+            logger.error("extension %r failed to register", ext_name, exc_info=exc, extra={"event": "extension_register_failed"})
             raise RuntimeError(f"extension {ext_name!r} failed to register: {exc}") from exc
     return contributions

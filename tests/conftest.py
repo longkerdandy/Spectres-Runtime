@@ -1,6 +1,7 @@
 """Shared pytest configuration for the Spectres Runtime test suite."""
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,21 @@ def _reset_test_database() -> None:
     target_url = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(target_url, autocommit=True) as conn, conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+
+@pytest.fixture(autouse=True)
+def reset_trace_context() -> Iterator[None]:
+    """Isolate the logging trace contextvar between tests.
+
+    Tool error paths deliberately bind a trace id without resetting it (the
+    tool boundary owns the trace for the rest of the logical operation); in
+    the test process that would leak into the next test.
+    """
+    from spectres.logging import bind_trace, reset_trace
+
+    token = bind_trace(None)
+    yield
+    reset_trace(token)
 
 
 @pytest.fixture(autouse=True)

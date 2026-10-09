@@ -7,6 +7,7 @@ persistence to ``EtfGridCandleService``. SDK errors
 propagate unwrapped.
 """
 
+import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -18,6 +19,8 @@ from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.csindex import fetch_index_perf, sync_valuation
 from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridValuationService
 from spectres.extensions.etf_grid.types import CandleInput, normalize_symbol
+
+logger = logging.getLogger(__name__)
 
 CST = timezone(timedelta(hours=8))
 PRICE_QUANTUM = Decimal("0.0001")
@@ -130,7 +133,9 @@ def sync_market_data(
 
     Per-source failure is captured in the response instead of raised —
     a provider outage must not abort the other source (the API returns
-    this body without a 500; the toolkit echoes it in chat). Signal
+    this body without a 500; the toolkit echoes it in chat). Failures are
+    additionally logged at ERROR with ``exc_info`` so the JSONL log keeps
+    the traceback that the response body deliberately omits. Signal
     recomputation is deliberately NOT part of this pipeline: it is a
     local-only step triggered separately (``compute_daily_signals``).
 
@@ -149,9 +154,15 @@ def sync_market_data(
     try:
         result["candles"] = sync_candles(config=config, candle_service=candle_service, client=client)
     except Exception as exc:  # provider/network failure must not abort the pipeline
+        logger.error("candles sync failed", exc_info=exc, extra={"event": "sync_source_failed", "source": "candles"})
         result["errors"]["candles"] = str(exc)
     try:
         result["valuation"] = sync_valuation(valuation_service=valuation_service, fetcher=fetcher)
     except Exception as exc:  # provider/network failure must not abort the pipeline
+        logger.error("valuation sync failed", exc_info=exc, extra={"event": "sync_source_failed", "source": "valuation"})
         result["errors"]["valuation"] = str(exc)
+    logger.info(
+        "market data sync finished",
+        extra={"event": "sync_completed", "candles": result["candles"], "valuation": result["valuation"], "errors": result["errors"]},
+    )
     return result

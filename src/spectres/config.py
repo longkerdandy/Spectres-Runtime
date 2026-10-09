@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +42,12 @@ class Settings(BaseSettings):
 
     # Web search (Tavily API)
     tavily_api_key: str | None = Field(alias="TAVILY_API_KEY", default=None)
+
+    # Logging (defaults keep existing .env files working; see spectres/logging.py)
+    log_level: str = Field(alias="LOG_LEVEL", default="INFO")
+    log_format: Literal["json", "text"] = Field(alias="LOG_FORMAT", default="text")
+    log_dir: str = Field(alias="LOG_DIR", default="logs")
+    log_retention_days: int = Field(alias="LOG_RETENTION_DAYS", default=14)
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

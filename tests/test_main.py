@@ -34,6 +34,9 @@ def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     monkeypatch.setattr("spectres.db.postgres.get_postgres_db", lambda: mock_db)
     monkeypatch.setattr("spectres.extensions.loader.load_extensions", lambda *args, **kwargs: [])
     monkeypatch.setattr("spectres.agents.team_leader.create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
+    # Keep the real logging setup out of unit tests (it would create logs/ and
+    # rewire the root logger); its wiring is covered in tests/test_logging.py.
+    monkeypatch.setattr("spectres.logging.configure_logging", lambda *args, **kwargs: None)
 
     # Patch the source modules, then import: module-level create_agent_os()
     # runs at import time and binds whatever the `from ... import` names point

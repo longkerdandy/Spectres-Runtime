@@ -10,6 +10,7 @@ layer without touching persistence.
 
 import http.client
 import json
+import logging
 import time
 from collections.abc import Callable
 from datetime import date
@@ -18,6 +19,8 @@ from typing import Any
 
 from spectres.extensions.etf_grid.service import EtfGridValuationService
 from spectres.extensions.etf_grid.types import ValuationInput
+
+logger = logging.getLogger(__name__)
 
 HOST = "www.csindex.com.cn"
 PATH = "/csindex-home/perf/index-perf?indexCode={code}&startDate=20161125&endDate=20991231"
@@ -34,25 +37,41 @@ def fetch_index_perf(code: str) -> list[dict[str, Any]]:
     """Fetch the full daily history of one index from csindex.
 
     Bounded retries (5 attempts, 3s backoff — same as the original
-    script, which the endpoint's flakiness taught us). Returns the
-    payload's ``data`` list.
+    script, which the endpoint's flakiness taught us). Every failed attempt
+    is logged at WARNING, and the final failure at ERROR, so the endpoint's
+    flakiness is never silent. Returns the payload's ``data`` list.
 
     Raises:
         RuntimeError: After all attempts fail or return empty data.
     """
-    for _attempt in range(MAX_ATTEMPTS):
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        started = time.monotonic()
         conn = http.client.HTTPSConnection(HOST, timeout=60)
+        error: str | None = None
         try:
             conn.request("GET", PATH.format(code=code), headers={"User-Agent": USER_AGENT})
             payload = json.loads(conn.getresponse().read())
             rows = payload.get("data") or []
             if rows:
                 return rows
-        except (http.client.HTTPException, json.JSONDecodeError, OSError):
-            pass
+            error = "empty data in response"
+        except (http.client.HTTPException, json.JSONDecodeError, OSError) as exc:
+            error = f"{type(exc).__name__}: {exc}"
         finally:
             conn.close()
+        logger.warning(
+            "csindex fetch attempt failed; retrying",
+            extra={
+                "event": "csindex_retry",
+                "code": code,
+                "attempt": attempt,
+                "max_attempts": MAX_ATTEMPTS,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "error": error,
+            },
+        )
         time.sleep(RETRY_BACKOFF_SECONDS)
+    logger.error("csindex fetch failed after all retries", extra={"event": "csindex_fetch_failed", "code": code, "attempts": MAX_ATTEMPTS})
     raise RuntimeError(f"fetch {code} failed after retries")
 
 

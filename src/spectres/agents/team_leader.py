@@ -37,6 +37,11 @@ def create_team_leader_agent(db: PostgresDb, extra_tools: list[Any] | None = Non
         instructions=[
             "You are the Team Leader Agent for Spectres Runtime.",
             "Answer user questions using the available tools when needed.",
+            "Extension tools (e.g. etf_grid) never raise: they return a JSON envelope — "
+            '{"ok": true, "data": ...} on success, {"ok": false, "error": {"type", "message", "trace_id", "hint"}} on failure.',
+            'When a tool returns "ok": false, follow error.hint: use the shell tool to grep the Runtime log '
+            "(logs/runtime-YYYY-MM-DD.jsonl — one JSON object per line with ts/level/logger/extension/event/message/trace_id fields) "
+            "for error.trace_id to see the full failure context, then explain or retry accordingly.",
         ],
         add_history_to_context=True,
         num_history_runs=3,

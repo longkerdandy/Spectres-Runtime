@@ -8,18 +8,22 @@ from spectres.config import settings
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.base import ExtensionContribution
 from spectres.extensions.loader import load_extensions
+from spectres.logging import TraceIdMiddleware, configure_logging
 
 
 def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     """Create the AgentOS instance and load extensions (runtime-extensions.md §5.2).
 
-    Extensions load between db setup and app assembly: their toolkits
-    attach to the Team Leader, their routers mount onto the FastAPI app
-    returned by ``agent_os.get_app()`` before ``serve()``.
+    Logging is configured before anything else so extension load failures are
+    captured with extension name and traceback. Extensions load between db
+    setup and app assembly: their toolkits attach to the Team Leader, their
+    routers mount onto the FastAPI app returned by ``agent_os.get_app()``
+    before ``serve()``.
 
     Returns:
         The configured AgentOS plus the collected extension contributions.
     """
+    configure_logging(settings)
     db = get_postgres_db()
     contributions = load_extensions(settings, db)
     toolkits = [toolkit for contribution in contributions for toolkit in contribution.toolkits]
@@ -40,6 +44,8 @@ app = agent_os.get_app()
 for contribution in extension_contributions:
     for router in contribution.routers:
         app.include_router(router)
+# Binds a fresh trace_id to every HTTP request (spectres/logging.py).
+app.add_middleware(TraceIdMiddleware)
 
 if __name__ == "__main__":
     agent_os.serve(

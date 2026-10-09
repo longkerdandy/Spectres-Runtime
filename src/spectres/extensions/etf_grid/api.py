@@ -5,6 +5,7 @@ Payloads go through ``service.to_jsonable`` so the HTTP surface serializes
 identically to the toolkit surface.
 """
 
+import logging
 from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
@@ -24,6 +25,8 @@ from spectres.extensions.etf_grid.service import (
     to_jsonable,
 )
 from spectres.extensions.etf_grid.types import Side, SignalSortField, SortDirection, SortSpec, TradeSortField
+
+logger = logging.getLogger(__name__)
 
 
 class TradeCreate(BaseModel):
@@ -116,6 +119,7 @@ def create_router(
                 net_amount=body.net_amount,
             )
         except ValueError as exc:
+            logger.warning("trade rejected as invalid; converted to 422", extra={"event": "trade_rejected", "symbol": body.symbol, "error": str(exc)})
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return to_jsonable(trade)
 

@@ -150,3 +150,6 @@ cython_debug/
 
 # Kimi Code local settings
 .kimi-code/
+
+# Runtime structured logs (v0.4.2)
+logs/

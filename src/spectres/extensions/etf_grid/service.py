@@ -1,5 +1,6 @@
 """Application services for the ETF grid extension."""
 
+import logging
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
@@ -38,6 +39,8 @@ from spectres.extensions.etf_grid.types import (
     ValuationInput,
     normalize_symbol,
 )
+
+logger = logging.getLogger(__name__)
 
 _SORTABLE_COLUMNS: dict[TradeSortField, InstrumentedAttribute[Any]] = {
     TradeSortField.ID: EtfGridTrade.id,
@@ -150,7 +153,21 @@ class EtfGridLedgerService:
             session.add(trade)
             session.flush()
             session.refresh(trade)
-            return _trade_to_dict(trade)
+            result = _trade_to_dict(trade)
+        logger.info(
+            "trade recorded",
+            extra={
+                "event": "trade_recorded",
+                "trade_id": result["id"],
+                "symbol": result["symbol"],
+                "side": side.value,
+                "quantity": result["quantity"],
+                "price": str(result["price"]),
+                "net_amount": str(result["net_amount"]),
+                "source": source.value,
+            },
+        )
+        return result
 
     def list_trades(
         self,
@@ -585,6 +602,7 @@ def compute_daily_signals(
         candles = candle_service.list_candles(item.symbol)
         if len(candles) < 61:
             skipped[item.symbol] = "insufficient_candles"
+            logger.debug("signal skipped: insufficient candles", extra={"event": "signal_skipped", "symbol": item.symbol, "reason": "insufficient_candles", "candle_count": len(candles)})
             continue
 
         gate = None
@@ -595,6 +613,10 @@ def compute_daily_signals(
             gate = gate_state(values, Decimal(str(item.gate.threshold)), item.gate.block_when)
             if gate is None:
                 skipped[item.symbol] = "no_valuation_data"
+                logger.debug(
+                    "signal skipped: gate has no usable valuation data",
+                    extra={"event": "signal_skipped", "symbol": item.symbol, "reason": "no_valuation_data", "valuation_rows": len(valuation_rows)},
+                )
                 continue
 
         closes = [candle["close"] for candle in candles]

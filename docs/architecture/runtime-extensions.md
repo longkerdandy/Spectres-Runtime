@@ -1,11 +1,11 @@
 # Runtime Extensions — Architecture
 
 > Topic deep-dive companion to [`../architecture.md`](../architecture.md).
-> Status: **implemented** (v0.4.1) — the first extension (ETF Grid
-> Trading) runs on this contract: in-tree loader, toolkit on the Team
-> Leader, versioned router.
+> Status: **implemented** (v0.4.1; logging conventions added in v0.4.2) —
+> the first extension (ETF Grid Trading) runs on this contract: in-tree
+> loader, toolkit on the Team Leader, versioned router.
 >
-> Last updated: 2026-09-24.
+> Last updated: 2026-09-30.
 
 ---
 
@@ -241,6 +241,38 @@ dependent capability fails with an explicit error at call time instead.
 - CORS is handled globally by AgentOS; auth (when it arrives, per the
   multi-tenant phases of ADR 0005) applies to extension routes the same
   as core routes.
+
+### 6.5 Logging
+
+Runtime logging is structured and agent-diagnosable
+(`spectres/logging.py`, plan `docs/plan/v0.4.2-runtime-logging.md`): one
+shared JSONL file (`logs/runtime-YYYY-MM-DD.jsonl`, daily rotation +
+retention) plus stdout, with a `contextvars`-backed `trace_id` attached to
+every record (one per HTTP request via middleware; tool failures without an
+active request bind a fresh one). Extensions participate by convention:
+
+- **Only `logging.getLogger(__name__)`** — extensions never configure
+  handlers, formatters, or levels; core owns the sinks. The `extension`
+  field on every record is derived from the logger name
+  (`spectres.extensions.<name>...`), so per-extension filtering is just
+  `grep '"extension": "etf_grid"'`.
+- **No silent `except`.** Every swallowed or converted failure is logged at
+  WARNING or above, with `exc_info` when an exception is being handled
+  (e.g. `marketdata.sync_market_data` per-source ERROR, `csindex` retry
+  WARNINGs).
+- **Sensitive operations are structured audit events** — INFO with an
+  `event` name and the business fields as extras, e.g.
+  `event=trade_recorded` with symbol/side/quantity/price/net_amount.
+- **Tool error contract**: toolkit functions never raise across the tool
+  boundary. On failure they log ERROR (with `exc_info`) and return
+  `{"ok": false, "error": {"type", "message", "trace_id", "hint"}}` where
+  `hint` is a concrete shell-tool lookup (`grep <trace_id>
+  logs/runtime-<today>.jsonl`); on success `{"ok": true, "data": ...}`.
+  The Team Leader instructions document this contract, the log location,
+  and the record shape, so the agent can self-diagnose tool failures.
+- **Secrets never enter log records** (API keys, DB credentials); a
+  redaction filter on the core handlers is defense in depth, not a license
+  to log carelessly.
 
 ## 7. Reference extension: ETF Grid Trading (`etf_grid`)
 

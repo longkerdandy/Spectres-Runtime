@@ -33,3 +33,14 @@ def test_create_team_leader_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert agent.model.id == "test-model"
     assert agent.model.api_key == "test-api-key"
     assert agent.model.base_url == "https://test.example.com/v1"
+
+
+def test_team_leader_instructions_document_tool_error_contract() -> None:
+    """The instructions explain the {"ok", "data"|"error"} envelope and the log-grep self-diagnosis path."""
+    agent = create_team_leader_agent(MagicMock(spec=PostgresDb))
+    instructions = agent.instructions
+    assert isinstance(instructions, list)
+    text = "\n".join(str(item) for item in instructions)
+    assert '"ok": false' in text
+    assert "trace_id" in text
+    assert "logs/runtime-YYYY-MM-DD.jsonl" in text
