@@ -9,19 +9,19 @@ resolution-markers = [
 
 [[package]]
 name = "ag-ui-protocol"
-version = "0.1.19"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a7/10/4ad299267a7d04b89935aa99eef62979758fcf95aee9f8bb5d70c35b1be1/ag_ui_protocol-0.1.19.tar.gz", hash = "sha256:43c27f60d41712dcad0e9e0a203cbdf1c8e248b22417374c5c68321c448af4ea", size = 10720, upload-time = "2026-06-02T17:26:15.627Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/92/d88fdc7f4648dc38d3d54c595066bb3e63a4c091884ffb2f98272c33eef8/ag_ui_protocol-1.0.0.tar.gz", hash = "sha256:cfebecef2e7bc942cc8a52d908a4ea86a98f631d2ffdc6ec5812bb843eac74fb", size = 30759, upload-time = "2026-09-17T18:31:19.448Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/0a/bcad8116eb058e4b4a305e3fc37ebd7efc879deeb86b854f1c5b8b6e97dd/ag_ui_protocol-0.1.19-py3-none-any.whl", hash = "sha256:898843b1410d378824da0c6a776486288b9c5828689d0bf563118868e37f390f", size = 13490, upload-time = "2026-06-02T17:26:16.313Z" },
+    { url = "https://files.pythonhosted.org/packages/82/b0/850be4576e6443dc575daa54188d8136ae2b2eca3f19e098e7a088fc9ebc/ag_ui_protocol-1.0.0-py3-none-any.whl", hash = "sha256:0058eaf0522201089d444e430fc35180bc8ad0222cae39e8568b313e8105d9e6", size = 36842, upload-time = "2026-09-17T18:31:18.471Z" },
 ]
 
 [[package]]
 name = "agno"
-version = "3.0.10"
+version = "3.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agnoctl" },
@@ -35,9 +35,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/82/c4/1952e896fc04df0f754683512038a7d93d0a30f9846d1588e33d70fb7227/agno-3.0.10.tar.gz", hash = "sha256:7f25bb3f0b549923e18c20835d54fe16426b6bfe591b7690f0b4c8c08d068f9e", size = 3512656, upload-time = "2026-09-16T17:42:17.285Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/4a/1a76527a0dd9de97e18aca48cb043249e4077f3382230a5d2df37dedd333/agno-3.1.2.tar.gz", hash = "sha256:cd215d0267a236820bfe4a3897e5cb3d92e1b88e325662cdb77426f5f58d453f", size = 3766253, upload-time = "2026-10-08T19:53:33.476Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/3a/ec8ca20bc5158288edeacb500a82af37b035de6f32f5d0a600c848d5c587/agno-3.0.10-py3-none-any.whl", hash = "sha256:0bc7b86cd386dd4ee334f81c5d9c686bafecca1ba3c541ebfab1d86162eac034", size = 3995527, upload-time = "2026-09-16T17:42:13.596Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/6f/dc48f29d790d426e9fcb8a63b870bdb2020d70e4a6c34fca8b6d6c199d0d/agno-3.1.2-py3-none-any.whl", hash = "sha256:7e49aa04c7ddbfd27382e5a6ba71dc49d8e431fdc83bfa3cf5d9e2da992f56b8", size = 4273104, upload-time = "2026-10-08T19:53:30.29Z" },
 ]
 
 [package.optional-dependencies]
@@ -1255,7 +1255,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agno", extras = ["agui"], specifier = ">=3.0" },
+    { name = "agno", extras = ["agui"], specifier = ">=3.1.2" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.137.0" },
     { name = "ftshare", git = "https://github.com/ftshare-lab/ftshare-python-sdk?rev=v1.0.8" },

@@ -57,6 +57,20 @@ into collapsible task cards.
 Track `ag-ui-protocol` releases and Agno's adoption of Subagent Events; when
 available, migrate and delete the custom mapping.
 
+### Status update — 2026-10-12 (v0.4.3 upgrade)
+
+- **Protocol precondition met**: `ag-ui-protocol` 1.0.0 (2026-09-17) ships
+  Subagent Events in the frozen 1.0 spec (`spec/1.0` conformance streams,
+  `SubagentInfo` / `MultiAgentCapabilities.subagents` in the Python SDK).
+- **Framework mapping still absent**: a code search of agno `main` (at
+  v3.1.2) finds no Subagent Event emission in the AG-UI interface — the
+  flattened single-voice stream is unchanged. Phase 3 remains blocked on
+  Agno adoption; Phase 2 custom mapping can now target stable 1.0 event
+  types instead of waiting on the spec.
+- Rename pitfall when writing the mapping: 1.0 renamed `sub_agents` to
+  `subagents` and the old field name silently constructs as an extra field
+  (`extra="allow"`) with no error.
+
 ## Alternatives Considered
 
 - **Invest in custom mapping immediately**: rejected — the MVP has a single
