@@ -324,6 +324,16 @@ since the id appears in table names, tool names, env prefixes, and URLs.
     global `HTTPException` handler that renders `detail` via
     `str(exc.detail)`, which would stringify the list; the
     `RequestValidationError` path is FastAPI-native and keeps the shape.
+  - **Portfolio status fields** (since v0.4.5): each `GET .../status` row
+    additionally carries `unrealized` and `unrealized_percent`
+    (stringified Decimals) — the floating P&L of the current position,
+    derived from the ledger's existing cost-basis convention:
+    `unrealized = close × shares − avg_cost × shares` and
+    `unrealized_percent = unrealized / (avg_cost × shares)` (a fraction
+    like `gate_percentile`: 0.12 = 12%). Both are `null` — never a
+    fabricated zero — when the derivation is undefined: no position
+    (`shares == 0` / no `avg_cost`), no latest close, or a zero cost
+    basis (percent only).
 
 ## 8. Guardrails (anti-over-engineering)
 

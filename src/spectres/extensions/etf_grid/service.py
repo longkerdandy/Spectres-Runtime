@@ -655,9 +655,9 @@ def get_portfolio_status(
     """Per-symbol portfolio summary for presentation surfaces (toolkit/UI).
 
     Combines the ledger-derived position (shares, average cost, realized
-    P&L) with the latest close (market value) and the latest persisted
-    signal snapshot. Positions always come from the ledger — never from
-    stored snapshots.
+    P&L) with the latest close (market value, unrealized P&L and percent)
+    and the latest persisted signal snapshot. Positions always come from
+    the ledger — never from stored snapshots.
     """
     config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
     ledger_service = ledger_service or EtfGridLedgerService()
@@ -670,6 +670,8 @@ def get_portfolio_status(
         position = positions.get(item.symbol)
         latest = candle_service.list_candles(item.symbol, descending=True, limit=1)
         close = latest[0]["close"] if latest else None
+        cost_basis = position.avg_cost * position.shares if position is not None and position.shares > 0 and position.avg_cost is not None else None
+        unrealized = close * position.shares - cost_basis if cost_basis is not None and close is not None and position is not None else None
         status.append(
             {
                 "symbol": item.symbol,
@@ -680,6 +682,8 @@ def get_portfolio_status(
                 "close": close,
                 "close_date": latest[0]["trade_date"] if latest else None,
                 "market_value": close * position.shares if close is not None and position else None,
+                "unrealized": unrealized,
+                "unrealized_percent": (unrealized / cost_basis if unrealized is not None and cost_basis else None),
                 "signal": signal_service.latest_signal(item.symbol),
             }
         )

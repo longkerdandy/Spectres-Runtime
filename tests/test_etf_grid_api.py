@@ -110,6 +110,16 @@ class TestEtfGridApi:
         assert row["shares"] == 24300
         assert row["avg_cost"] == str(Decimal("9972.96") / 24300)
         assert row["close"] == "0.9000"
+        # Unrealized P&L: close x shares - avg_cost x shares, stringified.
+        avg_cost = Decimal("9972.96") / 24300
+        unrealized = Decimal("0.9000") * 24300 - avg_cost * 24300
+        assert row["unrealized"] == str(unrealized)
+        assert row["unrealized_percent"] == str(unrealized / (avg_cost * 24300))
+        # No position and no candles: both fields are null, not zero.
+        for other in ("513120.XSHG", "513530.XSHG"):
+            row = next(r for r in rows if r["symbol"] == other)
+            assert row["unrealized"] is None
+            assert row["unrealized_percent"] is None
 
     def test_post_trades_and_get_trades(self, seeded: TestClient) -> None:
         """POST /trades echoes computed amounts; GET /trades filters by symbol and date range."""
