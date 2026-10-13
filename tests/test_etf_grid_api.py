@@ -125,25 +125,70 @@ class TestEtfGridApi:
 
         response = seeded.get("/api/v1/extensions/etf-grid/trades", params={"symbol": "513330.XSHG", "start": "2026-09-01", "end": "2026-09-30"})
         assert response.status_code == 200
-        rows = response.json()
-        assert len(rows) == 1
-        assert rows[0]["trade_date"] == "2026-09-09"
+        body = response.json()
+        assert body["total"] == 1
+        assert body["limit"] == 20
+        assert body["offset"] == 0
+        assert len(body["items"]) == 1
+        assert body["items"][0]["trade_date"] == "2026-09-09"
 
         response = seeded.get("/api/v1/extensions/etf-grid/trades", params={"limit": 1})
-        assert len(response.json()) == 1
+        body = response.json()
+        assert len(body["items"]) == 1
+        assert body["total"] == 2
+
+    def test_get_trades_pagination_windowing(self, seeded: TestClient) -> None:
+        """offset/limit page through the full result set; total is the post-filter count."""
+        seeded.post(
+            "/api/v1/extensions/etf-grid/trades",
+            json={"symbol": "513330.XSHG", "trade_date": "2026-09-09", "side": "buy", "price": "0.3590", "quantity": 27700, "commission_rate": "0.001"},
+        )
+        # Newest first: page 1 is the 2026-09-09 trade, page 2 the seeded 2026-08-19 one.
+        page1 = seeded.get("/api/v1/extensions/etf-grid/trades", params={"limit": 1, "offset": 0}).json()
+        page2 = seeded.get("/api/v1/extensions/etf-grid/trades", params={"limit": 1, "offset": 1}).json()
+        assert page1["total"] == 2 and page2["total"] == 2
+        assert page1["items"][0]["trade_date"] == "2026-09-09"
+        assert page2["items"][0]["trade_date"] == "2026-08-19"
+        # Filters apply before counting: the date range excludes the seeded trade.
+        filtered = seeded.get("/api/v1/extensions/etf-grid/trades", params={"start": "2026-09-01", "end": "2026-09-30", "limit": 1}).json()
+        assert filtered["total"] == 1
+        # Past the end: empty page, real total.
+        beyond = seeded.get("/api/v1/extensions/etf-grid/trades", params={"offset": 5}).json()
+        assert beyond["items"] == [] and beyond["total"] == 2
+
+    def test_list_endpoints_reject_invalid_pagination_params(self, api_client: TestClient) -> None:
+        """limit=0 / negative limit / negative offset are 422 with the canonical detail list."""
+        for params in ({"limit": 0}, {"limit": -1}, {"limit": 201}, {"offset": -1}):
+            for path in ("trades", "signals"):
+                response = api_client.get(f"/api/v1/extensions/etf-grid/{path}", params=params)
+                assert response.status_code == 422, f"{path} {params}"
+                detail = response.json()["detail"]
+                assert isinstance(detail, list) and detail, detail
+                assert all({"loc", "msg", "type"} <= set(item) for item in detail)
 
     def test_post_trades_validation_errors(self, api_client: TestClient) -> None:
-        """Invalid bodies get 422, including service-layer symbol validation."""
+        """Pydantic and domain rejections share one 422 shape: detail is a list of {loc, msg, type} objects."""
+        # Pydantic body rejection (negative price).
         response = api_client.post(
             "/api/v1/extensions/etf-grid/trades",
             json={"symbol": "513330.XSHG", "trade_date": "2026-09-09", "side": "buy", "price": "-1", "quantity": 100, "commission_rate": "0.001"},
         )
         assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list) and detail
+        assert all({"loc", "msg", "type"} <= set(item) for item in detail)
+
+        # Domain rejection (unknown symbol) — same shape, single element at loc ["body"].
         response = api_client.post(
             "/api/v1/extensions/etf-grid/trades",
             json={"symbol": "513330", "trade_date": "2026-09-09", "side": "buy", "price": "0.3590", "quantity": 100, "commission_rate": "0.001"},
         )
         assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list) and len(detail) == 1
+        assert detail[0]["loc"] == ["body"]
+        assert detail[0]["type"] == "value_error"
+        assert detail[0]["msg"]
 
     def test_post_signals_compute_and_get_signals(self, seeded: TestClient) -> None:
         """POST /signals/compute computes from local data; GET /signals reads history back."""
@@ -158,10 +203,15 @@ class TestEtfGridApi:
 
         response = seeded.get("/api/v1/extensions/etf-grid/signals", params={"symbol": "513330.XSHG"})
         assert response.status_code == 200
-        rows = response.json()
-        assert len(rows) == 1
-        assert rows[0]["level"] == -3
-        assert rows[0]["computed_at"] is not None
+        body = response.json()
+        assert body["total"] == 1
+        assert len(body["items"]) == 1
+        assert body["items"][0]["level"] == -3
+        assert body["items"][0]["computed_at"] is not None
+
+        # offset windows over the same envelope.
+        page = seeded.get("/api/v1/extensions/etf-grid/signals", params={"symbol": "513330.XSHG", "limit": 1, "offset": 1}).json()
+        assert page["items"] == [] and page["total"] == 1
 
     def test_post_sync_never_500s_on_provider_failure(self, api_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         """POST /sync reports per-source errors in the body instead of failing."""

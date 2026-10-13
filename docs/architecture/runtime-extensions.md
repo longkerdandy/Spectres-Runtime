@@ -295,8 +295,10 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   extension config.
 - **Tools**: `etf_grid_get_signals`, `etf_grid_get_portfolio`,
   `etf_grid_record_trade` (HITL-confirmed).
-- **API**: `GET .../portfolio`, `GET .../signals/latest`,
-  `GET/POST .../trades` — the data source for a standalone Client page.
+- **API**: `GET .../status`, `GET .../signals`, `POST .../signals/compute`,
+  `POST .../sync`, `GET/POST .../trades` under
+  `/api/v1/extensions/etf-grid` — the data source for a standalone Client
+  page.
 - **Client contract**: chat shows the agent's markdown narration plus a
   custom signal card registered via CopilotKit `useRenderTool` on the
   stable tool names; the standalone ledger page is plain React over the
@@ -304,6 +306,24 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   is recorded as a tracked option, to be re-evaluated when multiple
   extensions make per-tool cards repetitive — today's card components
   would then serve as its component catalog.
+- **REST contract** (since v0.4.4):
+  - **Pagination envelope**: `GET .../trades` and `GET .../signals` return
+    `{"items": [...], "total": int, "limit": int, "offset": int}`.
+    `limit` defaults to 20 (`1..200`), `offset` defaults to 0; filters
+    (`symbol`, `start`, `end`) apply *before* counting, so `total` is the
+    post-filter row count and clients can page through the full result
+    set.
+  - **Unified 422**: every 422 from the extension router — pydantic body
+    validation, query-parameter validation, or domain rejection — returns
+    `detail` as a list of objects carrying `loc` / `msg` / `type`. Native
+    FastAPI items may additionally carry `input` / `url`; clients must
+    ignore extra keys. Domain rejections use a single element with
+    `loc: ["body"]` and `type: "value_error"`.
+    Implementation note: domain rejections must raise
+    `RequestValidationError`, **not** `HTTPException` — AgentOS installs a
+    global `HTTPException` handler that renders `detail` via
+    `str(exc.detail)`, which would stringify the list; the
+    `RequestValidationError` path is FastAPI-native and keeps the shape.
 
 ## 8. Guardrails (anti-over-engineering)
 

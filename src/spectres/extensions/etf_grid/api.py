@@ -10,7 +10,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Query
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 
 from spectres.extensions.etf_grid.config import EtfGridConfig
@@ -43,6 +44,17 @@ class TradeCreate(BaseModel):
     net_amount: Decimal | None = Field(default=None, gt=0)
 
 
+def _paginate(rows: list[dict[str, Any]], limit: int, offset: int) -> dict[str, Any]:
+    """Wrap a fully materialized row list in the pagination envelope.
+
+    ``total`` is the post-filter count before slicing, so clients can page
+    through the full result set. In-memory slicing is sufficient at
+    single-user scale (see the v0.4.4 plan); SQL-level pagination is a
+    later optimization.
+    """
+    return {"items": to_jsonable(rows[offset : offset + limit]), "total": len(rows), "limit": limit, "offset": offset}
+
+
 def create_router(
     *,
     config: EtfGridConfig | None = None,
@@ -66,10 +78,13 @@ def create_router(
         return to_jsonable(get_portfolio_status(config=config, ledger_service=ledger, candle_service=candles, signal_service=signals))
 
     @router.get("/signals")
-    def get_signals(symbol: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
-        """Signal history with order lists, newest first; optionally filtered by symbol."""
+    def get_signals(symbol: str | None = None, limit: int = Query(default=20, ge=1, le=200), offset: int = Query(default=0, ge=0)) -> dict[str, Any]:
+        """Signal history with order lists, newest first; optionally filtered by symbol.
+
+        Returns the pagination envelope ``{"items", "total", "limit", "offset"}``.
+        """
         rows = signals.list_signals(symbol, order_by=[SortSpec(SignalSortField.TRADE_DATE, SortDirection.DESC)])
-        return to_jsonable(rows[:limit])
+        return _paginate(rows, limit, offset)
 
     @router.post("/signals/compute")
     def compute_signals() -> dict[str, Any]:
@@ -94,14 +109,18 @@ def create_router(
         return to_jsonable(sync_market_data(config=config, candle_service=candles, valuation_service=valuation))
 
     @router.get("/trades")
-    def get_trades(symbol: str | None = None, start: date | None = None, end: date | None = None, limit: int = 20) -> list[dict[str, Any]]:
-        """Ledger query: newest trades first, optionally filtered by symbol and trade-date range."""
+    def get_trades(symbol: str | None = None, start: date | None = None, end: date | None = None, limit: int = Query(default=20, ge=1, le=200), offset: int = Query(default=0, ge=0)) -> dict[str, Any]:
+        """Ledger query: newest trades first, optionally filtered by symbol and trade-date range.
+
+        Returns the pagination envelope ``{"items", "total", "limit", "offset"}``;
+        ``total`` is the post-filter count before slicing.
+        """
         rows = ledger.list_trades(symbol, order_by=[SortSpec(TradeSortField.TRADE_DATE, SortDirection.DESC)])
         if start is not None:
             rows = [row for row in rows if row["trade_date"] >= start]
         if end is not None:
             rows = [row for row in rows if row["trade_date"] <= end]
-        return to_jsonable(rows[:limit])
+        return _paginate(rows, limit, offset)
 
     @router.post("/trades", status_code=201)
     def create_trade(body: TradeCreate) -> dict[str, Any]:
@@ -120,7 +139,13 @@ def create_router(
             )
         except ValueError as exc:
             logger.warning("trade rejected as invalid; converted to 422", extra={"event": "trade_rejected", "symbol": body.symbol, "error": str(exc)})
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            # RequestValidationError, not HTTPException: AgentOS installs a global
+            # HTTPException handler that renders detail via str(exc.detail), which
+            # would stringify the list. The RequestValidationError path is FastAPI's
+            # native one and keeps the list-of-objects shape, so every 422 from this
+            # router shares one contract (loc/msg/type guaranteed; native errors may
+            # add input/url). See runtime-extensions.md §7.
+            raise RequestValidationError(errors=[{"loc": ("body",), "msg": str(exc), "type": "value_error"}]) from exc
         return to_jsonable(trade)
 
     return router
