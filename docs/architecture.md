@@ -197,7 +197,8 @@ channel, deployment tooling.
 - [`AGENTS.md`](../AGENTS.md) — project background, scope, conventions
 - [`adr/`](adr/README.md) — decision records 0001–0005
 - [`architecture/`](architecture/) — topic deep-dives (design documents,
-  e.g. [Runtime Extensions](architecture/runtime-extensions.md)) and
+  e.g. [Runtime Extensions](architecture/runtime-extensions.md),
+  [Scheduled Tasks](architecture/scheduled-tasks.md)) and
   references ([Database Schema](architecture/database-schema.md))
 - [`plan/`](plan/) — milestone plans
 - Agno docs: https://docs.agno.com/ · AG-UI: https://docs.ag-ui.com/

@@ -26,3 +26,4 @@ considered, and the consequences **at the time the decision was made**.
 | [0004](0004-ag-ui-team-visibility-strategy.md) | AG-UI Visibility Strategy for Agent Teams | Accepted |
 | [0005](0005-deployment-topology-and-client-access.md) | Deployment Topology and Client Access Paths | Accepted |
 | [0006](0006-web-search-tool-tavily.md) | Web Search Tool — from ddgs Meta-Search to Tavily | Accepted |
+| [0007](0007-scheduled-tasks-agno-scheduler.md) | Scheduled Tasks — Agno Built-in Scheduler, Deterministic-Only MVP | Accepted |
