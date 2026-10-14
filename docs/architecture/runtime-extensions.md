@@ -135,7 +135,7 @@ URLs which use kebab-case** — the only surface that transforms the id.
 |---------|------|---------|
 | Python package / directory | snake_case (must be a valid identifier) | `spectres/extensions/etf_grid/` |
 | Database table prefix | snake_case | `etf_grid_trades` |
-| Tool function names | snake_case (provider tool-name charset limits) | `etf_grid_get_signals` |
+| Tool function names | snake_case (provider tool-name charset limits) | `get_grid_status` |
 | Env var prefix | UPPER_SNAKE | `ETF_GRID_...` |
 | URL paths | kebab-case | `/api/v1/extensions/etf-grid/...` |
 
@@ -225,7 +225,7 @@ dependent capability fails with an explicit error at call time instead.
 - Tools return structured JSON (dicts), not prose; the agent narrates, the
   Client renders. The toolkit adapts — it contains no domain logic.
 - Sensitive mutations follow the shared HITL path (architecture.md §6):
-  e.g. `etf_grid_record_trade` is marked for confirmation so a wrong
+  e.g. `record_grid_trade` is marked for confirmation so a wrong
   ledger entry can't slip through unnoticed.
 
 ### 6.4 HTTP surface (API)
@@ -235,7 +235,7 @@ dependent capability fails with an explicit error at call time instead.
   API-stability guideline; extensions never touch `/agui` or AgentOS
   internal routes.
 - Read endpoints serve the Client's standalone pages; mutation endpoints
-  mirror the tools (`POST .../trades` ≈ `etf_grid_record_trade`) so the
+  mirror the tools (`POST .../trades` ≈ `record_grid_trade`) so the
   page and the chat can never disagree about behavior — both delegate to
   `service.py`.
 - CORS is handled globally by AgentOS; auth (when it arrives, per the
@@ -283,26 +283,33 @@ extension id **`etf_grid`** — deliberately descriptive over a codename,
 since the id appears in table names, tool names, env prefixes, and URLs.
 
 - **Trigger model**: user-initiated only (no scheduler yet). When the user
-  asks for today's signals, `etf_grid_get_signals` first runs an
-  incremental market-data sync (idempotent, via the FTShare MCP endpoint
-  with `FTSHARE_API_KEY`), then computes and persists the signal snapshot,
-  then returns it. When ADR 0003's scheduler layer lands, it will call the
-  same `service.py` directly — a deterministic layer-1 trigger with zero
-  LLM calls, results delivered via the future notification channel.
+  asks for a refresh, `refresh_grid_data` first runs an incremental
+  market-data sync (idempotent, via the FTShare MCP endpoint
+  with `FTSHARE_API_KEY`), then recomputes and persists the signal
+  snapshots, then returns both results; `get_grid_status` reads the
+  latest persisted snapshot. When ADR 0003's scheduler layer lands, it
+  will call the same `service.py` directly — a deterministic layer-1
+  trigger with zero LLM calls, results delivered via the future
+  notification channel.
 - **Core** ports the proven computation (`level_of`, anchor scan, ledger
   replay with cost-protection sell pairing) decoupled from its current
   print/CSV coupling; grid parameters move from hardcoded constants into
   extension config.
-- **Tools**: `etf_grid_get_signals`, `etf_grid_get_portfolio`,
-  `etf_grid_record_trade` (HITL-confirmed).
+- **Tools**: `get_grid_status`, `refresh_grid_data`, `record_grid_trade`,
+  `list_grid_trades` — stable names per §6.3. All return the §6.5
+  `{ok, data}` / `{ok, error}` envelope with bare payload shapes (no
+  pagination envelope — `list_grid_trades` truncates silently at
+  `limit`). HITL confirmation for `record_grid_trade` is the design
+  (§6.3) but not yet adopted — the tool executes immediately today.
 - **API**: `GET .../status`, `GET .../signals`, `POST .../signals/compute`,
   `POST .../sync`, `GET/POST .../trades` under
   `/api/v1/extensions/etf-grid` — the data source for a standalone Client
   page.
-- **Client contract**: chat shows the agent's markdown narration plus a
-  custom signal card registered via CopilotKit `useRenderTool` on the
-  stable tool names; the standalone ledger page is plain React over the
-  REST API. A2UI (LLM-composed declarative UI over AG-UI activity events)
+- **Client contract**: chat shows the agent's markdown narration plus
+  custom tool cards registered via CopilotKit `useRenderTool`
+  (`@copilotkit/react-core/v2`) on the stable tool names; the standalone
+  ledger page is plain React over the REST API. A2UI (LLM-composed
+  declarative UI over AG-UI activity events)
   is recorded as a tracked option, to be re-evaluated when multiple
   extensions make per-tool cards repetitive — today's card components
   would then serve as its component catalog.
