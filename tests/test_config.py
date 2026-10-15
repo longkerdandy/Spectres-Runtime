@@ -23,6 +23,13 @@ def base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS", "100")
     monkeypatch.setenv("TEAM_LEADER_LLM_EXTRA_HEADERS", "")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "")
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
+    monkeypatch.setenv("LOG_FORMAT", "text")
+    monkeypatch.setenv("LOG_DIR", "logs")
+    monkeypatch.setenv("LOG_RETENTION_DAYS", "14")
+    monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+    monkeypatch.setenv("SCHEDULER_POLL_INTERVAL", "15")
+    monkeypatch.setenv("SCHEDULER_BASE_URL", "http://127.0.0.1:7777")
 
 
 class TestSettingsRequirements:
@@ -46,6 +53,13 @@ class TestSettingsRequirements:
             "TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS",
             "TEAM_LEADER_LLM_EXTRA_HEADERS",
             "CORS_ALLOWED_ORIGINS",
+            "LOG_LEVEL",
+            "LOG_FORMAT",
+            "LOG_DIR",
+            "LOG_RETENTION_DAYS",
+            "SCHEDULER_ENABLED",
+            "SCHEDULER_POLL_INTERVAL",
+            "SCHEDULER_BASE_URL",
         ):
             monkeypatch.delenv(key, raising=False)
 

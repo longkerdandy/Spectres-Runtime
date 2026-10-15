@@ -101,6 +101,11 @@ class TestSyncCandles:
         monkeypatch.setenv("ETF_GRID_CANDLE_LOOKBACK_DAYS", "90")
         monkeypatch.setenv("ETF_GRID_BACKFILL_START_DATE", "2021-01-01")
         monkeypatch.setenv("ETF_GRID_GRID_STEP", "0.05")
+        monkeypatch.setenv("ETF_GRID_SYNC_SCHEDULE_ENABLED", "true")
+        monkeypatch.setenv("ETF_GRID_SYNC_CRON", "0 9 * * 1,5")
+        monkeypatch.setenv("ETF_GRID_SYNC_TIMEZONE", "Asia/Shanghai")
+        monkeypatch.setenv("ETF_GRID_SYNC_MAX_RETRIES", "2")
+        monkeypatch.setenv("ETF_GRID_SYNC_RETRY_DELAY_SECONDS", "300")
         config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
         with pytest.raises(ValueError, match="ETF_GRID_FTSHARE_API_KEY is required"):
             sync_candles(["513330.XSHG"], config=config, candle_service=FakeCandleService(None))
