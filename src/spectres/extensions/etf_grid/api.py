@@ -25,7 +25,7 @@ from spectres.extensions.etf_grid.service import (
     get_portfolio_status,
     to_jsonable,
 )
-from spectres.extensions.etf_grid.types import Side, SignalSortField, SortDirection, SortSpec, TradeSortField
+from spectres.extensions.etf_grid.types import Side, SortDirection, SortSpec, TradeSortField
 
 logger = logging.getLogger(__name__)
 
@@ -76,15 +76,6 @@ def create_router(
     def get_status() -> list[dict[str, Any]]:
         """Portfolio status per symbol: ledger position, latest close/market value, and the latest signal's limit orders."""
         return to_jsonable(get_portfolio_status(config=config, ledger_service=ledger, candle_service=candles, signal_service=signals))
-
-    @router.get("/signals")
-    def get_signals(symbol: str | None = None, limit: int = Query(default=20, ge=1, le=200), offset: int = Query(default=0, ge=0)) -> dict[str, Any]:
-        """Signal history with order lists, newest first; optionally filtered by symbol.
-
-        Returns the pagination envelope ``{"items", "total", "limit", "offset"}``.
-        """
-        rows = signals.list_signals(symbol, order_by=[SortSpec(SignalSortField.TRADE_DATE, SortDirection.DESC)])
-        return _paginate(rows, limit, offset)
 
     @router.post("/signals/compute")
     def compute_signals() -> dict[str, Any]:

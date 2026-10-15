@@ -169,12 +169,11 @@ class TestEtfGridApi:
     def test_list_endpoints_reject_invalid_pagination_params(self, api_client: TestClient) -> None:
         """limit=0 / negative limit / negative offset are 422 with the canonical detail list."""
         for params in ({"limit": 0}, {"limit": -1}, {"limit": 201}, {"offset": -1}):
-            for path in ("trades", "signals"):
-                response = api_client.get(f"/api/v1/extensions/etf-grid/{path}", params=params)
-                assert response.status_code == 422, f"{path} {params}"
-                detail = response.json()["detail"]
-                assert isinstance(detail, list) and detail, detail
-                assert all({"loc", "msg", "type"} <= set(item) for item in detail)
+            response = api_client.get("/api/v1/extensions/etf-grid/trades", params=params)
+            assert response.status_code == 422, f"trades {params}"
+            detail = response.json()["detail"]
+            assert isinstance(detail, list) and detail, detail
+            assert all({"loc", "msg", "type"} <= set(item) for item in detail)
 
     def test_post_trades_validation_errors(self, api_client: TestClient) -> None:
         """Pydantic and domain rejections share one 422 shape: detail is a list of {loc, msg, type} objects."""
@@ -200,8 +199,8 @@ class TestEtfGridApi:
         assert detail[0]["type"] == "value_error"
         assert detail[0]["msg"]
 
-    def test_post_signals_compute_and_get_signals(self, seeded: TestClient) -> None:
-        """POST /signals/compute computes from local data; GET /signals reads history back."""
+    def test_post_signals_compute(self, seeded: TestClient) -> None:
+        """POST /signals/compute computes from local data and persists the snapshot."""
         response = seeded.post("/api/v1/extensions/etf-grid/signals/compute")
         assert response.status_code == 200
         body = response.json()
@@ -210,18 +209,6 @@ class TestEtfGridApi:
         triggered = next(o for o in signal["orders"] if o["kind"] == "triggered")
         assert triggered["side"] == "buy"
         assert triggered["grids"] == 3
-
-        response = seeded.get("/api/v1/extensions/etf-grid/signals", params={"symbol": "513330.XSHG"})
-        assert response.status_code == 200
-        body = response.json()
-        assert body["total"] == 1
-        assert len(body["items"]) == 1
-        assert body["items"][0]["level"] == -3
-        assert body["items"][0]["computed_at"] is not None
-
-        # offset windows over the same envelope.
-        page = seeded.get("/api/v1/extensions/etf-grid/signals", params={"symbol": "513330.XSHG", "limit": 1, "offset": 1}).json()
-        assert page["items"] == [] and page["total"] == 1
 
     def test_post_sync_never_500s_on_provider_failure(self, api_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         """POST /sync reports per-source errors in the body instead of failing."""
