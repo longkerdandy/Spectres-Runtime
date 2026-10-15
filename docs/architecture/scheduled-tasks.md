@@ -155,7 +155,7 @@ by **one composite route** owned by the extension:
 
 | Schedule | Cron (Asia/Shanghai) | Endpoint |
 |----------|----------------------|----------|
-| `etf_grid_daily_sync` | `45 15 * * 1-5` (weekdays after close) | `POST /api/v1/extensions/etf-grid/refresh` (new) |
+| `etf_grid_daily_sync` | `0 9 * * 1,5` (Mon & Fri 09:00) | `POST /api/v1/extensions/etf-grid/refresh` (new) |
 
 The schedule's operational fields (cron, timezone, enabled, retries) load
 from the extension's `ETF_GRID_SYNC_*` config, so a deployment can retime

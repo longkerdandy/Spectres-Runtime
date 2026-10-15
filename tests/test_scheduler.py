@@ -16,7 +16,7 @@ class TestRegisterSchedules:
     def _spec(self, **overrides: Any) -> ScheduleSpec:
         defaults: dict[str, Any] = {
             "name": "etf_grid_daily_sync",
-            "cron": "45 15 * * 1-5",
+            "cron": "0 9 * * 1,5",
             "endpoint": "/api/v1/extensions/etf-grid/refresh",
             "method": "POST",
             "timezone": "Asia/Shanghai",
@@ -41,7 +41,7 @@ class TestRegisterSchedules:
             register_schedules([ExtensionContribution(schedules=[self._spec(max_retries=2, retry_delay_seconds=300)])], db=MagicMock())
         manager.create.assert_called_once_with(
             name="etf_grid_daily_sync",
-            cron="45 15 * * 1-5",
+            cron="0 9 * * 1,5",
             endpoint="/api/v1/extensions/etf-grid/refresh",
             method="POST",
             payload=None,

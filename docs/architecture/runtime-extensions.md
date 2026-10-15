@@ -321,7 +321,7 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   with `FTSHARE_API_KEY`), then recomputes and persists the signal
   snapshots, then returns both results; `get_grid_status` reads the
   latest persisted snapshot. Schedule-side (since v0.5.0, ADR 0007), the
-  extension contributes `etf_grid_daily_sync` (`45 15 * * 1-5`,
+  extension contributes `etf_grid_daily_sync` (`0 9 * * 1,5`,
   Asia/Shanghai) pointing at the composite `POST .../refresh` route —
   a deterministic layer-1 trigger with zero LLM calls.
 - **Core** ports the proven computation (`level_of`, anchor scan, ledger

@@ -29,7 +29,7 @@ def config() -> EtfGridConfig:
         backfill_start_date=date(2021, 1, 1),
         grid_step=Decimal("0.05"),
         sync_schedule_enabled=True,
-        sync_cron="45 15 * * 1-5",
+        sync_cron="0 9 * * 1,5",
         sync_timezone="Asia/Shanghai",
         sync_max_retries=2,
         sync_retry_delay_seconds=300,
