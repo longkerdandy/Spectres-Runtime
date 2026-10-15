@@ -101,10 +101,22 @@ class ExtensionContext:
                             # attribute backs the extension's own tables
 
 @dataclass
+class ScheduleSpec:
+    """Declarative scheduled-task definition (ADR 0007)."""
+    name: str               # unique, prefixed with the extension id
+    cron: str
+    endpoint: str           # fired with one HTTP call on the cron cadence
+    method: str = "POST"
+    # ... payload, timezone, timeout_seconds, max_retries,
+    #     retry_delay_seconds, enabled — all required except payload;
+    #     registration always uses if_exists="update"
+
+@dataclass
 class ExtensionContribution:
     """What an extension gives back to Runtime."""
     toolkits: list[Toolkit] = field(default_factory=list)
     routers: list[APIRouter] = field(default_factory=list)
+    schedules: list[ScheduleSpec] = field(default_factory=list)
 
 class Extension(Protocol):
     name: str                                    # unique id, e.g. "etf_grid"
@@ -114,10 +126,12 @@ class Extension(Protocol):
 Rules:
 
 - **Idempotent, side-effect-free `register()`** apart from table creation
-  (§6.2). No network calls, no scheduler threads at load time.
-- An extension may contribute **either or both** surfaces. A tool-only
-  extension (chat interaction only) and an API-only extension (pure data
-  page) are both valid.
+  (§6.2). No network calls, no scheduler threads at load time — schedules
+  are only *declared*; core registers them with the AgentOS scheduler after
+  loading (`spectres/scheduler.py`).
+- An extension may contribute **any combination** of surfaces. A tool-only
+  extension (chat interaction only), an API-only extension (pure data
+  page), and a schedule-only extension (pure automation) are all valid.
 - Extensions are constructed once at startup and are stateless across
   requests/runs; mutable state lives in the database.
 - Extensions contribute **tools, not agents**, in this version: toolkits
@@ -274,6 +288,25 @@ active request bind a fresh one). Extensions participate by convention:
   redaction filter on the core handlers is defense in depth, not a license
   to log carelessly.
 
+### 6.6 Schedule surface (since v0.5.0, ADR 0007)
+
+- Extensions declare scheduled tasks as `ScheduleSpec`s in their
+  contribution; core registers them with the AgentOS scheduler at startup
+  (`spectres/scheduler.py`, fail-loud like the loader). Full design:
+  [scheduled-tasks.md](scheduled-tasks.md).
+- **The carrier is the extension's own REST route** — a schedule fires one
+  HTTP call and **2xx is success**, so schedule-facing routes must map
+  "nothing usable was produced" to 5xx (partial failures may stay 200 with
+  a body-level `errors` field). The scheduler records only status/timings;
+  domain results live in the extension's own tables.
+- Scheduled endpoints must be **idempotent**: the DB lease coordinates
+  workers but side effects are not exactly-once, and a schedule missed
+  during downtime fires once on recovery.
+- **Operational fields come from the extension's config fragment**
+  (cron, timezone, enabled, retries — e.g. `ETF_GRID_SYNC_*`); structural
+  fields (name, endpoint) stay in code, derived from the extension id.
+  `enabled=False` converges the DB row to disabled on restart.
+
 ## 7. Reference extension: ETF Grid Trading (`etf_grid`)
 
 The first extension ports the owner's existing quant-advisor scripts
@@ -282,15 +315,15 @@ symbol) into the Runtime. Naming: product name **ETF Grid Trading**,
 extension id **`etf_grid`** — deliberately descriptive over a codename,
 since the id appears in table names, tool names, env prefixes, and URLs.
 
-- **Trigger model**: user-initiated only (no scheduler yet). When the user
-  asks for a refresh, `refresh_grid_data` first runs an incremental
-  market-data sync (idempotent, via the FTShare MCP endpoint
+- **Trigger model**: user-initiated and scheduled. Conversation-side, when
+  the user asks for a refresh, `refresh_grid_data` first runs an
+  incremental market-data sync (idempotent, via the FTShare MCP endpoint
   with `FTSHARE_API_KEY`), then recomputes and persists the signal
   snapshots, then returns both results; `get_grid_status` reads the
-  latest persisted snapshot. When ADR 0003's scheduler layer lands, it
-  will call the same `service.py` directly — a deterministic layer-1
-  trigger with zero LLM calls, results delivered via the future
-  notification channel.
+  latest persisted snapshot. Schedule-side (since v0.5.0, ADR 0007), the
+  extension contributes `etf_grid_daily_sync` (`45 15 * * 1-5`,
+  Asia/Shanghai) pointing at the composite `POST .../refresh` route —
+  a deterministic layer-1 trigger with zero LLM calls.
 - **Core** ports the proven computation (`level_of`, anchor scan, ledger
   replay with cost-protection sell pairing) decoupled from its current
   print/CSV coupling; grid parameters move from hardcoded constants into
@@ -301,10 +334,14 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   pagination envelope — `list_grid_trades` truncates silently at
   `limit`). HITL confirmation for `record_grid_trade` is the design
   (§6.3) but not yet adopted — the tool executes immediately today.
-- **API**: `GET .../status`, `GET .../signals`, `POST .../signals/compute`,
-  `POST .../sync`, `GET/POST .../trades` under
+- **API**: `GET .../status`, `POST .../signals/compute`,
+  `POST .../sync`, `POST .../refresh` (composite sync+compute for the
+  scheduler, v0.5.0), `GET/POST .../trades` under
   `/api/v1/extensions/etf-grid` — the data source for a standalone Client
-  page.
+  page. (A `GET .../signals` history route existed in v0.4.x but was
+  removed in v0.5.0: it had no consumer — the Client renders the latest
+  signal embedded in `/status`; the service-layer `list_signals` remains
+  available should a history page ever need it.)
 - **Client contract**: chat shows the agent's markdown narration plus
   custom tool cards registered via CopilotKit `useRenderTool`
   (`@copilotkit/react-core/v2`) on the stable tool names; the standalone
@@ -314,7 +351,7 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   extensions make per-tool cards repetitive — today's card components
   would then serve as its component catalog.
 - **REST contract** (since v0.4.4):
-  - **Pagination envelope**: `GET .../trades` and `GET .../signals` return
+  - **Pagination envelope**: `GET .../trades` returns
     `{"items": [...], "total": int, "limit": int, "offset": int}`.
     `limit` defaults to 20 (`1..200`), `offset` defaults to 0; filters
     (`symbol`, `start`, `end`) apply *before* counting, so `total` is the

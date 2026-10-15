@@ -33,8 +33,8 @@ extension code; access goes through Agno's db handle.
 | `agno_component_configs` | Registry component configurations | Unused |
 | `agno_component_links` | Registry component relationships | Unused |
 | `agno_learnings` | Learning-machine store | Unused |
-| `agno_schedules` | Scheduler definitions | Unused |
-| `agno_schedule_runs` | Scheduler execution records | Unused |
+| `agno_schedules` | Scheduler definitions | In use (ETF Grid daily sync, v0.5.0) |
+| `agno_schedule_runs` | Scheduler execution records | In use (ETF Grid daily sync, v0.5.0) |
 | `agno_jobs` | Background jobs | Unused |
 | `agno_tool_results` | Tool call results (paused/HITL runs) | Unused |
 | `agno_approvals` | HITL approval requests | Unused |

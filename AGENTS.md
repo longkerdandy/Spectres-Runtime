@@ -164,6 +164,8 @@ Behavior expectations for coding agents working on this project:
 
 - **Language for code and docs**: Write all code comments, documentation, and commit messages in **English**.
 - **Language for user conversation**: When interacting with the project owner, respond in **Chinese**.
+- **Configuration items**: When adding configuration items, do **not** assign default values unless truly necessary — declare them as required environment variables. Defaults hide deployment intent and add code complexity; explicit configuration keeps the code simple.
+- **Code comments**: Do not reference ADRs, plans, or other documents in code comments or docstrings; the code should speak for itself.
 - **Version control**: Do **not** run `git commit`, `git push`, `git reset`, `git rebase`, or any other git mutation without explicit user permission. Ask for confirmation each time.
 - **Commit messages**: See Section 7 for detailed conventions.
 

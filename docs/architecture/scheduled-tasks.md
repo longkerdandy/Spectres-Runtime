@@ -1,10 +1,9 @@
 # Scheduled Tasks — Architecture
 
 > Topic deep-dive companion to [`../architecture.md`](../architecture.md).
-> Status: **accepted design** — decisions frozen in
+> Status: **implemented** (v0.5.0) — decisions frozen in
 > [ADR 0007](../adr/0007-scheduled-tasks-agno-scheduler.md) (2026-10-14);
-> implementation tracked in
-> [docs/plan/v0.5.0-scheduled-tasks-mvp.md](../plan/v0.5.0-scheduled-tasks-mvp.md).
+> the first schedule (`etf_grid_daily_sync`) runs on this substrate.
 >
 > Last updated: 2026-10-14.
 
@@ -86,8 +85,21 @@ Two Agno-managed tables (already listed in
   attempt persisted.
 - **Process-bound**: the scheduler dies with AgentOS. Acceptable for the
   single-host MVP (ADR 0005); recorded as an ADR consequence.
-- **Misfire/catch-up semantics are undocumented** — what happens to a
-  schedule missed during downtime must be measured in the POC (§7).
+- **Misfire/catch-up** (measured in the v0.5.0 POC): the poller claims any
+  schedule whose `next_run_at` is in the past, so a schedule missed during
+  downtime **fires once on recovery**, and `next_run_at` then recomputes to
+  the next future slot — multiple missed fires collapse into one catch-up
+  execution. Scheduled endpoints must tolerate this (ETF Grid's refresh is
+  idempotent, so a delayed fire is harmless).
+- **Timezone** (measured): `next_run_at` respects the schedule's `timezone`
+  (`45 15 * * 1-5` / `Asia/Shanghai` computed to 07:45 UTC as expected).
+- **Simple-request run records** (measured): for non-run endpoints,
+  `agno_schedule_runs` carries `status` / `status_code` / timings only —
+  the response body is *not* captured (`output` is null), so domain results
+  must live in the extension's own tables.
+- **Dependency**: the scheduler needs the `croniter` package — the project
+  depends on `agno[agui,scheduler]` (a missing extra fails loudly at
+  registration time).
 
 ### 3.4 Management surfaces
 
@@ -130,9 +142,9 @@ class ExtensionContribution:
     schedules: list[ScheduleSpec] = field(default_factory=list)  # NEW
 ```
 
-`ScheduleSpec` is a declarative dataclass mirroring `ScheduleManager.create`
-(`name, cron, timezone, endpoint, method, payload, timeout_seconds,
-max_retries, retry_delay_seconds, if_exists`). After `load_extensions()`,
+`ScheduleSpec` is a declarative dataclass (`name, cron, endpoint, method,
+timezone, timeout_seconds, max_retries, retry_delay_seconds, enabled` — all
+required; `payload` optional). After `load_extensions()`,
 core registers every spec through `ScheduleManager` — startup stays
 idempotent and code-registered schedules self-heal on restart.
 
@@ -144,6 +156,13 @@ by **one composite route** owned by the extension:
 | Schedule | Cron (Asia/Shanghai) | Endpoint |
 |----------|----------------------|----------|
 | `etf_grid_daily_sync` | `45 15 * * 1-5` (weekdays after close) | `POST /api/v1/extensions/etf-grid/refresh` (new) |
+
+The schedule's operational fields (cron, timezone, enabled, retries) load
+from the extension's `ETF_GRID_SYNC_*` config, so a deployment can retime
+or pause the task without code changes; the structural fields (name,
+endpoint) stay in code. Setting `ETF_GRID_SYNC_SCHEDULE_ENABLED=false`
+pauses the task — registration converges the DB row to the configured
+state on restart.
 
 `POST .../etf-grid/refresh` runs `sync_market_data()` then
 `compute_daily_signals()` in one call and returns both results. Error
@@ -192,12 +211,11 @@ Guardrails:
 - **Deterministic stays deterministic** — zero LLM on the sync path, per
   ADR 0003.
 
-Open questions for the POC / next milestones:
+Open questions for the next milestones:
 
-- **Misfire/catch-up**: does a schedule missed during downtime fire on
-  recovery? If it skips, ETF Grid needs a data-staleness check or explicit
-  catch-up.
-- **POC validation**: poller behavior, `agno_schedule_runs` record shape,
-  timezone correctness (`Asia/Shanghai`).
-- **ADR write-up**: once agreed, freeze the scheduler choice and the
-  deterministic-only scope into a new ADR (next number after 0006).
+- **Result delivery**: how task results reach the user — preliminary
+  direction is a push service to a dedicated Client UI (ADR 0007
+  decision 5), to be settled with the Client API milestone.
+- **Trading-calendar awareness**: the cron fires on weekday holidays too;
+  sync is idempotent and simply finds no new candles. Revisit only if the
+  wasted calls become a real cost.
