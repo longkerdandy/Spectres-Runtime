@@ -58,6 +58,15 @@ class EtfGridConfig(BaseSettings):
     # Grid step as a fraction (0.05 = 5%). Consumed by core/grid.py.
     grid_step: Decimal
 
+    # Daily sync schedule: operational knobs live in config so a deployment
+    # can retime or pause the task without code changes; the structural
+    # fields (name, endpoint) stay in extension.py.
+    sync_schedule_enabled: bool
+    sync_cron: str
+    sync_timezone: str
+    sync_max_retries: int
+    sync_retry_delay_seconds: int
+
     @field_validator("portfolio", mode="before")
     @classmethod
     def _parse_portfolio(cls, value: Any) -> Any:

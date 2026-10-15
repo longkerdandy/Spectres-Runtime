@@ -1,7 +1,7 @@
 """Extension contract: context, contribution, and protocol (runtime-extensions.md §4)."""
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from agno.db.postgres import PostgresDb
 from agno.tools.toolkit import Toolkit
@@ -19,11 +19,35 @@ class ExtensionContext:
 
 
 @dataclass
+class ScheduleSpec:
+    """Declarative scheduled-task definition.
+
+    A schedule is ``{cron, endpoint, method, payload}``: the AgentOS
+    scheduler fires one HTTP call to ``endpoint`` on the cron cadence, and
+    for non-run endpoints a 2xx response is success. All fields are
+    required except ``payload``; registration always uses
+    ``if_exists="update"`` so restarts converge the DB row to code.
+    """
+
+    name: str  # unique, prefixed with the extension id, e.g. "etf_grid_daily_sync"
+    cron: str
+    endpoint: str
+    method: str
+    timezone: str
+    timeout_seconds: int
+    max_retries: int
+    retry_delay_seconds: int
+    enabled: bool  # False: register (idempotently) then disable, so config state converges the DB row
+    payload: dict[str, Any] | None = None
+
+
+@dataclass
 class ExtensionContribution:
     """What an extension gives back to Runtime."""
 
     toolkits: list[Toolkit] = field(default_factory=list)
     routers: list[APIRouter] = field(default_factory=list)
+    schedules: list[ScheduleSpec] = field(default_factory=list)
 
 
 class Extension(Protocol):

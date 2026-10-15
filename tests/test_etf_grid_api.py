@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -221,7 +222,7 @@ class TestEtfGridApi:
         assert response.json()["errors"] == {"candles": "boom", "valuation": "boom"}
 
     def test_register_creates_tables_idempotently(self) -> None:
-        """register() is idempotent and returns the toolkit + router contribution."""
+        """register() is idempotent and returns the toolkit + router + schedule contribution."""
         ctx = ExtensionContext(settings=settings, db=get_postgres_db())
         first = etf_grid_extension.register(ctx)
         second = etf_grid_extension.register(ctx)
@@ -230,3 +231,77 @@ class TestEtfGridApi:
             assert contribution.toolkits[0].name == "etf_grid"
             assert len(contribution.routers) == 1
             assert contribution.routers[0].prefix == "/api/v1/extensions/etf-grid"
+            assert len(contribution.schedules) == 1
+            spec = contribution.schedules[0]
+            assert spec.name == "etf_grid_daily_sync"
+            assert spec.cron == "45 15 * * 1-5"
+            assert spec.timezone == "Asia/Shanghai"
+            assert spec.endpoint == "/api/v1/extensions/etf-grid/refresh"
+            assert spec.enabled is True
+
+
+@pytest.mark.unit
+class TestRefreshEndpoint:
+    """POST /refresh error contract: the scheduler treats 2xx as success."""
+
+    @pytest.fixture
+    def refresh_client(self) -> TestClient:
+        """A minimal app mounting only the router; no db is touched while both steps are patched."""
+        app = FastAPI()
+        app.include_router(create_router(config=EtfGridConfig()))  # type: ignore[call-arg]  # required fields come from .env.test
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_happy_path_returns_both_results(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """200 with the sync and compute sections when both steps succeed."""
+        monkeypatch.setattr(
+            "spectres.extensions.etf_grid.api.sync_market_data",
+            lambda **kwargs: {"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}},
+        )
+        monkeypatch.setattr(
+            "spectres.extensions.etf_grid.api.compute_daily_signals",
+            lambda **kwargs: {"signals": {}, "skipped": {}},
+        )
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["sync"]["errors"] == {}
+        assert body["signals"] == {"signals": {}, "skipped": {}}
+
+    def test_partial_source_failure_is_200_with_errors(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One failed source still computes signals over the partial data: 200 + errors."""
+        compute = MagicMock(return_value={"signals": {}, "skipped": {}})
+        monkeypatch.setattr(
+            "spectres.extensions.etf_grid.api.sync_market_data",
+            lambda **kwargs: {"candles": None, "valuation": 1, "errors": {"candles": "boom"}},
+        )
+        monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
+        assert response.status_code == 200
+        assert response.json()["sync"]["errors"] == {"candles": "boom"}
+        compute.assert_called_once()
+
+    def test_total_source_failure_is_502_and_skips_compute(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """All sources failed -> 502 so the schedule run records failed and retries; compute never runs."""
+        compute = MagicMock()
+        monkeypatch.setattr(
+            "spectres.extensions.etf_grid.api.sync_market_data",
+            lambda **kwargs: {"candles": None, "valuation": None, "errors": {"candles": "boom", "valuation": "boom"}},
+        )
+        monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
+        assert response.status_code == 502
+        compute.assert_not_called()
+
+    def test_compute_failure_is_500(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A compute exception propagates as 500 — nothing usable was produced."""
+        monkeypatch.setattr(
+            "spectres.extensions.etf_grid.api.sync_market_data",
+            lambda **kwargs: {"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}},
+        )
+
+        def boom(**kwargs: object) -> None:
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", boom)
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
+        assert response.status_code == 500

@@ -16,6 +16,11 @@ _REQUIRED_ENV = {
     "ETF_GRID_CANDLE_LOOKBACK_DAYS": "90",
     "ETF_GRID_BACKFILL_START_DATE": "2021-01-01",
     "ETF_GRID_GRID_STEP": "0.05",
+    "ETF_GRID_SYNC_SCHEDULE_ENABLED": "true",
+    "ETF_GRID_SYNC_CRON": "45 15 * * 1-5",
+    "ETF_GRID_SYNC_TIMEZONE": "Asia/Shanghai",
+    "ETF_GRID_SYNC_MAX_RETRIES": "2",
+    "ETF_GRID_SYNC_RETRY_DELAY_SECONDS": "300",
 }
 
 
@@ -46,6 +51,11 @@ class TestRequiredFields:
         assert config.candle_lookback_days == 90
         assert config.backfill_start_date == date(2021, 1, 1)
         assert config.grid_step == Decimal("0.05")
+        assert config.sync_schedule_enabled is True
+        assert config.sync_cron == "45 15 * * 1-5"
+        assert config.sync_timezone == "Asia/Shanghai"
+        assert config.sync_max_retries == 2
+        assert config.sync_retry_delay_seconds == 300
 
     def test_api_key_optional(self, required_env: pytest.MonkeyPatch) -> None:
         """The API key stays optional so Runtime startup never depends on it."""

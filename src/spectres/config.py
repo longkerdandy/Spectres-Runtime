@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     log_dir: str = Field(alias="LOG_DIR", default="logs")
     log_retention_days: int = Field(alias="LOG_RETENTION_DAYS", default=14)
 
+    # Scheduler (Agno built-in AgentOS scheduler)
+    scheduler_enabled: bool = Field(alias="SCHEDULER_ENABLED")
+    scheduler_poll_interval: int = Field(alias="SCHEDULER_POLL_INTERVAL")
+    scheduler_base_url: str = Field(alias="SCHEDULER_BASE_URL")
+
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
     def _parse_cors_allowed_origins(cls, value: Any) -> list[str] | None:

@@ -2,7 +2,7 @@
 
 import logging
 
-from spectres.extensions.base import ExtensionContext, ExtensionContribution
+from spectres.extensions.base import ExtensionContext, ExtensionContribution, ScheduleSpec
 from spectres.extensions.etf_grid.models import EtfGridBase
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,8 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
 
     Idempotent and side-effect-free apart from ``create_all``
     (runtime-extensions.md §6.2); performs no network calls at load time.
+    The daily sync schedule is only declared here — core registers it with
+    the AgentOS scheduler after loading (spectres/scheduler.py).
     """
     EtfGridBase.metadata.create_all(ctx.db.db_engine)
 
@@ -26,7 +28,23 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
 
     config = EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
-    contribution = ExtensionContribution(toolkits=[EtfGridToolkit(config=config)], routers=[create_router(config=config)])
+    contribution = ExtensionContribution(
+        toolkits=[EtfGridToolkit(config=config)],
+        routers=[create_router(config=config)],
+        schedules=[
+            ScheduleSpec(
+                name="etf_grid_daily_sync",
+                cron=config.sync_cron,
+                endpoint="/api/v1/extensions/etf-grid/refresh",
+                method="POST",
+                timezone=config.sync_timezone,
+                timeout_seconds=3600,
+                max_retries=config.sync_max_retries,
+                retry_delay_seconds=config.sync_retry_delay_seconds,
+                enabled=config.sync_schedule_enabled,
+            )
+        ],
+    )
     logger.info(
         "extension registered",
         extra={
@@ -34,6 +52,7 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
             "symbols": [item.symbol for item in config.portfolio],
             "toolkits": len(contribution.toolkits),
             "routers": len(contribution.routers),
+            "schedules": len(contribution.schedules),
         },
     )
     return contribution

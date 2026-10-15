@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 
@@ -98,6 +98,37 @@ def create_router(
         (``errors``) instead of producing a 500.
         """
         return to_jsonable(sync_market_data(config=config, candle_service=candles, valuation_service=valuation))
+
+    @router.post("/refresh")
+    def refresh() -> dict[str, Any]:
+        """Composite sync + compute, the schedule-facing route.
+
+        Unlike ``/sync``, the HTTP status participates in the contract
+        because the scheduler treats 2xx as success:
+
+        - all data sources failed -> 502 (nothing usable; scheduler retries);
+        - signal computation raised -> 500;
+        - partial source failure -> 200 with the per-source ``errors``
+          carried inside ``sync`` (partial data is still worth computing
+          signals over).
+        """
+        sync_result = sync_market_data(config=config, candle_service=candles, valuation_service=valuation)
+        if sync_result["candles"] is None and sync_result["valuation"] is None:
+            logger.error("refresh aborted: all data sources failed", extra={"event": "refresh_failed", "errors": sync_result["errors"]})
+            raise HTTPException(status_code=502, detail=f"all data sources failed: {sync_result['errors']}")
+        try:
+            compute_result = compute_daily_signals(
+                config=config,
+                ledger_service=ledger,
+                candle_service=candles,
+                valuation_service=valuation,
+                signal_service=signals,
+            )
+        except Exception as exc:
+            logger.error("refresh: signal computation failed", exc_info=exc, extra={"event": "refresh_failed"})
+            raise
+        logger.info("refresh completed", extra={"event": "refresh_completed", "sync_errors": sync_result["errors"]})
+        return to_jsonable({"sync": sync_result, "signals": compute_result})
 
     @router.get("/trades")
     def get_trades(symbol: str | None = None, start: date | None = None, end: date | None = None, limit: int = Query(default=20, ge=1, le=200), offset: int = Query(default=0, ge=0)) -> dict[str, Any]:
