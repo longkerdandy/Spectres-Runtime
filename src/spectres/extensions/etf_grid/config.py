@@ -9,6 +9,8 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from spectres.extensions.etf_grid.types import normalize_symbol
+
 
 class GateConfig(BaseModel):
     """Valuation gate: pause opening new grids when the index valuation is extreme."""
@@ -27,6 +29,12 @@ class PortfolioItem(BaseModel):
     per_grid_amount: int
     max_grids: int
     gate: GateConfig | None = None  # no valuation gate when unset
+
+    @field_validator("symbol")
+    @classmethod
+    def _normalize_symbol(cls, value: str) -> str:
+        """Normalize to the canonical FTShare form (strip + upper) at load time."""
+        return normalize_symbol(value)
 
 
 class EtfGridConfig(BaseSettings):

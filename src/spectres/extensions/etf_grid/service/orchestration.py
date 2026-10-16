@@ -56,7 +56,8 @@ def compute_daily_signals(
     valuation_service = valuation_service or EtfGridValuationService()
     signal_service = signal_service or EtfGridSignalService()
 
-    items = [item for item in config.portfolio if symbols is None or item.symbol in {normalize_symbol(s) for s in symbols}]
+    wanted = None if symbols is None else {normalize_symbol(s) for s in symbols}
+    items = [item for item in config.portfolio if wanted is None or item.symbol in wanted]
     valuation_rows: list[dict[str, Any]] | None = None
 
     signals: dict[str, Any] = {}

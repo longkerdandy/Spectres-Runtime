@@ -85,6 +85,28 @@ class TestPortfolioParsing:
             EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
 
 
+class TestPortfolioSymbolNormalization:
+    """Portfolio symbols are normalized to the canonical FTShare form at load."""
+
+    def test_lowercase_symbol_normalized(self, required_env: pytest.MonkeyPatch) -> None:
+        """A lowercase or padded symbol becomes uppercase-canonical on load."""
+        required_env.setenv(
+            "ETF_GRID_PORTFOLIO",
+            '[{"symbol": " 513330.xshg ", "name": "x", "per_grid_amount": 10000, "max_grids": 7}]',
+        )
+        config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+        assert config.portfolio[0].symbol == "513330.XSHG"
+
+    def test_invalid_symbol_rejected(self, required_env: pytest.MonkeyPatch) -> None:
+        """A symbol without the <code>.<exchange> form fails validation."""
+        required_env.setenv(
+            "ETF_GRID_PORTFOLIO",
+            '[{"symbol": "513330", "name": "x", "per_grid_amount": 10000, "max_grids": 7}]',
+        )
+        with pytest.raises(ValidationError):
+            EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+
+
 class TestGateConfig:
     """The optional per-symbol valuation gate parses from the portfolio JSON."""
 
