@@ -6,6 +6,7 @@ from typing import Any, Literal, cast
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
@@ -81,7 +82,14 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Return the PostgreSQL connection URL."""
-        return f"postgresql+psycopg://{self.db_user}:{self.db_pass}@{self.db_host}:{self.db_port}/{self.db_database}"
+        return URL.create(
+            "postgresql+psycopg",
+            username=self.db_user,
+            password=self.db_pass,
+            host=self.db_host,
+            port=self.db_port,
+            database=self.db_database,
+        ).render_as_string(hide_password=False)
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -2,6 +2,7 @@
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import create_engine as sa_create_engine
 
 from spectres.config import Settings
 
@@ -156,3 +157,21 @@ class TestSettingsValidation:
 
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.database_url == "postgresql+psycopg://user:secret@db.example.com:5432/spectres"
+
+    def test_database_url_property_escapes_special_characters(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+    ) -> None:
+        """database_url percent-encodes credentials containing reserved characters."""
+        monkeypatch.setenv("DB_HOST", "db.example.com")
+        monkeypatch.setenv("DB_PORT", "5432")
+        monkeypatch.setenv("DB_USER", "user")
+        monkeypatch.setenv("DB_PASS", "p@ss/word%#1")
+        monkeypatch.setenv("DB_DATABASE", "spectres")
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.database_url == "postgresql+psycopg://user:p%40ss%2Fword%25%231@db.example.com:5432/spectres"
+
+        engine = sa_create_engine(settings.database_url)
+        assert engine.url.password == "p@ss/word%#1"
