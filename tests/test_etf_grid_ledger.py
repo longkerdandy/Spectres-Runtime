@@ -13,7 +13,7 @@ from spectres.extensions.etf_grid.core.ledger import (
     replay_ledger,
 )
 from spectres.extensions.etf_grid.models import EtfGridBase
-from spectres.extensions.etf_grid.service import _SORTABLE_COLUMNS, EtfGridLedgerService, _order_clauses
+from spectres.extensions.etf_grid.service.ledger import _SORTABLE_COLUMNS, EtfGridLedgerService, _order_clauses
 from spectres.extensions.etf_grid.types import Side, SortDirection, SortSpec, TradeSortField, normalize_symbol
 
 pytestmark = pytest.mark.unit
