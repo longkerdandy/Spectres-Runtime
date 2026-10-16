@@ -218,15 +218,29 @@ class EtfGridLedgerService:
         """
         positions: dict[str, list[LedgerTrade]] = {}
         for trade in self.list_trades():
-            positions.setdefault(trade["symbol"], []).append(
-                LedgerTrade(
-                    trade_date=trade["trade_date"],
-                    side=Side(trade["side"]),
-                    quantity=trade["quantity"],
-                    net_amount=trade["net_amount"],
-                )
-            )
+            positions.setdefault(trade["symbol"], []).append(_to_ledger_trade(trade))
         return {symbol: replay_ledger(trades) for symbol, trades in positions.items()}
+
+    def get_position(self, symbol: str) -> Position | None:
+        """Replay the ledger for one symbol and return its current position.
+
+        Returns ``None`` when the symbol has no trades. The per-symbol
+        companion of ``get_positions()``: callers that must keep one
+        symbol's ledger failure from aborting the rest of the portfolio
+        (signal computation) use this inside their isolation boundary.
+        """
+        trades = [_to_ledger_trade(trade) for trade in self.list_trades(symbol)]
+        return replay_ledger(trades) if trades else None
+
+
+def _to_ledger_trade(trade: dict[str, Any]) -> LedgerTrade:
+    """Convert a structured trade dict into the replay input type."""
+    return LedgerTrade(
+        trade_date=trade["trade_date"],
+        side=Side(trade["side"]),
+        quantity=trade["quantity"],
+        net_amount=trade["net_amount"],
+    )
 
 
 def _trade_to_dict(trade: EtfGridTrade) -> dict[str, Any]:
@@ -581,7 +595,11 @@ def compute_daily_signals(
     Symbols with insufficient candle history are skipped (not crashed)
     and recorded under ``skipped``; a symbol with a configured gate but no
     usable valuation series is skipped too — emitting un-gated buy advice
-    for a gated symbol would defeat the gate's purpose.
+    for a gated symbol would defeat the gate's purpose. Any other
+    per-symbol failure (ledger replay errors, provider outages, malformed
+    rows) is caught, logged at ERROR, and recorded under ``skipped`` as
+    ``"error: <type>: <message>"`` so one broken symbol never aborts the
+    rest of the batch.
 
     Returns:
         ``{"signals": {symbol: signal dict}, "skipped": {symbol: reason}}``.
@@ -593,55 +611,62 @@ def compute_daily_signals(
     signal_service = signal_service or EtfGridSignalService()
 
     items = [item for item in config.portfolio if symbols is None or item.symbol in {normalize_symbol(s) for s in symbols}]
-    positions = ledger_service.get_positions()
     valuation_rows: list[dict[str, Any]] | None = None
 
     signals: dict[str, Any] = {}
     skipped: dict[str, str] = {}
     for item in items:
-        candles = candle_service.list_candles(item.symbol)
-        if len(candles) < 61:
-            skipped[item.symbol] = "insufficient_candles"
-            logger.debug("signal skipped: insufficient candles", extra={"event": "signal_skipped", "symbol": item.symbol, "reason": "insufficient_candles", "candle_count": len(candles)})
-            continue
-
-        gate = None
-        if item.gate is not None:
-            if valuation_rows is None:
-                valuation_rows = valuation_service.list_valuation()
-            values = [row[item.gate.metric] for row in valuation_rows if row[item.gate.metric] is not None]
-            gate = gate_state(values, Decimal(str(item.gate.threshold)), item.gate.block_when)
-            if gate is None:
-                skipped[item.symbol] = "no_valuation_data"
-                logger.debug(
-                    "signal skipped: gate has no usable valuation data",
-                    extra={"event": "signal_skipped", "symbol": item.symbol, "reason": "no_valuation_data", "valuation_rows": len(valuation_rows)},
-                )
+        try:
+            candles = candle_service.list_candles(item.symbol)
+            if len(candles) < 61:
+                skipped[item.symbol] = "insufficient_candles"
+                logger.debug("signal skipped: insufficient candles", extra={"event": "signal_skipped", "symbol": item.symbol, "reason": "insufficient_candles", "candle_count": len(candles)})
                 continue
 
-        closes = [candle["close"] for candle in candles]
-        anchor = moving_average(closes)
-        prev_anchor = moving_average(closes[:-1])
-        assert anchor is not None and prev_anchor is not None  # guaranteed by the >=61 candle check
-        position = positions.get(item.symbol)
-        snapshot = compute_signal(
-            GridSignalInput(
-                symbol=item.symbol,
-                trade_date=candles[-1]["trade_date"],
-                close=closes[-1],
-                prev_close=closes[-2],
-                anchor=anchor,
-                prev_anchor=prev_anchor,
-                shares=position.shares if position else 0,
-                lots=position.lots if position else (),
-                per_grid_amount=item.per_grid_amount,
-                max_grids=item.max_grids,
-                gate=gate,
-            ),
-            config.grid_step,
-        )
-        signal_service.upsert_signals([snapshot])
-        signals[item.symbol] = _snapshot_to_row(snapshot)
+            gate = None
+            if item.gate is not None:
+                if valuation_rows is None:
+                    valuation_rows = valuation_service.list_valuation()
+                values = [row[item.gate.metric] for row in valuation_rows if row[item.gate.metric] is not None]
+                gate = gate_state(values, Decimal(str(item.gate.threshold)), item.gate.block_when)
+                if gate is None:
+                    skipped[item.symbol] = "no_valuation_data"
+                    logger.debug(
+                        "signal skipped: gate has no usable valuation data",
+                        extra={"event": "signal_skipped", "symbol": item.symbol, "reason": "no_valuation_data", "valuation_rows": len(valuation_rows)},
+                    )
+                    continue
+
+            closes = [candle["close"] for candle in candles]
+            anchor = moving_average(closes)
+            prev_anchor = moving_average(closes[:-1])
+            assert anchor is not None and prev_anchor is not None  # guaranteed by the >=61 candle check
+            position = ledger_service.get_position(item.symbol)
+            snapshot = compute_signal(
+                GridSignalInput(
+                    symbol=item.symbol,
+                    trade_date=candles[-1]["trade_date"],
+                    close=closes[-1],
+                    prev_close=closes[-2],
+                    anchor=anchor,
+                    prev_anchor=prev_anchor,
+                    shares=position.shares if position else 0,
+                    lots=position.lots if position else (),
+                    per_grid_amount=item.per_grid_amount,
+                    max_grids=item.max_grids,
+                    gate=gate,
+                ),
+                config.grid_step,
+            )
+            signal_service.upsert_signals([snapshot])
+            signals[item.symbol] = _snapshot_to_row(snapshot)
+        except Exception as exc:
+            skipped[item.symbol] = f"error: {type(exc).__name__}: {exc}"
+            logger.error(
+                "signal computation failed",
+                exc_info=exc,
+                extra={"event": "signal_error", "symbol": item.symbol},
+            )
     return {"signals": signals, "skipped": skipped}
 
 

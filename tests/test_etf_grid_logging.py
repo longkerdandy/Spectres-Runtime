@@ -15,6 +15,7 @@ from spectres.extensions.base import ExtensionContext
 from spectres.extensions.etf_grid import extension as etf_grid_extension
 from spectres.extensions.etf_grid.api import create_router
 from spectres.extensions.etf_grid.config import EtfGridConfig, GateConfig, PortfolioItem
+from spectres.extensions.etf_grid.core.ledger import Position
 from spectres.extensions.etf_grid.csindex import MAX_ATTEMPTS, fetch_index_perf
 from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.models import EtfGridBase
@@ -201,9 +202,9 @@ class _FakeLedgerService(EtfGridLedgerService):
     def __init__(self) -> None:
         """No state needed."""
 
-    def get_positions(self) -> dict[str, Any]:
-        """Return no positions."""
-        return {}
+    def get_position(self, symbol: str) -> Position | None:
+        """Return no position."""
+        return None
 
 
 class TestSignalSkipLogging:
@@ -226,6 +227,92 @@ class TestSignalSkipLogging:
         assert records[0].levelname == "DEBUG"
         assert records[0].__dict__["symbol"] == "513530.XSHG"
         assert records[0].__dict__["reason"] == "no_valuation_data"
+
+
+class _FlakyCandleService(EtfGridCandleService):
+    """Candle stand-in that raises for one symbol (no database)."""
+
+    def __init__(self, rows: list[dict[str, Any]], failing_symbol: str) -> None:
+        """Set up with canned rows and the symbol that should fail."""
+        self._rows = rows
+        self._failing_symbol = failing_symbol
+
+    def list_candles(self, symbol: str, *, descending: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
+        """Return the canned rows, or raise for the failing symbol."""
+        if symbol == self._failing_symbol:
+            raise RuntimeError("provider exploded")
+        return self._rows
+
+
+class _FlakyLedgerService(EtfGridLedgerService):
+    """Ledger stand-in whose replay fails for one symbol (no database)."""
+
+    def __init__(self, failing_symbol: str) -> None:
+        """Set up with the symbol that should fail."""
+        self._failing_symbol = failing_symbol
+
+    def get_position(self, symbol: str) -> Position | None:
+        """Raise for the failing symbol, otherwise report no position."""
+        if symbol == self._failing_symbol:
+            raise ValueError("sell quantity exceeds holdings")
+        return None
+
+
+def _two_symbol_config() -> EtfGridConfig:
+    """A minimal config with two un-gated portfolio entries."""
+    return EtfGridConfig(
+        ftshare_api_key=None,
+        portfolio=[
+            PortfolioItem(symbol="513330.XSHG", name="恒生互联网ETF", per_grid_amount=10000, max_grids=7),
+            PortfolioItem(symbol="513120.XSHG", name="港股创新药ETF", per_grid_amount=10000, max_grids=7),
+        ],
+        candle_lookback_days=90,
+        backfill_start_date=date(2021, 1, 1),
+        grid_step=Decimal("0.05"),
+        sync_schedule_enabled=True,
+        sync_cron="0 9 * * 1,5",
+        sync_timezone="Asia/Shanghai",
+        sync_max_retries=2,
+        sync_retry_delay_seconds=300,
+    )
+
+
+class TestSignalErrorIsolation:
+    """A per-symbol failure lands in skipped and never aborts the batch."""
+
+    def test_candle_failure_isolated(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The failing symbol is skipped with an error reason; the healthy symbol still gets a signal."""
+        candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(62)]
+        signal_service = MagicMock(spec=EtfGridSignalService)
+        with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
+            result = compute_daily_signals(
+                config=_two_symbol_config(),
+                ledger_service=_FakeLedgerService(),
+                candle_service=_FlakyCandleService(candles, "513120.XSHG"),
+                valuation_service=MagicMock(spec=EtfGridValuationService),
+                signal_service=signal_service,
+            )
+        assert set(result["signals"]) == {"513330.XSHG"}
+        assert result["skipped"] == {"513120.XSHG": "error: RuntimeError: provider exploded"}
+        assert signal_service.upsert_signals.call_count == 1
+        records = _records(caplog, "signal_error")
+        assert len(records) == 1
+        assert records[0].levelname == "ERROR"
+        assert records[0].__dict__["symbol"] == "513120.XSHG"
+        assert records[0].exc_info is not None
+
+    def test_ledger_replay_failure_isolated(self) -> None:
+        """A ValueError from replaying one symbol's ledger skips only that symbol."""
+        candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(62)]
+        result = compute_daily_signals(
+            config=_two_symbol_config(),
+            ledger_service=_FlakyLedgerService("513330.XSHG"),
+            candle_service=_FakeCandleService(candles),
+            valuation_service=MagicMock(spec=EtfGridValuationService),
+            signal_service=MagicMock(spec=EtfGridSignalService),
+        )
+        assert set(result["signals"]) == {"513120.XSHG"}
+        assert result["skipped"] == {"513330.XSHG": "error: ValueError: sell quantity exceeds holdings"}
 
 
 class TestApiRejectionLogging:
