@@ -69,7 +69,7 @@ class EtfGridCandleService(_SessionBound):
         )
         with self._session_factory() as session, session.begin():
             session.execute(stmt)
-        return len(candles)
+        return len(rows)
 
     def list_candles(
         self,

@@ -19,7 +19,7 @@ from typing import Any
 from agno.tools.toolkit import Toolkit
 
 from spectres.config import settings
-from spectres.extensions.etf_grid.config import EtfGridConfig
+from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
 from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
@@ -74,7 +74,7 @@ class EtfGridToolkit(Toolkit):
         signal_service: EtfGridSignalService | None = None,
     ) -> None:
         """Create the toolkit; services default to the shared instances (injectable for tests)."""
-        self._config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+        self._config = config or load_config()
         self._ledger = ledger_service or EtfGridLedgerService()
         self._candles = candle_service or EtfGridCandleService()
         self._valuation = valuation_service or EtfGridValuationService()

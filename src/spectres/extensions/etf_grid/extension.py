@@ -24,10 +24,10 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     # Imported lazily so merely importing the package stays cheap and the
     # web/agent frameworks are only pulled in when surfaces are built.
     from spectres.extensions.etf_grid.api import create_router
-    from spectres.extensions.etf_grid.config import EtfGridConfig
+    from spectres.extensions.etf_grid.config import load_config
     from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
 
-    config = EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+    config = load_config()
     contribution = ExtensionContribution(
         toolkits=[EtfGridToolkit(config=config)],
         routers=[create_router(config=config)],

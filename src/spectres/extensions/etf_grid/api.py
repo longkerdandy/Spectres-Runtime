@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 
-from spectres.extensions.etf_grid.config import EtfGridConfig
+from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
 from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
@@ -64,7 +64,7 @@ def create_router(
     signal_service: EtfGridSignalService | None = None,
 ) -> APIRouter:
     """Build the etf_grid API router; services default to shared instances (injectable for tests)."""
-    config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+    config = config or load_config()
     ledger = ledger_service or EtfGridLedgerService()
     candles = candle_service or EtfGridCandleService()
     valuation = valuation_service or EtfGridValuationService()

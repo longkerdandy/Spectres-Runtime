@@ -15,7 +15,7 @@ from typing import Any
 
 import ftshare as ft
 
-from spectres.extensions.etf_grid.config import EtfGridConfig
+from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
 from spectres.extensions.etf_grid.csindex import fetch_index_perf, sync_valuation
 from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridValuationService
 from spectres.extensions.etf_grid.types import CandleInput, normalize_symbol
@@ -82,7 +82,7 @@ def sync_candles(
         ValueError: If the API key is missing when a client must be
             created, or a symbol fails validation.
     """
-    config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+    config = config or load_config()
     candle_service = candle_service or EtfGridCandleService()
     if symbols is None:
         symbols = [item.symbol for item in config.portfolio]

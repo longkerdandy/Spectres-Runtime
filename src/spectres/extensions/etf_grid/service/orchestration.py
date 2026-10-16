@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
-from spectres.extensions.etf_grid.config import EtfGridConfig
+from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
 from spectres.extensions.etf_grid.core.grid import (
     GridSignalInput,
     SignalSnapshot,
@@ -54,7 +54,7 @@ def compute_daily_signals(
     Returns:
         ``{"signals": {symbol: signal dict}, "skipped": {symbol: reason}}``.
     """
-    config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+    config = config or load_config()
     ledger_service = ledger_service or EtfGridLedgerService()
     candle_service = candle_service or EtfGridCandleService()
     valuation_service = valuation_service or EtfGridValuationService()
@@ -149,7 +149,7 @@ def get_portfolio_status(
     and the latest persisted signal snapshot. Positions always come from
     the ledger — never from stored snapshots.
     """
-    config = config or EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
+    config = config or load_config()
     ledger_service = ledger_service or EtfGridLedgerService()
     candle_service = candle_service or EtfGridCandleService()
     signal_service = signal_service or EtfGridSignalService()

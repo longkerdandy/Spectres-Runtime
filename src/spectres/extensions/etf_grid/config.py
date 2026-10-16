@@ -82,3 +82,8 @@ class EtfGridConfig(BaseSettings):
         if isinstance(value, str):
             return json.loads(value)
         return value
+
+
+def load_config() -> EtfGridConfig:
+    """Load the extension settings from ETF_GRID_* environment variables."""
+    return EtfGridConfig()  # type: ignore[call-arg]  # required fields come from ETF_GRID_* env vars
