@@ -587,10 +587,10 @@ def compute_daily_signals(
 ) -> dict[str, Any]:
     """Compute and persist daily grid signals for the portfolio.
 
-    For each configured symbol: read the candle history (61+ bars are
-    required — MA60 today plus MA60 yesterday), replay the ledger for the
-    position and lot queue, resolve the valuation gate when configured,
-    compute the signal via ``core.grid``, and upsert the snapshot.
+    For each configured symbol: read the latest 61 candle bars (MA60
+    today plus MA60 yesterday), replay the ledger for the position and
+    lot queue, resolve the valuation gate when configured, compute the
+    signal via ``core.grid``, and upsert the snapshot.
 
     Symbols with insufficient candle history are skipped (not crashed)
     and recorded under ``skipped``; a symbol with a configured gate but no
@@ -617,7 +617,9 @@ def compute_daily_signals(
     skipped: dict[str, str] = {}
     for item in items:
         try:
-            candles = candle_service.list_candles(item.symbol)
+            # The strategy only consumes the latest 61 bars; fetch newest-first
+            # with a SQL limit and restore chronological order.
+            candles = list(reversed(candle_service.list_candles(item.symbol, descending=True, limit=61)))
             if len(candles) < 61:
                 skipped[item.symbol] = "insufficient_candles"
                 logger.debug("signal skipped: insufficient candles", extra={"event": "signal_skipped", "symbol": item.symbol, "reason": "insufficient_candles", "candle_count": len(candles)})

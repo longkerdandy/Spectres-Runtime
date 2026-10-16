@@ -180,8 +180,9 @@ class _FakeCandleService(EtfGridCandleService):
         self._rows = rows
 
     def list_candles(self, symbol: str, *, descending: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
-        """Return the canned rows."""
-        return self._rows
+        """Return the canned rows, honoring descending/limit like the real service."""
+        rows = list(reversed(self._rows)) if descending else list(self._rows)
+        return rows[:limit] if limit is not None else rows
 
 
 class _FakeValuationService(EtfGridValuationService):
@@ -241,7 +242,8 @@ class _FlakyCandleService(EtfGridCandleService):
         """Return the canned rows, or raise for the failing symbol."""
         if symbol == self._failing_symbol:
             raise RuntimeError("provider exploded")
-        return self._rows
+        rows = list(reversed(self._rows)) if descending else list(self._rows)
+        return rows[:limit] if limit is not None else rows
 
 
 class _FlakyLedgerService(EtfGridLedgerService):
@@ -313,6 +315,39 @@ class TestSignalErrorIsolation:
         )
         assert set(result["signals"]) == {"513120.XSHG"}
         assert result["skipped"] == {"513330.XSHG": "error: ValueError: sell quantity exceeds holdings"}
+
+
+class _SpyCandleService(_FakeCandleService):
+    """Candle stand-in that records how list_candles was called."""
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        """Set up with canned rows and an empty call log."""
+        super().__init__(rows)
+        self.calls: list[tuple[str, bool, int | None]] = []
+
+    def list_candles(self, symbol: str, *, descending: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
+        """Record the call and delegate to the canned behavior."""
+        self.calls.append((symbol, descending, limit))
+        return super().list_candles(symbol, descending=descending, limit=limit)
+
+
+class TestSignalCandleFetch:
+    """compute_daily_signals pushes the 61-bar window down into the candle query."""
+
+    def test_fetches_latest_61_bars_only(self) -> None:
+        """The candle query is newest-first with a SQL limit of 61, then restored to chronological order."""
+        candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(80)]
+        candle_service = _SpyCandleService(candles)
+        result = compute_daily_signals(
+            config=_two_symbol_config(),
+            ledger_service=_FakeLedgerService(),
+            candle_service=candle_service,
+            valuation_service=MagicMock(spec=EtfGridValuationService),
+            signal_service=MagicMock(spec=EtfGridSignalService),
+        )
+        assert set(result["signals"]) == {"513330.XSHG", "513120.XSHG"}
+        assert candle_service.calls == [("513330.XSHG", True, 61), ("513120.XSHG", True, 61)]
+        assert result["signals"]["513330.XSHG"]["trade_date"] == date(2026, 1, 1) + timedelta(days=79)
 
 
 class TestApiRejectionLogging:
