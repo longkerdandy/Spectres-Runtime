@@ -34,12 +34,12 @@ class Settings(BaseSettings):
     team_leader_llm_model: str = Field(alias="TEAM_LEADER_LLM_MODEL")
     team_leader_llm_api_key: str | None = Field(alias="TEAM_LEADER_LLM_API_KEY")
     team_leader_llm_base_url: str | None = Field(alias="TEAM_LEADER_LLM_BASE_URL")
-    team_leader_llm_temperature: float | None = Field(alias="TEAM_LEADER_LLM_TEMPERATURE")
-    team_leader_llm_max_completion_tokens: int | None = Field(alias="TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS")
-    team_leader_llm_extra_headers: dict[str, str] | None = Field(alias="TEAM_LEADER_LLM_EXTRA_HEADERS")
+    team_leader_llm_temperature: float | None = Field(alias="TEAM_LEADER_LLM_TEMPERATURE", default=None)
+    team_leader_llm_max_completion_tokens: int | None = Field(alias="TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS", default=None)
+    team_leader_llm_extra_headers: dict[str, str] | None = Field(alias="TEAM_LEADER_LLM_EXTRA_HEADERS", default=None)
 
     # CORS
-    cors_allowed_origins: list[str] | None = Field(alias="CORS_ALLOWED_ORIGINS")
+    cors_allowed_origins: list[str] | None = Field(alias="CORS_ALLOWED_ORIGINS", default=None)
 
     # Web search (Tavily API)
     tavily_api_key: str | None = Field(alias="TAVILY_API_KEY", default=None)

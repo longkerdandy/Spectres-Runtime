@@ -91,6 +91,41 @@ class TestSettingsEnvironment:
         assert settings.team_leader_llm_model == "test-model"
 
 
+class TestOptionalLlmParams:
+    """TEAM_LEADER_LLM_TEMPERATURE / MAX_COMPLETION_TOKENS are truly optional."""
+
+    def test_absent_defaults_to_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+    ) -> None:
+        """Commenting out both variables yields None (the model default applies)."""
+        monkeypatch.delenv("TEAM_LEADER_LLM_TEMPERATURE")
+        monkeypatch.delenv("TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS")
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.team_leader_llm_temperature is None
+        assert settings.team_leader_llm_max_completion_tokens is None
+
+    def test_valid_values_parsed(
+        self,
+        base_env: None,
+    ) -> None:
+        """Numeric strings are parsed into float and int."""
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.team_leader_llm_temperature == 0.5
+        assert settings.team_leader_llm_max_completion_tokens == 100
+
+    def test_invalid_value_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+    ) -> None:
+        """A non-numeric value is rejected with a ValidationError."""
+        monkeypatch.setenv("TEAM_LEADER_LLM_TEMPERATURE", "abc")
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None)  # type: ignore[call-arg]
+
+
 class TestSettingsValidation:
     """Tests for Settings field validation."""
 
@@ -123,6 +158,16 @@ class TestSettingsValidation:
         with pytest.raises(ValidationError):
             Settings(_env_file=None)  # type: ignore[call-arg]
 
+    def test_extra_headers_absent_defaults_to_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+    ) -> None:
+        """TEAM_LEADER_LLM_EXTRA_HEADERS defaults to None when commented out."""
+        monkeypatch.delenv("TEAM_LEADER_LLM_EXTRA_HEADERS")
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.team_leader_llm_extra_headers is None
+
     @pytest.mark.parametrize(
         ("input_value", "expected"),
         [
@@ -142,6 +187,16 @@ class TestSettingsValidation:
         monkeypatch.setenv("CORS_ALLOWED_ORIGINS", input_value)
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.cors_allowed_origins == expected
+
+    def test_cors_absent_defaults_to_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        base_env: None,
+    ) -> None:
+        """CORS_ALLOWED_ORIGINS defaults to None when commented out."""
+        monkeypatch.delenv("CORS_ALLOWED_ORIGINS")
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+        assert settings.cors_allowed_origins is None
 
     def test_database_url_property(
         self,
