@@ -23,7 +23,6 @@ from spectres.extensions.etf_grid.types import (
     CandleInput,
     OrderAdvice,
     Side,
-    SignalSortField,
     SortDirection,
     SortSpec,
     Source,
@@ -392,7 +391,7 @@ _BUY_ORDER = OrderAdvice(side="buy", limit_price=Decimal("0.9500"), grids=3, sha
 class TestValuationService:
     """Valuation upsert/overwrite and read paths against real Postgres."""
 
-    def test_upsert_read_latest_and_overwrite(self, services: Services) -> None:
+    def test_upsert_read_and_overwrite(self, services: Services) -> None:
         """Rows round-trip ascending; re-upserting a date overwrites it."""
         services.valuation.upsert_valuation(
             [
@@ -404,8 +403,6 @@ class TestValuationService:
         assert [r["trade_date"].day for r in rows] == [1, 2]
         assert rows[0]["dyr"] == Decimal("0.0532")
         assert rows[1]["dyr"] is None
-        latest = services.valuation.latest_valuation()
-        assert latest is not None and latest["trade_date"] == date(2026, 9, 2)
 
         services.valuation.upsert_valuation([ValuationInput(trade_date=date(2026, 9, 2), close=Decimal("5010.00"), pe_ttm=Decimal("20.10"), dyr=Decimal("0.0530"))])
         rows = services.valuation.list_valuation()
@@ -418,42 +415,28 @@ class TestSignalService:
     """Signal upsert-on-recompute and read paths against real Postgres."""
 
     def test_upsert_read_and_latest(self, services: Services) -> None:
-        """Snapshots round-trip in canonical order; latest_signal reads the newest."""
-        services.signals.upsert_signals([_snapshot("513330.XSHG", 2), _snapshot("513330.XSHG", 1, orders=(_BUY_ORDER,), level=-3)])
-        rows = services.signals.list_signals("513330.XSHG")
-        assert [(r["trade_date"].day, len(r["orders"]), r["level"]) for r in rows] == [(1, 1, -3), (2, 0, 0)]
+        """Snapshots round-trip through latest_signal; JSONB orders survive as strings."""
+        services.signals.upsert_signals([_snapshot("513330.XSHG", 1, orders=(_BUY_ORDER,), level=-3)])
+        latest = services.signals.latest_signal("513330.XSHG")
         # JSONB roundtrip: Decimals are stored as strings
-        assert rows[0]["orders"] == [{"side": "buy", "limit_price": "0.9500", "grids": 3, "shares_est": 30000, "kind": "triggered", "note": None}]
+        assert latest is not None and latest["orders"] == [{"side": "buy", "limit_price": "0.9500", "grids": 3, "shares_est": 30000, "kind": "triggered", "note": None}]
+        assert latest["level"] == -3
+        services.signals.upsert_signals([_snapshot("513330.XSHG", 2)])
         latest = services.signals.latest_signal("513330.XSHG")
         assert latest is not None and latest["trade_date"] == date(2026, 9, 2)
+        assert latest["level"] == 0
 
     def test_recompute_overwrites_same_day(self, services: Services) -> None:
         """A same-day recomputation overwrites the row (advice, not fact)."""
         services.signals.upsert_signals([_snapshot("513330.XSHG", 1)])
         first = services.signals.latest_signal("513330.XSHG")
         services.signals.upsert_signals([_snapshot("513330.XSHG", 1, orders=(_BUY_ORDER,), level=-3)])
-        rows = services.signals.list_signals("513330.XSHG")
-        assert len(rows) == 1
-        assert len(rows[0]["orders"]) == 1
-        assert rows[0]["orders"][0]["grids"] == 3
-        assert rows[0]["level"] == -3
-        assert first is not None and rows[0]["computed_at"] >= first["computed_at"]
-
-    def test_list_signals_order_by_and_filter(self, services: Services) -> None:
-        """SortSpec ordering works with the composite-PK stable suffix."""
-        services.signals.upsert_signals(
-            [
-                _snapshot("513330.XSHG", 1, level=-3),
-                _snapshot("513120.XSHG", 1, level=0),
-                _snapshot("513330.XSHG", 2, level=-2),
-            ]
-        )
-        rows = services.signals.list_signals(order_by=[SortSpec(SignalSortField.LEVEL, SortDirection.DESC)])
-        assert [(r["level"], r["symbol"], r["trade_date"].day) for r in rows] == [
-            (0, "513120.XSHG", 1),
-            (-2, "513330.XSHG", 2),
-            (-3, "513330.XSHG", 1),
-        ]
+        row = services.signals.latest_signal("513330.XSHG")
+        assert row is not None
+        assert len(row["orders"]) == 1
+        assert row["orders"][0]["grids"] == 3
+        assert row["level"] == -3
+        assert first is not None and row["computed_at"] >= first["computed_at"]
 
 
 class TestComputeDailySignals:

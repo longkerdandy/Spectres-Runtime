@@ -31,7 +31,6 @@ from spectres.extensions.etf_grid.types import (
     CandleInput,
     OrderAdvice,
     Side,
-    SignalSortField,
     SortDirection,
     SortSpec,
     Source,
@@ -400,13 +399,6 @@ class EtfGridValuationService:
             session.execute(stmt)
         return len(rows)
 
-    def latest_valuation(self) -> dict[str, Any] | None:
-        """Return the most recent valuation row, or None when the table is empty."""
-        stmt = select(EtfGridValuation).order_by(EtfGridValuation.trade_date.desc()).limit(1)
-        with self._session_factory() as session:
-            row = session.scalars(stmt).first()
-            return _valuation_to_dict(row) if row else None
-
     def list_valuation(self, limit: int | None = None) -> list[dict[str, Any]]:
         """Return valuation rows oldest-first (the gate needs the full series for percentiles)."""
         stmt = select(EtfGridValuation).order_by(EtfGridValuation.trade_date.asc())
@@ -425,42 +417,6 @@ def _valuation_to_dict(row: EtfGridValuation) -> dict[str, Any]:
         "dyr": row.dyr,
         "fetched_at": row.fetched_at,
     }
-
-
-_SIGNAL_SORTABLE_COLUMNS: dict[SignalSortField, InstrumentedAttribute[Any]] = {
-    SignalSortField.TRADE_DATE: EtfGridSignal.trade_date,
-    SignalSortField.SYMBOL: EtfGridSignal.symbol,
-    SignalSortField.CLOSE: EtfGridSignal.close,
-    SignalSortField.LEVEL: EtfGridSignal.level,
-    SignalSortField.COMPUTED_AT: EtfGridSignal.computed_at,
-}
-
-_SIGNAL_DEFAULT_ORDER: tuple[SortSpec[SignalSortField], ...] = (
-    SortSpec(SignalSortField.SYMBOL),
-    SortSpec(SignalSortField.TRADE_DATE),
-)
-
-_SIGNAL_STABLE_KEYS = (SignalSortField.SYMBOL, SignalSortField.TRADE_DATE)
-
-
-def _signal_order_clauses(order_by: Sequence[SortSpec[SignalSortField]] | None) -> list[ColumnElement[Any]]:
-    """Translate signal sort specs into ORDER BY clauses via the column whitelist.
-
-    Same pattern as the trades ledger: ``None`` selects the canonical
-    ``(symbol, trade_date)`` order. The stable suffix is the composite
-    primary key (whichever of its parts the caller did not sort by) —
-    there is no surrogate id here because the PK already guarantees
-    uniqueness.
-    """
-    specs = list(_SIGNAL_DEFAULT_ORDER if order_by is None else order_by)
-    for key in _SIGNAL_STABLE_KEYS:
-        if not any(spec.field is key for spec in specs):
-            specs.append(SortSpec(key))
-    clauses: list[ColumnElement[Any]] = []
-    for spec in specs:
-        column = _SIGNAL_SORTABLE_COLUMNS[spec.field]
-        clauses.append(column.desc() if spec.direction is SortDirection.DESC else column.asc())
-    return clauses
 
 
 class EtfGridSignalService:
@@ -502,24 +458,6 @@ class EtfGridSignalService:
         with self._session_factory() as session, session.begin():
             session.execute(stmt)
         return len(snapshots)
-
-    def list_signals(
-        self,
-        symbol: str | None = None,
-        *,
-        order_by: Sequence[SortSpec[SignalSortField]] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Return signal snapshots, optionally filtered by symbol and sorted.
-
-        ``order_by=None`` keeps the canonical ``(symbol, trade_date)``
-        order; the composite primary key (whichever parts are not explicit
-        sort keys) is appended as the stable suffix.
-        """
-        stmt = select(EtfGridSignal).order_by(*_signal_order_clauses(order_by))
-        if symbol is not None:
-            stmt = stmt.where(EtfGridSignal.symbol == normalize_symbol(symbol))
-        with self._session_factory() as session:
-            return [_signal_to_dict(signal) for signal in session.scalars(stmt)]
 
     def latest_signal(self, symbol: str) -> dict[str, Any] | None:
         """Return the symbol's most recent signal snapshot, or None."""

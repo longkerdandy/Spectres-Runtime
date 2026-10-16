@@ -63,16 +63,6 @@ class TradeSortField(StrEnum):
     CREATED_AT = "created_at"
 
 
-class SignalSortField(StrEnum):
-    """Signal snapshot columns that list_signals can sort by (whitelist)."""
-
-    TRADE_DATE = "trade_date"
-    SYMBOL = "symbol"
-    CLOSE = "close"
-    LEVEL = "level"
-    COMPUTED_AT = "computed_at"
-
-
 class SortDirection(StrEnum):
     """Sort direction for a SortSpec."""
 
