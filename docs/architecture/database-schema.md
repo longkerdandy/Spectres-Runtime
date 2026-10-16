@@ -1,6 +1,6 @@
 # Database Schema — Table Inventory
 
-> Topic reference companion to [`../architecture.md`](../architecture.md).
+> Topic reference companion to [`README.md`](README.md).
 > Every table that actually exists in the Runtime's PostgreSQL database,
 > and its purpose. Runtime does not define core tables of its own:
 > session/agent state is managed by Agno (`agno_*` defaults, uncustomized).
@@ -8,7 +8,7 @@
 > convention — see [Runtime Extensions §6.2](runtime-extensions.md)),
 > registered here once implemented.
 >
-> Last updated: 2026-09-24.
+> Last updated: 2026-10-16.
 
 ---
 
@@ -149,9 +149,8 @@ No position columns — holdings derive from the ledger on demand.
 
 ## 3. Notes
 
-- Single PostgreSQL database (dockerized, `agnohq/pgvector` image),
-  currently used only by Agno; future extensions share it under the
-  `<extension>_*` prefix convention. The pgvector extension is
-  pre-installed for future knowledge/RAG use.
+- Single PostgreSQL database (dockerized, `agnohq/pgvector` image), shared
+  by Agno and the extensions under the `<extension>_*` prefix convention.
+  The pgvector extension is pre-installed for future knowledge/RAG use.
 - Table names above are Agno 3.0 defaults; if a custom name is ever passed
   to `PostgresDb`, update this document in the same change.

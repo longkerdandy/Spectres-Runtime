@@ -2,11 +2,11 @@
 
 > The living description of the system's current design. This document is
 > updated in place as the architecture evolves. Decisions and their rationale
-> are frozen in [`adr/`](adr/README.md); this document explains *what is*,
+> are frozen in [`adr/`](../adr/README.md); this document explains *what is*,
 > ADRs explain *why*.
 >
 > For project background, layer responsibilities, and the full Runtime scope,
-> see [`AGENTS.md`](../AGENTS.md). Last updated: 2026-09-20.
+> see [`AGENTS.md`](../../AGENTS.md). Last updated: 2026-10-16.
 
 ---
 
@@ -22,7 +22,8 @@ Spectres is a personal AI assistant. Three physical layers:
 ┌──────────────────────────▼─────────────────────────────────┐
 │  Runtime (this repository)                                 │
 │  Master Agent (Agno Team) → Slave Agents → Tools           │
-│  PostgreSQL: sessions, history, memory, knowledge (later)  │
+│  Extensions: domain capabilities (tools + REST + schedules)│
+│  PostgreSQL: sessions, history, memory, extension tables   │
 └──────────────────────────┬─────────────────────────────────┘
                            │  authenticated channel to Edge Gateway
 ┌──────────────────────────▼─────────────────────────────────┐
@@ -77,7 +78,7 @@ framework-provided.
 - Conversation history and state are isolated by **`session_id`**.
 - Team instances are stateless; concurrent runs on different sessions are safe.
 
-### 3.2 Automation triggers — three layers
+### 3.2 Automation triggers — three layers (ADR 0003)
 
 | Layer | Examples | Handling |
 |-------|----------|----------|
@@ -92,8 +93,9 @@ Logical conflicts (automation vs. live intent) are resolved by querying Edge
 device state before acting and by routing sensitive actions through one shared
 HITL approval path.
 
-Open question: scheduler/event entry point location (Agno `scheduler` module
-vs. external component) — to be settled in the automation milestone.
+Layer 1 is implemented: the Agno AgentOS scheduler fires cron schedules at
+extension REST endpoints (ADR 0007 — see
+[Scheduled Tasks](scheduled-tasks.md)). Layers 2–3 are deferred design.
 
 ## 4. Client Interface (AG-UI)
 
@@ -180,25 +182,35 @@ auto-start, power settings) are recorded in ADR 0005.
 
 ## 7. Current Implementation State
 
-Implemented (v0.2.0–v0.3.1): single Team Leader agent stub, `OpenAILike` model
-configuration (verified against Kimi Code API), PostgreSQL session/history
-persistence, built-in tools (`CalculatorTools`, `ShellTools`, `WebsiteTools`,
-and Tavily web search registered when `TAVILY_API_KEY` is configured — see
-[ADR 0006](adr/0006-web-search-tool-tavily.md)), AgentOS with AG-UI
-interface, CORS allowlist for the independent web client, dockerized dev
-database.
+Implemented (through v0.5.0):
 
-Not yet implemented: Slave Agents, long-term memory (Mem0/Hindsight),
-knowledge base/RAG, tool ACL, automation/scheduler, Edge proxy, notification
-channel, deployment tooling.
+- Team Leader agent with `OpenAILike` model configuration (verified against
+  Kimi Code API), AgentOS with AG-UI interface, CORS allowlist for the
+  independent web client.
+- PostgreSQL session/history persistence (dockerized dev database).
+- Built-in tools: `CalculatorTools`, `ShellTools`, `WebsiteTools`, and Tavily
+  web search when `TAVILY_API_KEY` is configured
+  ([ADR 0006](../adr/0006-web-search-tool-tavily.md)).
+- **Extension system** ([Runtime Extensions](runtime-extensions.md)):
+  in-tree loader, contract of toolkits/routers/schedules; first extension
+  **ETF Grid Trading** (ledger, candles, valuation gate, daily signals,
+  REST API, agent toolkit).
+- **Structured logging**: JSONL daily files + stdout, `trace_id`-correlated,
+  tool error envelope contract.
+- **Scheduled tasks** ([Scheduled Tasks](scheduled-tasks.md), ADR 0007):
+  Agno AgentOS scheduler; ETF Grid's sync + signal compute runs on cron.
+
+Not yet implemented: Slave Agents (Team coordinate mode), long-term memory
+(Mem0/Hindsight), knowledge base/RAG, tool ACL, judgment-layer automation,
+notification channel, Edge proxy, deployment tooling.
 
 ## 8. References
 
-- [`AGENTS.md`](../AGENTS.md) — project background, scope, conventions
-- [`adr/`](adr/README.md) — decision records 0001–0005
-- [`architecture/`](architecture/) — topic deep-dives (design documents,
-  e.g. [Runtime Extensions](architecture/runtime-extensions.md),
-  [Scheduled Tasks](architecture/scheduled-tasks.md)) and
-  references ([Database Schema](architecture/database-schema.md))
-- [`plan/`](plan/) — milestone plans
+- [`AGENTS.md`](../../AGENTS.md) — project background, scope, conventions
+- [`adr/`](../adr/README.md) — decision records 0001–0007
+- Topic deep-dives and references (this directory):
+  [Runtime Extensions](runtime-extensions.md),
+  [Scheduled Tasks](scheduled-tasks.md),
+  [Database Schema](database-schema.md)
+- [`plan/`](../plan/) — milestone plans
 - Agno docs: https://docs.agno.com/ · AG-UI: https://docs.ag-ui.com/

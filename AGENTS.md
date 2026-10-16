@@ -20,7 +20,7 @@
 ## 2. High-Level Architecture
 
 > The detailed, continuously updated system design lives in
-> [`docs/architecture.md`](docs/architecture.md); this section keeps the
+> [`docs/architecture/`](docs/architecture/README.md); this section keeps the
 > five-minute boundary overview. Decision rationale is frozen in
 > [`docs/adr/`](docs/adr/README.md).
 
@@ -227,7 +227,7 @@ docs(readme): update setup instructions for python 3.13
 
 ## 8. References
 
-- Architecture (living document): [`docs/architecture.md`](docs/architecture.md)
+- Architecture (living document): [`docs/architecture/`](docs/architecture/README.md)
 - Architecture Decision Records: [`docs/adr/`](docs/adr/README.md)
 - Milestone plans: [`docs/plan/`](docs/plan/)
 - Web client project (Client layer): `../Spectres-Web-Client`

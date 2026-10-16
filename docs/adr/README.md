@@ -13,7 +13,7 @@ considered, and the consequences **at the time the decision was made**.
 - Format: Status / Date / Deciders, then Context → Decision → Alternatives
   Considered → Consequences.
 - The **current state of the system** lives in
-  [`../architecture.md`](../architecture.md), not here. ADRs explain *why*;
+  [`../architecture/`](../architecture/README.md), not here. ADRs explain *why*;
   the architecture document explains *what is*.
 
 ## Index
