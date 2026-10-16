@@ -116,3 +116,12 @@ class TestGateConfig:
         )
         with pytest.raises(ValidationError):
             EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+
+    def test_invalid_metric_rejected(self, required_env: pytest.MonkeyPatch) -> None:
+        """Gate metric outside the valuation columns fails validation at config load."""
+        required_env.setenv(
+            "ETF_GRID_PORTFOLIO",
+            '[{"symbol": "513530.XSHG", "name": "x", "per_grid_amount": 10000, "max_grids": 7, "gate": {"index_code": "930914", "metric": "pe", "threshold": 0.2, "block_when": "above"}}]',
+        )
+        with pytest.raises(ValidationError):
+            EtfGridConfig(_env_file=None)  # type: ignore[call-arg]

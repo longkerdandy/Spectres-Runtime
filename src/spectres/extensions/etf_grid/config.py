@@ -14,7 +14,7 @@ class GateConfig(BaseModel):
     """Valuation gate: pause opening new grids when the index valuation is extreme."""
 
     index_code: str  # csindex index code, e.g. "930914"
-    metric: str  # column of etf_grid_valuation: "dyr" | "pe_ttm"
+    metric: Literal["dyr", "pe_ttm"]  # column of etf_grid_valuation
     threshold: float  # historical percentile, 0~1
     block_when: Literal["below", "above"]  # "below": percentile < threshold closes the gate (dyr); "above": > closes it (pe_ttm)
 
