@@ -8,6 +8,7 @@ from typing import Any
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.core.grid import (
     GridSignalInput,
+    SignalSnapshot,
     compute_signal,
     gate_state,
     moving_average,
@@ -45,7 +46,10 @@ def compute_daily_signals(
     per-symbol failure (ledger replay errors, provider outages, malformed
     rows) is caught, logged at ERROR, and recorded under ``skipped`` as
     ``"error: <type>: <message>"`` so one broken symbol never aborts the
-    rest of the batch.
+    rest of the batch. Computed snapshots are persisted in a single
+    transaction at the end; if that batch upsert fails, every computed
+    symbol is moved from ``signals`` into ``skipped`` with the same
+    error reason — the portfolio is never left half-persisted.
 
     Returns:
         ``{"signals": {symbol: signal dict}, "skipped": {symbol: reason}}``.
@@ -61,6 +65,7 @@ def compute_daily_signals(
     valuation_rows: list[dict[str, Any]] | None = None
 
     signals: dict[str, Any] = {}
+    snapshots: list[SignalSnapshot] = []
     skipped: dict[str, str] = {}
     for item in items:
         try:
@@ -107,7 +112,7 @@ def compute_daily_signals(
                 ),
                 config.grid_step,
             )
-            signal_service.upsert_signals([snapshot])
+            snapshots.append(snapshot)
             signals[item.symbol] = _snapshot_to_row(snapshot)
         except Exception as exc:
             skipped[item.symbol] = f"error: {type(exc).__name__}: {exc}"
@@ -116,6 +121,17 @@ def compute_daily_signals(
                 exc_info=exc,
                 extra={"event": "signal_error", "symbol": item.symbol},
             )
+    try:
+        signal_service.upsert_signals(snapshots)
+    except Exception as exc:
+        logger.error(
+            "signal persistence failed",
+            exc_info=exc,
+            extra={"event": "signal_error", "symbols": sorted(signals)},
+        )
+        for symbol in signals:
+            skipped[symbol] = f"error: {type(exc).__name__}: {exc}"
+        signals.clear()
     return {"signals": signals, "skipped": skipped}
 
 

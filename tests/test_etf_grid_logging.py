@@ -316,6 +316,30 @@ class TestSignalErrorIsolation:
         assert set(result["signals"]) == {"513120.XSHG"}
         assert result["skipped"] == {"513330.XSHG": "error: ValueError: sell quantity exceeds holdings"}
 
+    def test_persistence_failure_moves_all_to_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A failed batch upsert reports every computed symbol under skipped and returns no signals."""
+        candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(62)]
+        signal_service = MagicMock(spec=EtfGridSignalService)
+        signal_service.upsert_signals.side_effect = RuntimeError("db down")
+        with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
+            result = compute_daily_signals(
+                config=_two_symbol_config(),
+                ledger_service=_FakeLedgerService(),
+                candle_service=_FakeCandleService(candles),
+                valuation_service=MagicMock(spec=EtfGridValuationService),
+                signal_service=signal_service,
+            )
+        assert result["signals"] == {}
+        assert result["skipped"] == {
+            "513330.XSHG": "error: RuntimeError: db down",
+            "513120.XSHG": "error: RuntimeError: db down",
+        }
+        records = _records(caplog, "signal_error")
+        assert len(records) == 1
+        assert records[0].levelname == "ERROR"
+        assert records[0].__dict__["symbols"] == ["513120.XSHG", "513330.XSHG"]
+        assert records[0].exc_info is not None
+
 
 class _SpyCandleService(_FakeCandleService):
     """Candle stand-in that records how list_candles was called."""
@@ -338,16 +362,19 @@ class TestSignalCandleFetch:
         """The candle query is newest-first with a SQL limit of 61, then restored to chronological order."""
         candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(80)]
         candle_service = _SpyCandleService(candles)
+        signal_service = MagicMock(spec=EtfGridSignalService)
         result = compute_daily_signals(
             config=_two_symbol_config(),
             ledger_service=_FakeLedgerService(),
             candle_service=candle_service,
             valuation_service=MagicMock(spec=EtfGridValuationService),
-            signal_service=MagicMock(spec=EtfGridSignalService),
+            signal_service=signal_service,
         )
         assert set(result["signals"]) == {"513330.XSHG", "513120.XSHG"}
         assert candle_service.calls == [("513330.XSHG", True, 61), ("513120.XSHG", True, 61)]
         assert result["signals"]["513330.XSHG"]["trade_date"] == date(2026, 1, 1) + timedelta(days=79)
+        signal_service.upsert_signals.assert_called_once()
+        assert len(signal_service.upsert_signals.call_args.args[0]) == 2
 
 
 class TestApiRejectionLogging:
