@@ -103,6 +103,21 @@ class EtfGridCandleService(_SessionBound):
         with self._session_factory() as session:
             return [_candle_to_dict(candle) for candle in session.scalars(stmt)]
 
+    def latest_candles(self, symbols: Sequence[str]) -> dict[str, dict[str, Any]]:
+        """Return each symbol's most recent candle in a single query.
+
+        Uses PostgreSQL ``DISTINCT ON (symbol)`` to fold the per-symbol
+        "latest row" lookups into one round trip, replacing the N+1
+        pattern of calling ``list_candles(symbol, descending=True, limit=1)``
+        per symbol.
+        """
+        normalized = [normalize_symbol(symbol) for symbol in symbols]
+        if not normalized:
+            return {}
+        stmt = select(EtfGridCandle).where(EtfGridCandle.symbol.in_(normalized)).distinct(EtfGridCandle.symbol).order_by(EtfGridCandle.symbol, EtfGridCandle.trade_date.desc())
+        with self._session_factory() as session:
+            return {candle.symbol: _candle_to_dict(candle) for candle in session.scalars(stmt)}
+
 
 def _candle_to_dict(candle: EtfGridCandle) -> dict[str, Any]:
     """Convert a candle ORM row into a structured dict."""

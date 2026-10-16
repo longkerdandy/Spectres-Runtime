@@ -51,10 +51,20 @@ class EtfGridSignalService(_SessionBound):
 
     def latest_signal(self, symbol: str) -> dict[str, Any] | None:
         """Return the symbol's most recent signal snapshot, or None."""
-        stmt = select(EtfGridSignal).where(EtfGridSignal.symbol == normalize_symbol(symbol)).order_by(EtfGridSignal.trade_date.desc()).limit(1)
+        return self.latest_signals([symbol]).get(normalize_symbol(symbol))
+
+    def latest_signals(self, symbols: Sequence[str]) -> dict[str, dict[str, Any]]:
+        """Return each symbol's most recent signal snapshot in a single query.
+
+        Uses PostgreSQL ``DISTINCT ON (symbol)`` to fold the per-symbol
+        "latest row" lookups into one round trip.
+        """
+        normalized = [normalize_symbol(symbol) for symbol in symbols]
+        if not normalized:
+            return {}
+        stmt = select(EtfGridSignal).where(EtfGridSignal.symbol.in_(normalized)).distinct(EtfGridSignal.symbol).order_by(EtfGridSignal.symbol, EtfGridSignal.trade_date.desc())
         with self._session_factory() as session:
-            row = session.scalars(stmt).first()
-            return _signal_to_dict(row) if row else None
+            return {signal.symbol: _signal_to_dict(signal) for signal in session.scalars(stmt)}
 
 
 def _order_to_json(order: OrderAdvice) -> dict[str, Any]:

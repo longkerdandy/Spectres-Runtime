@@ -155,13 +155,24 @@ def get_portfolio_status(
     signal_service = signal_service or EtfGridSignalService()
 
     positions = ledger_service.get_positions()
-    status = []
+    portfolio_symbols = [item.symbol for item in config.portfolio]
+    latest_candles = candle_service.latest_candles(portfolio_symbols)
+    latest_signals = signal_service.latest_signals(portfolio_symbols)
+    status: list[dict[str, Any]] = []
     for item in config.portfolio:
         position = positions.get(item.symbol)
-        latest = candle_service.list_candles(item.symbol, descending=True, limit=1)
-        close = latest[0]["close"] if latest else None
-        cost_basis = position.avg_cost * position.shares if position is not None and position.shares > 0 and position.avg_cost is not None else None
-        unrealized = close * position.shares - cost_basis if cost_basis is not None and close is not None and position is not None else None
+        latest = latest_candles.get(item.symbol)
+        close = latest["close"] if latest else None
+        cost_basis: Decimal | None = None
+        market_value: Decimal | None = None
+        unrealized: Decimal | None = None
+        if position is not None:
+            if position.shares > 0 and position.avg_cost is not None:
+                cost_basis = position.avg_cost * position.shares
+            if close is not None:
+                market_value = close * position.shares
+                if cost_basis is not None:
+                    unrealized = market_value - cost_basis
         status.append(
             {
                 "symbol": item.symbol,
@@ -170,11 +181,11 @@ def get_portfolio_status(
                 "avg_cost": position.avg_cost if position else None,
                 "realized": position.realized if position else Decimal(0),
                 "close": close,
-                "close_date": latest[0]["trade_date"] if latest else None,
-                "market_value": close * position.shares if close is not None and position else None,
+                "close_date": latest["trade_date"] if latest else None,
+                "market_value": market_value,
                 "unrealized": unrealized,
                 "unrealized_percent": (unrealized / cost_basis if unrealized is not None and cost_basis else None),
-                "signal": signal_service.latest_signal(item.symbol),
+                "signal": latest_signals.get(item.symbol),
             }
         )
     return status
