@@ -110,3 +110,51 @@ def test_cors_preflight_rejects_unlisted_origin(test_client: TestClient) -> None
         },
     )
     assert response.headers.get("access-control-allow-origin") != "http://evil.example.com"
+
+
+def test_shutdown_lifespan_closes_postgres_db(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exiting the FastAPI lifespan closes the PostgresDb singleton via AgentOS."""
+
+    async def _fake_arun(*args: Any, **kwargs: Any) -> AsyncIterator[None]:
+        if False:
+            yield None
+
+    mock_db = MagicMock()
+    mock_db.get_session.return_value = None
+    mock_agent = MagicMock()
+    mock_agent.id = "team-leader"
+    mock_agent.name = "Team Leader Agent"
+    mock_agent.db = mock_db
+    mock_agent.arun = _fake_arun
+
+    # Patch the source modules in case this test triggers the first
+    # spectres.main import of the session (its module-level create_agent_os()
+    # binds names at import time), then patch the module namespace itself so
+    # the explicit create_agent_os() call below sees the mocks regardless of
+    # import order.
+    monkeypatch.setattr("spectres.db.postgres.get_postgres_db", lambda: mock_db)
+    monkeypatch.setattr("spectres.extensions.loader.load_extensions", lambda *args, **kwargs: [])
+    monkeypatch.setattr("spectres.agents.team_leader.create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
+    monkeypatch.setattr("spectres.scheduler.register_schedules", lambda *args, **kwargs: None)
+    monkeypatch.setattr("spectres.logging.configure_logging", lambda *args, **kwargs: None)
+
+    import spectres.main as main_module
+
+    monkeypatch.setattr(main_module, "get_postgres_db", lambda: mock_db)
+    monkeypatch.setattr(main_module, "load_extensions", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
+    monkeypatch.setattr(main_module, "register_schedules", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
+    # Keep the scheduler poller lifespan out of this test; the assertion targets
+    # only the database shutdown wiring.
+    from spectres.config import settings
+
+    monkeypatch.setattr(settings, "scheduler_enabled", False)
+
+    agent_os, _ = main_module.create_agent_os()
+    app = agent_os.get_app()
+
+    with TestClient(app):
+        pass
+
+    mock_db.close.assert_called_once()
