@@ -30,15 +30,21 @@ _NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 def load_extensions(settings: Settings, db: PostgresDb) -> list[ExtensionContribution]:
     """Discover in-tree extensions, register each, and collect their contributions.
 
-    Fail-loud (§5.2): a malformed manifest or a ``register()`` that raises
-    aborts startup with a message naming the extension — a broken
-    extension never fails silently.
+    Fail-loud (§5.2): a package that fails to import, a malformed
+    manifest, or a ``register()`` that raises aborts startup with a
+    message naming the extension — a broken extension never fails
+    silently. Extensions load in sorted package-name order so router
+    mounting and toolkit concatenation order are deterministic.
     """
     contributions: list[ExtensionContribution] = []
-    for module_info in pkgutil.iter_modules(spectres.extensions.__path__):
+    for module_info in sorted(pkgutil.iter_modules(spectres.extensions.__path__), key=lambda m: m.name):
         if not module_info.ispkg:
             continue
-        package = importlib.import_module(f"{spectres.extensions.__name__}.{module_info.name}")
+        try:
+            package = importlib.import_module(f"{spectres.extensions.__name__}.{module_info.name}")
+        except Exception as exc:
+            logger.error("extension package %r failed to import", module_info.name, exc_info=exc, extra={"event": "extension_import_failed"})
+            raise RuntimeError(f"extension package {module_info.name!r} failed to import: {exc}") from exc
         candidate = getattr(package, "extension", None)
         if candidate is None:
             continue

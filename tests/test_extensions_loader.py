@@ -67,6 +67,14 @@ from types import SimpleNamespace
 extension = SimpleNamespace(name="no_register_ext")
 """
 
+_ORDER_PROBE = """
+from types import SimpleNamespace
+from agno.tools.toolkit import Toolkit
+from spectres.extensions.base import ExtensionContribution
+
+extension = SimpleNamespace(name={name!r}, register=lambda ctx: ExtensionContribution(toolkits=[Toolkit(name={name!r})]))
+"""
+
 
 def test_scan_skips_packages_without_extension_object(extension_dir: Path, ctx: ExtensionContext) -> None:
     """Packages without a module-level `extension` object are not extensions."""
@@ -87,6 +95,21 @@ def test_broken_register_fails_loud_naming_extension(extension_dir: Path, ctx: E
     _write_pkg(extension_dir, "broken_ext", _BROKEN)
     with pytest.raises(RuntimeError, match=r"broken_ext.*boom"):
         load_extensions(ctx.settings, ctx.db)
+
+
+def test_broken_import_fails_loud_naming_extension(extension_dir: Path, ctx: ExtensionContext) -> None:
+    """A package whose __init__ raises aborts startup with the extension named."""
+    _write_pkg(extension_dir, "import_broken_ext", 'raise ValueError("import boom")\n')
+    with pytest.raises(RuntimeError, match=r"import_broken_ext.*import boom"):
+        load_extensions(ctx.settings, ctx.db)
+
+
+def test_extensions_load_in_sorted_order(extension_dir: Path, ctx: ExtensionContext) -> None:
+    """Discovery order is alphabetical by package name, independent of filesystem order."""
+    _write_pkg(extension_dir, "zeta_ext", _ORDER_PROBE.format(name="zeta_ext"))
+    _write_pkg(extension_dir, "alpha_ext", _ORDER_PROBE.format(name="alpha_ext"))
+    contributions = load_extensions(ctx.settings, ctx.db)
+    assert [contribution.toolkits[0].name for contribution in contributions] == ["alpha_ext", "zeta_ext"]
 
 
 def test_invalid_name_fails_loud(extension_dir: Path, ctx: ExtensionContext) -> None:
