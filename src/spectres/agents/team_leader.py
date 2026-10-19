@@ -1,16 +1,15 @@
 """Team Leader Agent factory for Spectres Runtime."""
 
-from typing import Any
-
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai.like import OpenAILike
+from agno.tools.toolkit import Toolkit
 
 from spectres.config import settings
 from spectres.tools.builtin import get_builtin_tools
 
 
-def create_team_leader_agent(db: PostgresDb, extra_tools: list[Any] | None = None) -> Agent:
+def create_team_leader_agent(db: PostgresDb, extra_tools: list[Toolkit] | None = None) -> Agent:
     """Create and return the Team Leader Agent.
 
     Args:
