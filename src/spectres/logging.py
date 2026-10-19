@@ -1,12 +1,11 @@
-"""Structured logging foundation for Spectres Runtime (v0.4.2).
+"""Structured logging foundation for Spectres Runtime.
 
-Design (docs/plan/v0.4.2-runtime-logging.md): stdlib ``logging`` only, one
-shared JSON Lines file for the whole Runtime (``logs/runtime-YYYY-MM-DD.jsonl``,
-daily rotation + retention) plus stdout, and a ``contextvars``-backed
-``trace_id`` that every record picks up automatically. Agents investigate
-failures by grepping the JSONL file for the ``trace_id`` carried in the
-structured tool-error contract, so a single shared file and stable field
-names are deliberate.
+Uses stdlib ``logging`` only, one shared JSON Lines file for the whole Runtime
+(``logs/runtime-YYYY-MM-DD.jsonl``, daily rotation + retention) plus stdout,
+and a ``contextvars``-backed ``trace_id`` that every record picks up
+automatically. Agents investigate failures by grepping the JSONL file for the
+``trace_id`` carried in the structured tool-error contract, so a single shared
+file and stable field names are deliberate.
 """
 
 import contextvars
@@ -177,7 +176,7 @@ def _rotated_name(default_name: str) -> str:
     The handler rotates ``.../runtime-2026-09-30.jsonl`` to
     ``.../runtime-2026-09-30.jsonl.<suffix>``; rewrite that to
     ``.../runtime-<suffix>.jsonl`` so every file — active or rotated — matches
-    the documented ``runtime-YYYY-MM-DD.jsonl`` pattern agents grep for.
+    the ``runtime-YYYY-MM-DD.jsonl`` pattern agents grep for.
     """
     base, _, suffix = default_name.rpartition(".")
     return str(Path(base).parent / f"runtime-{suffix}.jsonl")

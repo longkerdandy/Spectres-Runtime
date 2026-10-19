@@ -8,7 +8,7 @@ always see the same payload shape:
 - Failure: ``{"ok": False, "error": {"type", "message", "trace_id", "hint"}}``
   — the tool boundary never raises. The ERROR record behind a failure is
   greppable in the Runtime JSONL log by ``trace_id``; ``hint`` spells out
-  the exact lookup for the agent (runtime-extensions.md §6.5).
+  the exact lookup for the agent.
 """
 
 import asyncio

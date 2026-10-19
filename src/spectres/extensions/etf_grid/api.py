@@ -1,6 +1,6 @@
 """FastAPI router adapter for the ETF grid extension (thin adapter, no business logic).
 
-Mounted under ``/api/v1/extensions/etf-grid`` (runtime-extensions.md §6.4).
+Mounted under ``/api/v1/extensions/etf-grid``.
 Payloads go through ``service.to_jsonable`` so the HTTP surface serializes
 identically to the toolkit surface.
 """
@@ -159,7 +159,7 @@ def create_router(
             # would stringify the list. The RequestValidationError path is FastAPI's
             # native one and keeps the list-of-objects shape, so every 422 from this
             # router shares one contract (loc/msg/type guaranteed; native errors may
-            # add input/url). See runtime-extensions.md §7.
+            # add input/url).
             raise RequestValidationError(errors=[{"loc": ("body",), "msg": str(exc), "type": "value_error"}]) from exc
         return to_jsonable(trade)
 

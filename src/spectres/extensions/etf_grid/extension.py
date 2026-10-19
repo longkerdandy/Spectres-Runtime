@@ -14,8 +14,8 @@ name = "etf_grid"
 def register(ctx: ExtensionContext) -> ExtensionContribution:
     """Create the extension's tables (idempotent) and build its toolkit + router.
 
-    Idempotent and side-effect-free apart from ``create_all``
-    (runtime-extensions.md §6.2); performs no network calls at load time.
+    Idempotent and side-effect-free apart from ``create_all``; performs no
+    network calls at load time.
     The daily sync schedule is only declared here — core registers it with
     the AgentOS scheduler after loading (spectres/scheduler.py).
     """

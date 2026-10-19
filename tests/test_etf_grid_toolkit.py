@@ -221,7 +221,7 @@ class TestErrorContract:
 
 
 def test_toolkit_registers_four_functions(config: EtfGridConfig) -> None:
-    """The toolkit exposes exactly the four planned tools across sync and async registries."""
+    """The toolkit exposes exactly four tools across sync and async registries."""
     toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger())
     assert set(toolkit.functions) == {"get_grid_status", "record_grid_trade", "list_grid_trades"}
     assert set(toolkit.async_functions) == {"refresh_grid_data"}

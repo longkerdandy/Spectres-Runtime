@@ -13,7 +13,7 @@ from spectres.scheduler import register_schedules
 
 
 def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
-    """Create the AgentOS instance and load extensions (runtime-extensions.md §5.2).
+    """Create the AgentOS instance and load extensions.
 
     Logging is configured before anything else so extension load failures are
     captured with extension name and traceback. Extensions load between db

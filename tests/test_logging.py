@@ -217,7 +217,7 @@ class TestTraceIdMiddleware:
         assert current_trace_id() is None
 
 
-def test_log_file_for_today_matches_documented_pattern(tmp_path: Path) -> None:
+def test_log_file_for_today_matches_runtime_pattern(tmp_path: Path) -> None:
     """The active file is logs/runtime-YYYY-MM-DD.jsonl (the pattern agents grep)."""
     path = log_file_for_today(tmp_path)
     assert path.parent == tmp_path

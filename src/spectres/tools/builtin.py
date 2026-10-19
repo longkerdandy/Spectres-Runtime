@@ -27,6 +27,6 @@ def get_builtin_tools() -> list[Any]:
     ]
     if settings.tavily_api_key:
         # search_depth="basic" costs 1 credit per search (Agno's default
-        # "advanced" costs 2, halving the free tier); see ADR 0006.
+        # "advanced" costs 2, halving the free tier).
         tools.append(TavilyTools(api_key=settings.tavily_api_key, search_depth="basic"))
     return tools

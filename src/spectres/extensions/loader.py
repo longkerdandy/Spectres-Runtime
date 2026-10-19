@@ -1,13 +1,12 @@
-"""In-tree extension discovery and loading (runtime-extensions.md §5).
+"""In-tree extension discovery and loading.
 
 Convention: every package directly under ``spectres.extensions`` whose
 ``__init__`` exposes a module-level ``extension`` object — with a
 snake_case ``name: str`` and a callable ``register(ctx)`` — is an
 extension. In practice the object is the package's own ``extension.py``
 module re-exported as ``extension``. Presence in the tree is the opt-in:
-there is deliberately no enable/disable gating (§5.1); an
-``ENABLED_EXTENSIONS`` allowlist and ``entry_points`` discovery stay
-deferred (§9).
+there is deliberately no enable/disable gating, ``ENABLED_EXTENSIONS``
+allowlist, or ``entry_points`` discovery.
 """
 
 import importlib
@@ -30,8 +29,8 @@ _NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 def load_extensions(settings: Settings, db: PostgresDb) -> list[ExtensionContribution]:
     """Discover in-tree extensions, register each, and collect their contributions.
 
-    Fail-loud (§5.2): a package that fails to import, a malformed
-    manifest, or a ``register()`` that raises aborts startup with a
+    A package that fails to import, a malformed manifest, or a
+    ``register()`` that raises aborts startup with a
     message naming the extension — a broken extension never fails
     silently. Extensions load in sorted package-name order so router
     mounting and toolkit concatenation order are deterministic.

@@ -1,4 +1,4 @@
-"""Extension contract: context, contribution, and protocol (runtime-extensions.md §4)."""
+"""Extension contract: context, contribution, and protocol."""
 
 from dataclasses import dataclass, field
 from typing import Any, Protocol
