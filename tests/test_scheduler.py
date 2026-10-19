@@ -65,10 +65,12 @@ class TestRegisterSchedules:
         manager.disable.assert_called_once_with("sched-1")
         manager.enable.assert_not_called()
 
-    def test_failure_aborts_naming_the_schedule(self) -> None:
-        """A failed registration raises RuntimeError naming the schedule (fail-loud like the loader)."""
+    def test_failure_aborts_naming_the_schedule(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A failed registration propagates with its cause and is not logged a second time."""
         manager = MagicMock()
         manager.create.side_effect = ValueError("invalid cron")
-        with patch("spectres.scheduler.ScheduleManager", return_value=manager), pytest.raises(RuntimeError, match="etf_grid_daily_sync"):
+        with patch("spectres.scheduler.ScheduleManager", return_value=manager), pytest.raises(RuntimeError, match="etf_grid_daily_sync") as exc_info:
             register_schedules([ExtensionContribution(schedules=[self._spec()])], db=MagicMock())
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert not caplog.records
         manager.close.assert_called_once()

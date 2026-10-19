@@ -15,8 +15,8 @@ from spectres.scheduler import register_schedules
 def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     """Create the AgentOS instance and load extensions.
 
-    Logging is configured before anything else so extension load failures are
-    captured with extension name and traceback. Extensions load between db
+    Logging is configured before anything else so startup logs use the
+    runtime handlers. Extensions load between db
     setup and app assembly: their toolkits attach to the Team Leader, their
     routers mount onto the FastAPI app returned by ``agent_os.get_app()``
     before ``serve()``, and their schedules register with the AgentOS

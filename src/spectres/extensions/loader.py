@@ -10,7 +10,6 @@ allowlist, or ``entry_points`` discovery.
 """
 
 import importlib
-import logging
 import pkgutil
 import re
 from typing import cast
@@ -20,8 +19,6 @@ from agno.db.postgres import PostgresDb
 import spectres.extensions
 from spectres.config import Settings
 from spectres.extensions.base import Extension, ExtensionContext, ExtensionContribution
-
-logger = logging.getLogger(__name__)
 
 _NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 
@@ -42,7 +39,6 @@ def load_extensions(settings: Settings, db: PostgresDb) -> list[ExtensionContrib
         try:
             package = importlib.import_module(f"{spectres.extensions.__name__}.{module_info.name}")
         except Exception as exc:
-            logger.error("extension package %r failed to import", module_info.name, exc_info=exc, extra={"event": "extension_import_failed"})
             raise RuntimeError(f"extension package {module_info.name!r} failed to import: {exc}") from exc
         candidate = getattr(package, "extension", None)
         if candidate is None:
@@ -57,6 +53,5 @@ def load_extensions(settings: Settings, db: PostgresDb) -> list[ExtensionContrib
         try:
             contributions.append(cast(Extension, candidate).register(ctx))
         except Exception as exc:
-            logger.error("extension %r failed to register", ext_name, exc_info=exc, extra={"event": "extension_register_failed"})
             raise RuntimeError(f"extension {ext_name!r} failed to register: {exc}") from exc
     return contributions

@@ -90,18 +90,22 @@ def test_non_package_entries_ignored(extension_dir: Path, ctx: ExtensionContext)
     assert len(load_extensions(ctx.settings, ctx.db)) == 1
 
 
-def test_broken_register_fails_loud_naming_extension(extension_dir: Path, ctx: ExtensionContext) -> None:
-    """A register() that raises aborts startup with the extension named."""
+def test_broken_register_fails_loud_naming_extension(extension_dir: Path, ctx: ExtensionContext, caplog: pytest.LogCaptureFixture) -> None:
+    """A register() failure propagates with its cause and is not logged a second time."""
     _write_pkg(extension_dir, "broken_ext", _BROKEN)
-    with pytest.raises(RuntimeError, match=r"broken_ext.*boom"):
+    with pytest.raises(RuntimeError, match=r"broken_ext.*boom") as exc_info:
         load_extensions(ctx.settings, ctx.db)
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert not caplog.records
 
 
-def test_broken_import_fails_loud_naming_extension(extension_dir: Path, ctx: ExtensionContext) -> None:
-    """A package whose __init__ raises aborts startup with the extension named."""
+def test_broken_import_fails_loud_naming_extension(extension_dir: Path, ctx: ExtensionContext, caplog: pytest.LogCaptureFixture) -> None:
+    """An import failure propagates with its cause and is not logged a second time."""
     _write_pkg(extension_dir, "import_broken_ext", 'raise ValueError("import boom")\n')
-    with pytest.raises(RuntimeError, match=r"import_broken_ext.*import boom"):
+    with pytest.raises(RuntimeError, match=r"import_broken_ext.*import boom") as exc_info:
         load_extensions(ctx.settings, ctx.db)
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert not caplog.records
 
 
 def test_extensions_load_in_sorted_order(extension_dir: Path, ctx: ExtensionContext) -> None:

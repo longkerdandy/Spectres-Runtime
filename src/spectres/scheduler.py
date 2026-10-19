@@ -44,7 +44,6 @@ def register_schedules(contributions: list[ExtensionContribution], db: PostgresD
                     if_exists="update",
                 )
             except Exception as exc:
-                logger.error("schedule %r failed to register", spec.name, exc_info=exc, extra={"event": "schedule_register_failed"})
                 raise RuntimeError(f"schedule {spec.name!r} failed to register: {exc}") from exc
             logger.info(
                 "schedule %r registered (cron=%s tz=%s -> %s %s, next_run_at=%s)",
