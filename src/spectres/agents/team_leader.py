@@ -1,4 +1,4 @@
-"""Team Leader Agent stub for Spectres Runtime."""
+"""Team Leader Agent factory for Spectres Runtime."""
 
 from typing import Any
 
@@ -11,7 +11,7 @@ from spectres.tools.builtin import get_builtin_tools
 
 
 def create_team_leader_agent(db: PostgresDb, extra_tools: list[Any] | None = None) -> Agent:
-    """Create and return the Team Leader Agent stub.
+    """Create and return the Team Leader Agent.
 
     Args:
         db: Persistent PostgreSQL storage for sessions and chat history.

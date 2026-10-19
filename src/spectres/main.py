@@ -1,4 +1,4 @@
-"""Spectres Runtime AgentOS entry point stub."""
+"""Spectres Runtime AgentOS entry point."""
 
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
