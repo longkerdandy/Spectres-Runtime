@@ -97,6 +97,17 @@ class TestJsonFormatter:
         assert record["rows"] == 3  # arbitrary extras land as top-level fields
         assert "T" in record["ts"]  # ISO-8601 timestamp
 
+    def test_extras_cannot_override_fixed_fields(self) -> None:
+        """Extras using fixed field names are ignored instead of replacing real values."""
+        logger, stream = _json_logger_stream()
+        logger.warning("real message", extra={"ts": "forged-ts", "level": "DEBUG", "logger": "forged.logger", "safe": "kept"})
+        record = json.loads(stream.getvalue())
+        assert record["level"] == "WARNING"
+        assert record["logger"] == "spectres.extensions.etf_grid.test"
+        assert record["ts"] != "forged-ts"
+        assert "T" in record["ts"]
+        assert record["safe"] == "kept"
+
     def test_core_logger_has_no_extension(self) -> None:
         """Loggers outside spectres.extensions.* get extension=None."""
         logger, stream = _json_logger_stream("spectres.main")
@@ -185,6 +196,16 @@ class TestConfigureLogging:
             uvicorn_logger = logging.getLogger(name)
             assert uvicorn_logger.handlers == []
             assert uvicorn_logger.propagate is True
+
+    def test_handlers_share_trace_context_filter(self, tmp_path: Path, restore_root_logger: None) -> None:
+        """The stateless trace filter is created once and shared by both handlers."""
+        configure_logging(settings.model_copy(update={"log_dir": str(tmp_path)}))
+        stdout_handler, file_handler = logging.getLogger().handlers
+        stdout_filters = [handler_filter for handler_filter in stdout_handler.filters if isinstance(handler_filter, TraceContextFilter)]
+        file_filters = [handler_filter for handler_filter in file_handler.filters if isinstance(handler_filter, TraceContextFilter)]
+        assert len(stdout_filters) == 1
+        assert len(file_filters) == 1
+        assert stdout_filters[0] is file_filters[0]
 
     def test_records_written_as_jsonl(self, tmp_path: Path, restore_root_logger: None) -> None:
         """A record emitted after configure_logging lands as parseable JSON in today's file."""

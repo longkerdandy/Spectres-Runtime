@@ -37,6 +37,9 @@ _ExcInfo = tuple[type[BaseException], BaseException, TracebackType | None]
 #: this module injects); everything else on ``record.__dict__`` is an extra.
 _RESERVED_RECORD_ATTRS = frozenset(set(logging.makeLogRecord({}).__dict__) | {"message", "asctime", "trace_id", "extension", "event", "taskName"})
 
+#: JSON keys owned by JsonFormatter; extras using these names are ignored.
+_FIXED_PAYLOAD_FIELDS = frozenset({"ts", "level", "logger", "extension", "event", "message", "trace_id"})
+
 _trace_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("spectres_trace_id", default=None)
 
 
@@ -122,9 +125,10 @@ class JsonFormatter(logging.Formatter):
 
     Fixed fields: ``ts`` (UTC ISO-8601), ``level``, ``logger``, ``extension``,
     ``event``, ``message``, ``trace_id``. Any extra keyword passed via
-    ``logger.info(..., extra={...})`` lands as a top-level field. Exceptions
-    are summarized (type, message, deepest frames) rather than dumped as a
-    full traceback — the JSONL file is for triage, not debugging.
+    ``logger.info(..., extra={...})`` lands as a top-level field unless it
+    uses one of the fixed field names. Exceptions are summarized (type,
+    message, deepest frames) rather than dumped as a full traceback — the
+    JSONL file is for triage, not debugging.
     """
 
     def format(self, record: logging.LogRecord) -> str:
@@ -139,7 +143,7 @@ class JsonFormatter(logging.Formatter):
             "trace_id": getattr(record, "trace_id", None),
         }
         for key, value in record.__dict__.items():
-            if key not in _RESERVED_RECORD_ATTRS and not key.startswith("_"):
+            if key not in _RESERVED_RECORD_ATTRS and key not in _FIXED_PAYLOAD_FIELDS and not key.startswith("_"):
                 payload[key] = value
         if record.exc_info and not isinstance(record.exc_info, (bool, BaseException)) and record.exc_info[0] is not None:
             payload["exc_info"] = _summarize_exc_info(record.exc_info)
@@ -216,7 +220,7 @@ def configure_logging(settings: "Settings") -> logging.handlers.TimedRotatingFil
     )
     file_handler.namer = _rotated_name
     file_handler.setFormatter(JsonFormatter())
-    file_handler.addFilter(TraceContextFilter())
+    file_handler.addFilter(trace_filter)
     file_handler.addFilter(redaction)
 
     root = logging.getLogger()
