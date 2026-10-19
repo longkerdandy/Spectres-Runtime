@@ -1,6 +1,9 @@
 # ADR 0005: Deployment Topology and Client Access Paths
 
-- **Status**: Accepted
+- **Status**: Partially superseded by [ADR 0008](0008-cloud-gateway-public-entry.md)
+  (Tailscale-based client access, Tailscale-preferred overlay, and
+  cloud-terminated authentication; the foundational AG-UI-endpoint principle,
+  home Runtime placement, tunnel rejections, and the Phase 3 direction stand)
 - **Date**: 2026-09-19
 - **Deciders**: Project owner + architecture discussion
 
