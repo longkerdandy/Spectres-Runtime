@@ -37,7 +37,7 @@ def fetch_index_perf(code: str) -> list[dict[str, Any]]:
     """Fetch the full daily history of one index from csindex.
 
     Bounded retries (5 attempts, 3s backoff — same as the original
-    script, which the endpoint's flakiness taught us). Every failed attempt
+    script, which the endpoint's flakiness taught us). Every actual retry
     is logged at WARNING, and the final failure at ERROR, so the endpoint's
     flakiness is never silent. Returns the payload's ``data`` list.
 
@@ -59,19 +59,29 @@ def fetch_index_perf(code: str) -> list[dict[str, Any]]:
             error = f"{type(exc).__name__}: {exc}"
         finally:
             conn.close()
-        logger.warning(
-            "csindex fetch attempt failed; retrying",
-            extra={
-                "event": "csindex_retry",
-                "code": code,
-                "attempt": attempt,
-                "max_attempts": MAX_ATTEMPTS,
-                "elapsed_seconds": round(time.monotonic() - started, 3),
-                "error": error,
-            },
-        )
-        time.sleep(RETRY_BACKOFF_SECONDS)
-    logger.error("csindex fetch failed after all retries", extra={"event": "csindex_fetch_failed", "code": code, "attempts": MAX_ATTEMPTS})
+        if attempt < MAX_ATTEMPTS:
+            logger.warning(
+                "csindex fetch attempt failed; retrying",
+                extra={
+                    "event": "csindex_retry",
+                    "code": code,
+                    "attempt": attempt,
+                    "max_attempts": MAX_ATTEMPTS,
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "error": error,
+                },
+            )
+            time.sleep(RETRY_BACKOFF_SECONDS)
+    logger.error(
+        "csindex fetch failed after all retries",
+        extra={
+            "event": "csindex_fetch_failed",
+            "code": code,
+            "attempts": MAX_ATTEMPTS,
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+            "error": error,
+        },
+    )
     raise RuntimeError(f"fetch {code} failed after retries")
 
 

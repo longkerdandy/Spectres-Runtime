@@ -81,10 +81,10 @@ class TestExtensionRegisterLogging:
 
 
 class TestCsindexRetryLogging:
-    """fetch_index_perf logs every retry at WARNING and the final failure at ERROR."""
+    """fetch_index_perf logs every actual retry at WARNING and the final failure at ERROR."""
 
     def test_retries_and_final_failure_logged(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """All attempts failing yields MAX_ATTEMPTS WARNINGs plus one ERROR before RuntimeError."""
+        """All attempts failing yields MAX_ATTEMPTS - 1 warnings and sleeps plus one final error."""
 
         class FailingConnection:
             """HTTPSConnection stand-in whose request always fails."""
@@ -99,17 +99,20 @@ class TestCsindexRetryLogging:
             def close(self) -> None:
                 """No-op."""
 
+        sleep = MagicMock()
         monkeypatch.setattr("http.client.HTTPSConnection", FailingConnection)
-        monkeypatch.setattr("spectres.extensions.etf_grid.csindex.time.sleep", lambda seconds: None)
+        monkeypatch.setattr("spectres.extensions.etf_grid.csindex.time.sleep", sleep)
         with caplog.at_level(logging.WARNING, logger="spectres.extensions.etf_grid.csindex"), pytest.raises(RuntimeError, match="failed after retries"):
             fetch_index_perf("930914")
         retries = _records(caplog, "csindex_retry")
-        assert [record.__dict__["attempt"] for record in retries] == list(range(1, MAX_ATTEMPTS + 1))
+        assert [record.__dict__["attempt"] for record in retries] == list(range(1, MAX_ATTEMPTS))
         assert all(record.levelname == "WARNING" for record in retries)
         assert all("OSError" in record.__dict__["error"] for record in retries)
+        assert sleep.call_count == MAX_ATTEMPTS - 1
         failures = _records(caplog, "csindex_fetch_failed")
         assert len(failures) == 1
         assert failures[0].levelname == "ERROR"
+        assert "OSError" in failures[0].__dict__["error"]
 
 
 class TestSyncMarketDataLogging:

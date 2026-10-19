@@ -3,6 +3,7 @@
 import json
 import logging
 import logging.handlers
+import threading
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -78,24 +79,31 @@ class TestGetGridStatus:
 
 
 class TestRefreshGridData:
-    """refresh_grid_data composes the sync pipeline with signal computation."""
+    """refresh_grid_data runs the blocking pipeline off the event loop thread."""
 
-    def test_merges_refresh_and_signals(self, config: EtfGridConfig, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The data payload carries per-source counts/errors plus signals and skipped."""
-        monkeypatch.setattr(
-            "spectres.extensions.etf_grid.toolkit.sync_market_data",
-            lambda **kwargs: {"candles": {"513330.XSHG": 5}, "valuation": 2400, "errors": {}},
-        )
-        monkeypatch.setattr(
-            "spectres.extensions.etf_grid.toolkit.compute_daily_signals",
-            lambda **kwargs: {"signals": {"513330.XSHG": {"level": -3}}, "skipped": {}},
-        )
+    async def test_merges_refresh_and_signals(self, config: EtfGridConfig, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Both steps share one worker thread and the payload keeps its existing shape."""
+        thread_ids: list[int] = []
+
+        def fake_sync(**kwargs: Any) -> dict[str, Any]:
+            thread_ids.append(threading.get_ident())
+            return {"candles": {"513330.XSHG": 5}, "valuation": 2400, "errors": {}}
+
+        def fake_compute(**kwargs: Any) -> dict[str, Any]:
+            thread_ids.append(threading.get_ident())
+            return {"signals": {"513330.XSHG": {"level": -3}}, "skipped": {}}
+
+        monkeypatch.setattr("spectres.extensions.etf_grid.toolkit.sync_market_data", fake_sync)
+        monkeypatch.setattr("spectres.extensions.etf_grid.toolkit.compute_daily_signals", fake_compute)
         toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger())
-        result = toolkit.refresh_grid_data()
+        result = await toolkit.refresh_grid_data()
         assert result["ok"] is True
         assert result["data"]["candles"] == {"513330.XSHG": 5}
         assert result["data"]["valuation"] == 2400
         assert result["data"]["signals"] == {"513330.XSHG": {"level": -3}}
+        assert len(thread_ids) == 2
+        assert thread_ids[0] == thread_ids[1]
+        assert thread_ids[0] != threading.get_ident()
         _assert_jsonable(result)
 
 
@@ -213,6 +221,7 @@ class TestErrorContract:
 
 
 def test_toolkit_registers_four_functions(config: EtfGridConfig) -> None:
-    """The toolkit exposes exactly the four planned tool functions."""
+    """The toolkit exposes exactly the four planned tools across sync and async registries."""
     toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger())
-    assert set(toolkit.functions) == {"get_grid_status", "refresh_grid_data", "record_grid_trade", "list_grid_trades"}
+    assert set(toolkit.functions) == {"get_grid_status", "record_grid_trade", "list_grid_trades"}
+    assert set(toolkit.async_functions) == {"refresh_grid_data"}

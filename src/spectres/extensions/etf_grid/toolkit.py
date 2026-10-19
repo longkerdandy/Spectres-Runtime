@@ -11,6 +11,7 @@ always see the same payload shape:
   the exact lookup for the agent (runtime-extensions.md §6.5).
 """
 
+import asyncio
 import logging
 from datetime import date
 from decimal import Decimal
@@ -109,7 +110,7 @@ class EtfGridToolkit(Toolkit):
             return _tool_error("get_grid_status", exc)
         return {"ok": True, "data": data}
 
-    def refresh_grid_data(self) -> dict[str, Any]:
+    async def refresh_grid_data(self) -> dict[str, Any]:
         """Refresh all ETF grid data and recompute today's signals.
 
         Runs the full 3-step pipeline: (1) sync daily candles from
@@ -123,6 +124,10 @@ class EtfGridToolkit(Toolkit):
         runs. On failure returns ``{"ok": false, "error": {...}}`` — read
         ``error.hint`` to investigate via the shell tool before retrying.
         """
+        return await asyncio.to_thread(self._refresh_grid_data_sync)
+
+    def _refresh_grid_data_sync(self) -> dict[str, Any]:
+        """Run the blocking refresh pipeline in a worker thread."""
         try:
             refresh = sync_market_data(config=self._config, candle_service=self._candles, valuation_service=self._valuation)
             signals = compute_daily_signals(
