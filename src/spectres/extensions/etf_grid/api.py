@@ -44,17 +44,6 @@ class TradeCreate(BaseModel):
     net_amount: Decimal | None = Field(default=None, gt=0)
 
 
-def _paginate(rows: list[dict[str, Any]], limit: int, offset: int) -> dict[str, Any]:
-    """Wrap a fully materialized row list in the pagination envelope.
-
-    ``total`` is the post-filter count before slicing, so clients can page
-    through the full result set. In-memory slicing is sufficient at
-    single-user scale (see the v0.4.4 plan); SQL-level pagination is a
-    later optimization.
-    """
-    return {"items": to_jsonable(rows[offset : offset + limit]), "total": len(rows), "limit": limit, "offset": offset}
-
-
 def create_router(
     *,
     config: EtfGridConfig | None = None,
@@ -135,14 +124,18 @@ def create_router(
         """Ledger query: newest trades first, optionally filtered by symbol and trade-date range.
 
         Returns the pagination envelope ``{"items", "total", "limit", "offset"}``;
-        ``total`` is the post-filter count before slicing.
+        ``total`` counts all matching rows independently of the requested page.
         """
-        rows = ledger.list_trades(symbol, order_by=[SortSpec(TradeSortField.TRADE_DATE, SortDirection.DESC)])
-        if start is not None:
-            rows = [row for row in rows if row["trade_date"] >= start]
-        if end is not None:
-            rows = [row for row in rows if row["trade_date"] <= end]
-        return _paginate(rows, limit, offset)
+        rows = ledger.list_trades(
+            symbol,
+            start=start,
+            end=end,
+            limit=limit,
+            offset=offset,
+            order_by=[SortSpec(TradeSortField.TRADE_DATE, SortDirection.DESC)],
+        )
+        total = ledger.count_trades(symbol, start=start, end=end)
+        return {"items": to_jsonable(rows), "total": total, "limit": limit, "offset": offset}
 
     @router.post("/trades", status_code=201)
     def create_trade(body: TradeCreate) -> dict[str, Any]:

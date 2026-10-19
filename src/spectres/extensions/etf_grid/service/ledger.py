@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -54,8 +54,8 @@ def _order_clauses(order_by: Sequence[SortSpec[TradeSortField]] | None) -> list[
 
     ``None`` selects the replay-canonical default order (symbol, trade_date).
     Unless the caller explicitly sorts by id, ``id ASC`` is appended as a
-    stable tiebreaker so every ordering is fully deterministic (a
-    precondition for future LIMIT/OFFSET pagination).
+    stable tiebreaker so every ordering is fully deterministic, as required
+    by LIMIT/OFFSET pagination.
     """
     specs = list(_DEFAULT_ORDER if order_by is None else order_by)
     if not any(spec.field is TradeSortField.ID for spec in specs):
@@ -65,6 +65,18 @@ def _order_clauses(order_by: Sequence[SortSpec[TradeSortField]] | None) -> list[
         column = _SORTABLE_COLUMNS[spec.field]
         clauses.append(column.desc() if spec.direction is SortDirection.DESC else column.asc())
     return clauses
+
+
+def _trade_filters(symbol: str | None, start: date | None, end: date | None) -> list[ColumnElement[Any]]:
+    """Build the shared SQL predicates for trade pages and counts."""
+    filters: list[ColumnElement[Any]] = []
+    if symbol is not None:
+        filters.append(EtfGridTrade.symbol == normalize_symbol(symbol))
+    if start is not None:
+        filters.append(EtfGridTrade.trade_date >= start)
+    if end is not None:
+        filters.append(EtfGridTrade.trade_date <= end)
+    return filters
 
 
 class EtfGridLedgerService(_SessionBound):
@@ -157,28 +169,50 @@ class EtfGridLedgerService(_SessionBound):
         self,
         symbol: str | None = None,
         *,
+        start: date | None = None,
+        end: date | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
         order_by: Sequence[SortSpec[TradeSortField]] | None = None,
     ) -> list[dict[str, Any]]:
-        """Return ledger trades, optionally filtered by symbol and sorted.
+        """Return ledger trades with filtering, sorting, and pagination in SQL.
 
         Args:
             symbol: Restrict the result to one symbol when given.
+            start: Inclusive lower bound for the trade date.
+            end: Inclusive upper bound for the trade date.
+            limit: Optional maximum number of rows, pushed down into SQL.
+            offset: Optional number of matching rows to skip, pushed down into SQL.
             order_by: Sort keys as whitelisted ``SortSpec`` items; directions
                 are pushed down into SQL. ``None`` keeps the replay-canonical
                 order ``(symbol ASC, trade_date ASC, id ASC)`` that
                 ``get_positions`` relies on. Unless ``id`` is an explicit
                 sort key, ``id ASC`` is appended as a stable tiebreaker, so
                 every ordering is fully deterministic — a precondition for
-                future LIMIT/OFFSET pagination.
+                LIMIT/OFFSET pagination.
 
         Returns:
             The matching trades as structured dicts, in the requested order.
         """
         stmt = select(EtfGridTrade).order_by(*_order_clauses(order_by))
-        if symbol is not None:
-            stmt = stmt.where(EtfGridTrade.symbol == normalize_symbol(symbol))
+        filters = _trade_filters(symbol, start, end)
+        if filters:
+            stmt = stmt.where(*filters)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        if offset is not None:
+            stmt = stmt.offset(offset)
         with self._session_factory() as session:
             return [_trade_to_dict(trade) for trade in session.scalars(stmt)]
+
+    def count_trades(self, symbol: str | None = None, *, start: date | None = None, end: date | None = None) -> int:
+        """Count trades matching the same filters as ``list_trades``."""
+        stmt = select(func.count()).select_from(EtfGridTrade)
+        filters = _trade_filters(symbol, start, end)
+        if filters:
+            stmt = stmt.where(*filters)
+        with self._session_factory() as session:
+            return session.scalar(stmt) or 0
 
     def get_positions(self) -> dict[str, Position]:
         """Replay the ledger per symbol and return the current positions.

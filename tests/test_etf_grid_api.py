@@ -241,6 +241,39 @@ class TestEtfGridApi:
 
 
 @pytest.mark.unit
+class TestTradesEndpoint:
+    """GET /trades delegates filtering, pagination, and counting to the service."""
+
+    def test_get_trades_delegates_sql_filters_pagination_and_count(self) -> None:
+        """The endpoint returns the service page directly instead of slicing a full result set."""
+        ledger = MagicMock()
+        ledger.list_trades.return_value = [{"id": 2, "trade_date": date(2026, 9, 9)}]
+        ledger.count_trades.return_value = 7
+        app = FastAPI()
+        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger))  # type: ignore[call-arg]  # required fields come from .env.test
+        client = TestClient(app)
+
+        response = client.get(
+            "/api/v1/extensions/etf-grid/trades",
+            params={"symbol": "513330.XSHG", "start": "2026-09-01", "end": "2026-09-30", "limit": 1, "offset": 1},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"items": [{"id": 2, "trade_date": "2026-09-09"}], "total": 7, "limit": 1, "offset": 1}
+        ledger.list_trades.assert_called_once()
+        args, kwargs = ledger.list_trades.call_args
+        assert args == ("513330.XSHG",)
+        assert kwargs["start"] == date(2026, 9, 1)
+        assert kwargs["end"] == date(2026, 9, 30)
+        assert kwargs["limit"] == 1
+        assert kwargs["offset"] == 1
+        assert len(kwargs["order_by"]) == 1
+        assert kwargs["order_by"][0].field.value == "trade_date"
+        assert kwargs["order_by"][0].direction.value == "desc"
+        ledger.count_trades.assert_called_once_with("513330.XSHG", start=date(2026, 9, 1), end=date(2026, 9, 30))
+
+
+@pytest.mark.unit
 class TestRefreshEndpoint:
     """POST /refresh error contract: the scheduler treats 2xx as success."""
 
