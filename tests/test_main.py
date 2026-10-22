@@ -31,6 +31,8 @@ def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     mock_agent.db = mock_db
     mock_agent.arun = _fake_arun
 
+    # Patch the source modules first so a first-time import of spectres.main
+    # (module-level create_agent_os() runs at import) picks up the mocks...
     monkeypatch.setattr("spectres.db.postgres.get_postgres_db", lambda: mock_db)
     monkeypatch.setattr("spectres.extensions.loader.load_extensions", lambda *args, **kwargs: [])
     monkeypatch.setattr("spectres.agents.team_leader.create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
@@ -38,12 +40,18 @@ def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     # rewire the root logger); its wiring is covered in tests/test_logging.py.
     monkeypatch.setattr("spectres.logging.configure_logging", lambda *args, **kwargs: None)
 
-    # Patch the source modules, then import: module-level create_agent_os()
-    # runs at import time and binds whatever the `from ... import` names point
-    # at, so patching `spectres.main.*` afterwards would be too late.
-    from spectres.main import create_agent_os
+    # ...then patch the module namespace itself: spectres.main binds the
+    # `from ... import` names at import time, and an earlier test module may
+    # already have imported it, in which case the source-module patches are
+    # no longer visible to create_agent_os().
+    import spectres.main as main_module
 
-    agent_os, _contributions = create_agent_os()
+    monkeypatch.setattr(main_module, "get_postgres_db", lambda: mock_db)
+    monkeypatch.setattr(main_module, "load_extensions", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
+    monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
+
+    agent_os, _contributions = main_module.create_agent_os()
     return agent_os.get_app()
 
 

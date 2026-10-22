@@ -46,7 +46,8 @@ provider.**
   exported file stays valid indefinitely. If a manual rotation is ever
   performed (`logto db config rotate oidc.privateKeys`), the procedure is:
   re-export JWKS → restart Runtime.
-- **Token contract**: Logto issues ES256 JWTs; the Runtime validates
+- **Token contract**: Logto signs access tokens with ES384 (the OIDC
+  signing key generated at first boot); the Runtime validates
   signature + issuer + audience (`aud` = the API resource registered for
   the Runtime). `sub` becomes the AgentOS `user_id` throughout (directory,
   isolation in v0.6.1).
@@ -106,7 +107,7 @@ provider.**
   feature); SMTP connector must be configured for self-service password
   reset, otherwise password resets are an admin operation in the Console.
 - **Client and Runtime stay portable**: the Runtime sees a standard JWT
-  (ES256 + iss/aud) and the Web Client a standard OIDC flow; swapping the
+  (ES384 + iss/aud) and the Web Client a standard OIDC flow; swapping the
   IdP later touches only the SDK setup and the verification key source.
 - **Security posture**: login, password storage, refresh-token rotation,
   MFA, and brute-force defenses are owned by a maintained, OpenID-

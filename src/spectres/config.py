@@ -4,7 +4,7 @@ import json
 import os
 from typing import Any, Literal, cast
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -54,6 +54,26 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = Field(alias="SCHEDULER_ENABLED")
     scheduler_poll_interval: int = Field(alias="SCHEDULER_POLL_INTERVAL")
     scheduler_base_url: str = Field(alias="SCHEDULER_BASE_URL")
+
+    # JWT authentication: enabled when key material is present (JWKS file for Logto, symmetric key for local dev); otherwise the app runs open
+    jwt_verification_key: str | None = Field(alias="JWT_VERIFICATION_KEY", default=None)
+    jwt_jwks_file: str | None = Field(alias="JWT_JWKS_FILE", default=None)
+    jwt_audience: str | None = Field(alias="JWT_AUDIENCE", default=None)
+    jwt_issuer: str | None = Field(alias="JWT_ISSUER", default=None)
+    jwt_algorithm: str = Field(alias="JWT_ALGORITHM", default="ES384")
+
+    @field_validator("jwt_audience", "jwt_issuer")
+    @classmethod
+    def _require_verification_material_with_audience(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Forbid configuring an audience or issuer without any way to verify tokens."""
+        if value and not info.data.get("jwt_verification_key") and not info.data.get("jwt_jwks_file"):
+            raise ValueError("JWT_AUDIENCE/JWT_ISSUER is set but neither JWT_VERIFICATION_KEY nor JWT_JWKS_FILE is configured")
+        return value
+
+    @property
+    def jwt_auth_enabled(self) -> bool:
+        """Whether JWT authentication should be wired into AgentOS."""
+        return bool(self.jwt_verification_key or self.jwt_jwks_file)
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

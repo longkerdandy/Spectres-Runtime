@@ -15,6 +15,22 @@ services:
     networks:
       - spectres
 
+  logto:
+    image: svhd/logto:1.45.0
+    container_name: spectres-logto
+    restart: unless-stopped
+    depends_on:
+      - spectres-db
+    environment:
+      DB_URL: postgres://${DB_USER}:${DB_PASS}@spectres-db:5432/${LOGTO_DB_DATABASE}
+      ENDPOINT: ${LOGTO_ENDPOINT}
+      ADMIN_ENDPOINT: ${LOGTO_ADMIN_ENDPOINT}
+    ports:
+      - "${LOGTO_PORT}:3001"
+      - "${LOGTO_ADMIN_PORT}:3002"
+    networks:
+      - spectres
+
 networks:
   spectres:
 

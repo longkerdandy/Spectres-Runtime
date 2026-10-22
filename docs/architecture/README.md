@@ -6,7 +6,7 @@
 > ADRs explain *why*.
 >
 > For project background, layer responsibilities, and the full Runtime scope,
-> see [`AGENTS.md`](../../AGENTS.md). Last updated: 2026-10-16.
+> see [`AGENTS.md`](../../AGENTS.md). Last updated: 2026-10-22.
 
 ---
 
@@ -169,6 +169,11 @@ auto-start, power settings) are recorded in ADR 0005.
 
 ## 6. Security Cross-Cutting
 
+- **Client authentication** ([Authentication](authentication.md), ADR 0009):
+  every request carries a per-user JWT from the self-hosted Logto IdP;
+  AgentOS verifies signature/issuer/audience locally against an exported
+  JWKS file and auto-provisions users into its directory (equal
+  permissions for all users in this phase; isolation is v0.6.1).
 - **Sensitive operations** (e.g., door unlock) share one HITL path regardless
   of trigger (user or automation): member tool marked for confirmation → pause
   propagates to the team run → AgentOS `/approvals` or AG-UI resume →
@@ -182,8 +187,13 @@ auto-start, power settings) are recorded in ADR 0005.
 
 ## 7. Current Implementation State
 
-Implemented (through v0.5.0):
+Implemented (through v0.6.0):
 
+- **User authentication** ([Authentication](authentication.md), ADR 0009):
+  self-hosted Logto IdP (compose service), per-user JWT verification with
+  issuer/audience pinning, JIT user directory with a disabled kill switch;
+  Web Client logs in via `@logto/react` and attaches the access token to
+  AG-UI and extension REST calls.
 - Team Leader agent with `OpenAILike` model configuration (verified against
   Kimi Code API), AgentOS with AG-UI interface, CORS allowlist for the
   independent web client.
@@ -207,8 +217,9 @@ notification channel, Edge proxy, deployment tooling.
 ## 8. References
 
 - [`AGENTS.md`](../../AGENTS.md) — project background, scope, conventions
-- [`adr/`](../adr/README.md) — decision records 0001–0007
+- [`adr/`](../adr/README.md) — decision records 0001–0009
 - Topic deep-dives and references (this directory):
+  [Authentication](authentication.md),
   [Runtime Extensions](runtime-extensions.md),
   [Scheduled Tasks](scheduled-tasks.md),
   [Database Schema](database-schema.md)
