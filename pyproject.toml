@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spectres-runtime"
-version = "0.5.1"
+version = "0.6.0"
 description = "Agent core runtime for the Spectres AI personal assistant system."
 readme = "README.md"
 license = { text = "MIT" }
