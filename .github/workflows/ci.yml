@@ -39,5 +39,25 @@ jobs:
       - name: Run type checker
         run: uv run mypy src tests scripts
 
+      - name: Start PostgreSQL
+        run: docker compose --env-file .env.test up -d spectres-db
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            docker exec spectres-db pg_isready -U "$DB_USER" && exit 0
+            sleep 1
+          done
+          echo "PostgreSQL did not become ready in time"
+          exit 1
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+
       - name: Run tests
         run: uv run pytest
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
