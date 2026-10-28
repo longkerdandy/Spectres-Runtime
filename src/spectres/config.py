@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     agent_os_port: int = Field(alias="AGENT_OS_PORT")
 
     # Team Leader Agent (OpenAI-compatible API for open-source / self-hosted LLMs)
+    team_leader_llm_provider: Literal["openai", "gemini"] = Field(alias="TEAM_LEADER_LLM_PROVIDER", default="openai")
     team_leader_llm_model: str = Field(alias="TEAM_LEADER_LLM_MODEL")
     team_leader_llm_api_key: str | None = Field(alias="TEAM_LEADER_LLM_API_KEY")
     team_leader_llm_base_url: str | None = Field(alias="TEAM_LEADER_LLM_BASE_URL")

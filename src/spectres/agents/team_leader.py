@@ -2,11 +2,33 @@
 
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
+from agno.models.base import Model
 from agno.models.openai.like import OpenAILike
 from agno.tools.toolkit import Toolkit
 
 from spectres.config import settings
 from spectres.tools.builtin import get_builtin_tools
+
+
+def _create_model() -> Model:
+    """Build the LLM client selected by TEAM_LEADER_LLM_PROVIDER."""
+    if settings.team_leader_llm_provider == "gemini":
+        from agno.models.google import Gemini
+
+        return Gemini(
+            id=settings.team_leader_llm_model,
+            api_key=settings.team_leader_llm_api_key,
+            temperature=settings.team_leader_llm_temperature,
+            max_output_tokens=settings.team_leader_llm_max_completion_tokens,
+        )
+    return OpenAILike(
+        id=settings.team_leader_llm_model,
+        api_key=settings.team_leader_llm_api_key,
+        base_url=settings.team_leader_llm_base_url,
+        temperature=settings.team_leader_llm_temperature,
+        max_completion_tokens=settings.team_leader_llm_max_completion_tokens,
+        extra_headers=settings.team_leader_llm_extra_headers,
+    )
 
 
 def create_team_leader_agent(db: PostgresDb, extra_tools: list[Toolkit] | None = None) -> Agent:
@@ -23,14 +45,7 @@ def create_team_leader_agent(db: PostgresDb, extra_tools: list[Toolkit] | None =
     return Agent(
         id="team-leader",
         name="Team Leader Agent",
-        model=OpenAILike(
-            id=settings.team_leader_llm_model,
-            api_key=settings.team_leader_llm_api_key,
-            base_url=settings.team_leader_llm_base_url,
-            temperature=settings.team_leader_llm_temperature,
-            max_completion_tokens=settings.team_leader_llm_max_completion_tokens,
-            extra_headers=settings.team_leader_llm_extra_headers,
-        ),
+        model=_create_model(),
         db=db,
         tools=[*get_builtin_tools(), *(extra_tools or [])],
         instructions=[

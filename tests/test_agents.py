@@ -35,6 +35,23 @@ def test_create_team_leader_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert agent.model.base_url == "https://test.example.com/v1"
 
 
+def test_create_team_leader_agent_gemini_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """provider=gemini selects the native Gemini model and maps the token limit."""
+    from agno.models.google import Gemini
+
+    monkeypatch.setattr(settings, "team_leader_llm_provider", "gemini")
+    monkeypatch.setattr(settings, "team_leader_llm_model", "gemini-test")
+    monkeypatch.setattr(settings, "team_leader_llm_api_key", "test-api-key")
+    monkeypatch.setattr(settings, "team_leader_llm_max_completion_tokens", 128)
+
+    agent = create_team_leader_agent(MagicMock(spec=PostgresDb))
+
+    assert isinstance(agent.model, Gemini)
+    assert agent.model.id == "gemini-test"
+    assert agent.model.api_key == "test-api-key"
+    assert agent.model.max_output_tokens == 128
+
+
 def test_team_leader_instructions_document_tool_error_contract() -> None:
     """The instructions explain the {"ok", "data"|"error"} envelope and the log-grep self-diagnosis path."""
     agent = create_team_leader_agent(MagicMock(spec=PostgresDb))

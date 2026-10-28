@@ -51,12 +51,13 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASS: ${{ secrets.DB_PASS }}
           TEAM_LEADER_LLM_API_KEY: ${{ secrets.TEAM_LEADER_LLM_API_KEY }}
-          # CI uses Gemini (AI Studio free tier): BigModel's free model is
-          # congested at peak times (429), and Gemini is region-restricted on
-          # the owner's network, so only CI overrides these; local runs keep
-          # the BigModel settings committed in .env.test.
+          # CI uses Gemini via Agno's native Gemini class (AI Studio free
+          # tier): BigModel's free model is congested at peak times (429),
+          # and Gemini is region-restricted on the owner's network, so only
+          # CI overrides these; local runs keep the BigModel settings
+          # committed in .env.test.
+          TEAM_LEADER_LLM_PROVIDER: gemini
           TEAM_LEADER_LLM_MODEL: gemini-2.5-flash
-          TEAM_LEADER_LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
           # Live FTShare smoke test: guards against silent SDK/API drift
           # (mocked tests cannot catch provider-side contract changes).
           ETF_GRID_FTSHARE_API_KEY: ${{ secrets.FTSHARE_API_KEY }}
