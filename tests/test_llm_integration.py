@@ -20,6 +20,8 @@ _PLACEHOLDER_KEYS = {None, "", "FAKE_API_KEY"}
     settings.team_leader_llm_api_key in _PLACEHOLDER_KEYS,
     reason="requires a real LLM API key in .env.test.local",
 )
+# Free-tier providers occasionally fail with transient 429/503 under load.
+@pytest.mark.flaky(reruns=3, reruns_delay=15)
 def test_team_leader_responds_to_greeting() -> None:
     """The Team Leader Agent can call the configured LLM and return a response."""
     db = get_postgres_db()

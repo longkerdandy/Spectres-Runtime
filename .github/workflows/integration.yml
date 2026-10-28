@@ -57,7 +57,7 @@ jobs:
           # CI overrides these; local runs keep the BigModel settings
           # committed in .env.test.
           TEAM_LEADER_LLM_PROVIDER: gemini
-          TEAM_LEADER_LLM_MODEL: gemini-3.8-flash
+          TEAM_LEADER_LLM_MODEL: gemini-3.1-flash-lite
           # Live FTShare smoke test: guards against silent SDK/API drift
           # (mocked tests cannot catch provider-side contract changes).
           ETF_GRID_FTSHARE_API_KEY: ${{ secrets.FTSHARE_API_KEY }}
