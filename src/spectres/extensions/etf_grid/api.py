@@ -153,7 +153,10 @@ def create_router(
                 net_amount=body.net_amount,
             )
         except ValueError as exc:
-            logger.warning("trade rejected as invalid; converted to 422", extra={"event": "trade_rejected", "symbol": body.symbol, "error": str(exc)})
+            # The rejected symbol is user-controlled; strip line breaks so it
+            # cannot forge log entries.
+            safe_symbol = body.symbol.replace("\r", "").replace("\n", "")
+            logger.warning("trade rejected as invalid; converted to 422", extra={"event": "trade_rejected", "symbol": safe_symbol, "error": str(exc)})
             # RequestValidationError, not HTTPException: AgentOS installs a global
             # HTTPException handler that renders detail via str(exc.detail), which
             # would stringify the list. The RequestValidationError path is FastAPI's
