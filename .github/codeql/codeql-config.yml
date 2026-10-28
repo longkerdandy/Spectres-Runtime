@@ -1,0 +1,7 @@
+name: "CodeQL config"
+
+# Test code deliberately contains patterns that security queries flag by
+# design (Mock subclasses skipping super().__init__, the redaction test
+# logging secrets on purpose); they are not production attack surface.
+paths-ignore:
+  - tests/**
