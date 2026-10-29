@@ -5,7 +5,7 @@
 > the first extension (ETF Grid Trading) runs on this contract: in-tree
 > loader, toolkit on the Team Leader, versioned router.
 >
-> Last updated: 2026-10-16.
+> Last updated: 2026-10-29.
 
 ---
 
@@ -206,6 +206,13 @@ capability fails with an explicit error at call time instead.
   extension keeps its revisions in its own directory.
 - The extension's tables are the **only** source of truth for its domain
   (e.g. the trade ledger replaces quant-advisor's CSVs).
+- **Extension data is outside Agno's automatic isolation plane.** In the
+  v0.6.x contract, extension tables have no `user_id`; every authenticated
+  user sees and mutates the same extension data through both REST and agent
+  tools. Future per-user extensions must explicitly scope every read and
+  write with Agno's `user_scope.py` helpers — `user_isolation=True` alone
+  does not isolate extension persistence. See
+  [Per-User Data Isolation](data-isolation.md).
 
 ### 6.3 Agent surface (tools)
 

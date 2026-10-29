@@ -1,5 +1,7 @@
 """Spectres Runtime AgentOS entry point."""
 
+import logging
+
 from agno.os import AgentOS
 from agno.os.authz.authorization import Authorization
 from agno.os.authz.scope_provider import ScopeAuthorizationProvider
@@ -13,6 +15,8 @@ from spectres.extensions.base import ExtensionContribution
 from spectres.extensions.loader import load_extensions
 from spectres.logging import TraceIdMiddleware, configure_logging
 from spectres.scheduler import register_schedules
+
+logger = logging.getLogger(__name__)
 
 
 def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
@@ -33,6 +37,7 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
         The configured AgentOS plus the collected extension contributions.
     """
     configure_logging(settings)
+    logger.info("Per-user data isolation enabled", extra={"event": "user_isolation_enabled"})
     db = get_postgres_db()
     contributions = load_extensions(settings, db)
     register_schedules(contributions, db)
@@ -64,6 +69,7 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
             scheduler_base_url=settings.scheduler_base_url,
             authorization=authorization,
             user_directory=settings.jwt_auth_enabled,
+            user_isolation=True,
         ),
         contributions,
     )

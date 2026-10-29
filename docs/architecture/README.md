@@ -6,7 +6,7 @@
 > ADRs explain *why*.
 >
 > For project background, layer responsibilities, and the full Runtime scope,
-> see [`AGENTS.md`](../../AGENTS.md). Last updated: 2026-10-22.
+> see [`AGENTS.md`](../../AGENTS.md). Last updated: 2026-10-29.
 
 ---
 
@@ -31,7 +31,8 @@ Spectres is a personal AI assistant. Three physical layers:
 └────────────────────────────────────────────────────────────┘
 ```
 
-Current phase: single user, full stack deployed at home (ADR 0005).
+Current phase: multiple authenticated users, full stack deployed at home;
+framework data is isolated per user and extension data remains shared.
 
 ## 2. Agent Architecture
 
@@ -67,7 +68,7 @@ framework-provided.
 |-----|----------|
 | No per-member `session_state` isolation | Namespacing convention for per-slave state |
 | No per-member tool ACL | Policy layer in Toolkit wrappers / `tool_hooks` / guardrails ("which agent may invoke which tool") |
-| No per-member tenant isolation | Single-user phase: none needed. Multi-tenant: `TeamFactory` + db filtering + `user_isolation`; verify member-memory leakage separately |
+| No per-member tenant isolation | Top-level `user_isolation` is enabled; future Team members still need `TeamFactory` + db filtering and separate member-memory leakage verification |
 | Remote agents cannot be team members | Device control = local Slave Agent + custom Toolkit proxying to the Edge Gateway; Runtime never touches hardware |
 
 ## 3. Sessions, Memory, and Automation
@@ -173,7 +174,11 @@ auto-start, power settings) are recorded in ADR 0005.
   every request carries a per-user JWT from the self-hosted Logto IdP;
   AgentOS verifies signature/issuer/audience locally against an exported
   JWKS file and auto-provisions users into its directory (equal
-  permissions for all users in this phase; isolation is v0.6.1).
+  permissions for all users in this phase).
+- **Per-user data isolation** ([Data Isolation](data-isolation.md)):
+  `AgentOS(user_isolation=True)` scopes sessions, runs, memories, traces,
+  metrics, and schedules to the JWT subject; AG-UI rejects cross-user thread
+  writes. Extension data remains shared by explicit contract.
 - **Sensitive operations** (e.g., door unlock) share one HITL path regardless
   of trigger (user or automation): member tool marked for confirmation → pause
   propagates to the team run → AgentOS `/approvals` or AG-UI resume →
@@ -187,8 +192,12 @@ auto-start, power settings) are recorded in ADR 0005.
 
 ## 7. Current Implementation State
 
-Implemented (through v0.6.0):
+Implemented (through v0.6.1):
 
+- **Per-user data isolation** ([Data Isolation](data-isolation.md)): Agno
+  user scoping on framework routes, AG-UI thread ownership enforcement,
+  admin break-glass, and unowned system schedules; no production-data
+  migration was needed.
 - **User authentication** ([Authentication](authentication.md), ADR 0009):
   self-hosted Logto IdP (compose service), per-user JWT verification with
   issuer/audience pinning, JIT user directory with a disabled kill switch;
@@ -220,6 +229,7 @@ notification channel, Edge proxy, deployment tooling.
 - [`adr/`](../adr/README.md) — decision records 0001–0009
 - Topic deep-dives and references (this directory):
   [Authentication](authentication.md),
+  [Data Isolation](data-isolation.md),
   [Runtime Extensions](runtime-extensions.md),
   [Scheduled Tasks](scheduled-tasks.md),
   [Database Schema](database-schema.md)

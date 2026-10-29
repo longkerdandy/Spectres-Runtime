@@ -33,8 +33,8 @@ Browser SPA (Web Client)                     Logto (docker, :3001/:3002)
   docs endpoints. No token or an invalid token → 401; a valid token from a
   **disabled** user → 403.
 - All authenticated users have identical permissions (no roles in this
-  phase). Per-user data isolation is v0.6.1; the directory built here is
-  its foundation.
+  phase). [Per-user data isolation](data-isolation.md) scopes framework data
+  to the JWT subject; the directory built here is its foundation.
 - `sub` of the JWT is the AgentOS `user_id`. On a subject's first request
   the UserDirectory auto-provisions a roster row
   (`ai.agno_authz_users` in the Runtime database). Disabling a user
@@ -137,7 +137,7 @@ from agno.os.auth import create_dev_token
 token = create_dev_token(
     "dev-user",
     secret=<JWT_VERIFICATION_KEY>, audience=<JWT_AUDIENCE>,
-    scopes=["admin"],  # admin scope bypasses scope checks
+    scopes=["agent_os:admin"],  # optional: cross-user data break-glass
 )
 ```
 

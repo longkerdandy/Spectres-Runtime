@@ -5,7 +5,7 @@
 > [ADR 0007](../adr/0007-scheduled-tasks-agno-scheduler.md) (2026-10-14);
 > the first schedule (`etf_grid_daily_sync`) runs on this substrate.
 >
-> Last updated: 2026-10-16.
+> Last updated: 2026-10-29.
 
 ---
 
@@ -64,9 +64,16 @@ Two Agno-managed tables (see [database-schema.md](database-schema.md)):
   timezone, timeout_seconds, max_retries, retry_delay_seconds, enabled,
   next_run_at, user_id`, lease columns, and provenance columns.
 - **`agno_schedule_runs`**: one row per execution attempt — `status
-  (success|failed|...), status_code, error, triggered_at, completed_at`.
-  This is the audit log for layer-1 tasks; domain results live in the
-  extension's own tables as usual.
+  (success|failed|...), status_code, error, triggered_at, completed_at,
+  user_id`. The owner is copied from the parent schedule so history queries
+  use the same isolation filter. This is the audit log for layer-1 tasks;
+  domain results live in the extension's own tables as usual.
+
+With `user_isolation=True`, schedule management and history are scoped to
+`user_id`. An owned schedule executes with its owner forwarded in
+`X-Schedule-Owner`; an unowned (`NULL`) schedule executes unscoped under the
+internal service token. NULL means a system task, not a schedule shared with
+every regular user. See [Per-User Data Isolation](data-isolation.md).
 
 ### 2.3 Reliability properties
 
@@ -144,6 +151,11 @@ composite route** owned by the extension:
 | Schedule | Cron (Asia/Shanghai) | Endpoint |
 |----------|----------------------|----------|
 | `etf_grid_daily_sync` | `0 9 * * 1,5` (Mon & Fri 09:00) | `POST /api/v1/extensions/etf-grid/refresh` |
+
+The task is registered without `user_id`, so it remains an unowned system
+schedule under isolation. It creates only unowned schedule-run audit rows —
+no Agent session/run rows — and its extension endpoint continues to operate
+on shared ETF Grid data.
 
 The schedule's operational fields (cron, timezone, enabled, retries) load
 from the extension's `ETF_GRID_SYNC_*` config, so a deployment can retime
