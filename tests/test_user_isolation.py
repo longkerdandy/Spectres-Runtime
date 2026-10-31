@@ -16,6 +16,26 @@ from spectres.db.postgres import get_postgres_db
 
 DEV_KEY = "test-only-verification-key-not-a-secret-0123456789abcdef"
 DEV_AUDIENCE = "https://spectres.runtime/api"
+USER_SCOPES = [
+    "config:read",
+    "registry:read",
+    "agents:read",
+    "agents:*:run",
+    "sessions:read",
+    "sessions:write",
+    "sessions:delete",
+    "memories:read",
+    "memories:write",
+    "memories:delete",
+    "schedules:read",
+    "schedules:write",
+    "schedules:delete",
+    "approvals:read",
+    "approvals:write",
+    "approvals:delete",
+    "metrics:read",
+    "traces:read",
+]
 
 pytestmark = pytest.mark.db
 
@@ -23,7 +43,7 @@ pytestmark = pytest.mark.db
 def _headers(sub: str, scopes: list[str] | None = None) -> dict[str, str]:
     from agno.os.auth import create_dev_token
 
-    token = create_dev_token(sub, secret=DEV_KEY, audience=DEV_AUDIENCE, scopes=scopes)
+    token = create_dev_token(sub, secret=DEV_KEY, audience=DEV_AUDIENCE, scopes=USER_SCOPES if scopes is None else scopes)
     return {"Authorization": f"Bearer {token}"}
 
 

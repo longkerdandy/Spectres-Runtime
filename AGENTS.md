@@ -2,7 +2,7 @@
 
 > This document is for coding agents working on the project. It defines the project background, high-level architecture, module boundaries, and the scope of the current subproject: Runtime.
 >
-> Last updated: 2026-09-20
+> Last updated: 2026-10-29
 
 ---
 
@@ -155,6 +155,7 @@ The following decisions are confirmed by the project owner:
 7. **Automation**: Triggers are handled in three layers (deterministic rules with zero LLM calls; judgment-needed triggers as Master runs in isolated sessions; high-frequency events filtered at Edge). Session isolation is by `session_id`; the user profile aggregates by `user_id`. See [ADR 0003](docs/adr/0003-automation-trigger-layers-and-session-isolation.md).
 8. **AG-UI visibility**: Phase 1 accepts the framework's flattened single-voice stream with a custom dispatch-card renderer; per-Slave attribution is a later custom-mapping effort; protocol-native Subagent Events are the end state. See [ADR 0004](docs/adr/0004-ag-ui-team-visibility-strategy.md).
 9. **Deployment topology**: Clients reach Runtime only via AG-UI over HTTP(S) against a configurable endpoint (deployment location is a variable). The Runtime runs at home and is never directly publicly exposed; all remote clients enter through a cloud Gateway (Tencent Cloud HK Lighthouse, nginx reverse proxy over a WireGuard point-to-point tunnel to the home host) using plain HTTPS with nothing installed on user devices. Authentication is a Runtime-side responsibility, not the Gateway's. Multi-tenant evolution (Gateway as registry + router) remains future work. See [ADR 0005](docs/adr/0005-deployment-topology-and-client-access.md) (partially superseded) and [ADR 0008](docs/adr/0008-cloud-gateway-public-entry.md).
+10. **Authorization**: Logto owns users, roles, and role assignments; access tokens carry Agno-native `scopes` and Runtime enforces them through Agno's built-in scope provider. `agent_os:admin` retains full API and cross-user break-glass; the Web Client presents a separate management-only console. Extensions remain outside this authorization phase. See [ADR 0010](docs/adr/0010-logto-rbac-agno-jwt-scopes.md).
 
 ---
 

@@ -57,9 +57,10 @@ owner. The Web Client needs no isolation-specific change.
 ## 4. Admin break-glass
 
 A caller with the `agent_os:admin` token scope is unscoped and can read
-across users for operational debugging. This does not introduce a managed
-admin role or the `/authz` admin API; all normal Logto users still have the
-same route permissions.
+across users for operational debugging. Production admin authority comes
+from the Logto `admin` role and its custom `scopes` claim; there is no
+Runtime managed-role store or `/authz` API. Ordinary Logto users receive the
+separate `user` scope set and remain isolated.
 
 For local development only, mint a token with the development verification
 key, never the production Logto key:

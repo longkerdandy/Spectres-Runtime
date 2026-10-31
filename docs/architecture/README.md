@@ -173,8 +173,12 @@ auto-start, power settings) are recorded in ADR 0005.
 - **Client authentication** ([Authentication](authentication.md), ADR 0009):
   every request carries a per-user JWT from the self-hosted Logto IdP;
   AgentOS verifies signature/issuer/audience locally against an exported
-  JWKS file and auto-provisions users into its directory (equal
-  permissions for all users in this phase).
+  JWKS file and auto-provisions users into its directory.
+- **Authorization** ([Authentication](authentication.md), ADR 0010): Logto
+  owns `user`/`admin` roles and issues Agno-native scopes in the JWT;
+  AgentOS enforces them through its built-in scope provider. Admin retains
+  full API and cross-user break-glass; the Web Client presents a
+  management-only console.
 - **Per-user data isolation** ([Data Isolation](data-isolation.md)):
   `AgentOS(user_isolation=True)` scopes sessions, runs, memories, traces,
   metrics, and schedules to the JWT subject; AG-UI rejects cross-user thread

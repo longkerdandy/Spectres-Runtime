@@ -4,11 +4,9 @@ import logging
 
 from agno.os import AgentOS
 from agno.os.authz.authorization import Authorization
-from agno.os.authz.scope_provider import ScopeAuthorizationProvider
 from agno.os.interfaces.agui import AGUI
 
 from spectres.agents.team_leader import create_team_leader_agent
-from spectres.auth import AnyAuthenticatedProvider
 from spectres.config import settings
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.base import ExtensionContribution
@@ -52,7 +50,6 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
             audience=settings.jwt_audience,
             verify_audience=settings.jwt_audience is not None,
             issuer=settings.jwt_issuer,
-            authorization_provider=[ScopeAuthorizationProvider(), AnyAuthenticatedProvider()],
         )
         if settings.jwt_auth_enabled
         else False

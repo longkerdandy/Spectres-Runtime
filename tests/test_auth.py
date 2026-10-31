@@ -18,12 +18,20 @@ from spectres.config import Settings
 DEV_KEY = "test-only-verification-key-not-a-secret-0123456789abcdef"
 DEV_AUDIENCE = "https://spectres.runtime/api"
 TEST_ROUTE = "/api/v1/extensions/etf-grid/status"
+USER_SCOPES = ["agents:read", "agents:*:run"]
 
 
-def _dev_token(sub: str) -> str:
+def _dev_token(sub: str, scopes: list[str] | None = None) -> str:
     from agno.os.auth import create_dev_token
 
-    return create_dev_token(sub, secret=DEV_KEY, audience=DEV_AUDIENCE, email=f"{sub}@example.com", name=sub.title())
+    return create_dev_token(
+        sub,
+        secret=DEV_KEY,
+        audience=DEV_AUDIENCE,
+        email=f"{sub}@example.com",
+        name=sub.title(),
+        scopes=USER_SCOPES if scopes is None else scopes,
+    )
 
 
 @pytest.mark.unit

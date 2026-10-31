@@ -29,3 +29,4 @@ considered, and the consequences **at the time the decision was made**.
 | [0007](0007-scheduled-tasks-agno-scheduler.md) | Scheduled Tasks — Agno Built-in Scheduler, Deterministic-Only MVP | Accepted |
 | [0008](0008-cloud-gateway-public-entry.md) | Cloud Gateway as the Public Entry Point | Accepted |
 | [0009](0009-idp-logto-self-hosted.md) | Identity Provider — Logto OSS Self-Hosted | Accepted |
+| [0010](0010-logto-rbac-agno-jwt-scopes.md) | Authorization — Logto RBAC with Agno JWT Scopes | Accepted |

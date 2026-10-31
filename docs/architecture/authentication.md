@@ -1,9 +1,11 @@
 # Authentication
 
-> How requests to the Runtime are authenticated: self-hosted Logto (OIDC)
-> issues per-user JWTs; AgentOS verifies them locally against an exported
-> JWKS file. Decision rationale: [ADR 0009](../adr/0009-idp-logto-self-hosted.md).
-> Implemented in v0.6.0 ([plan](../plan/v0.6.0-user-authentication.md)).
+> How requests to the Runtime are authenticated and authorized: self-hosted
+> Logto (OIDC) issues per-user JWTs with Agno scopes; AgentOS verifies them
+> locally and enforces permissions. Decision rationale:
+> [ADR 0009](../adr/0009-idp-logto-self-hosted.md) and
+> [ADR 0010](../adr/0010-logto-rbac-agno-jwt-scopes.md).
+> Authentication implemented in v0.6.0; Logto RBAC added in v0.6.2.
 
 ---
 
@@ -22,19 +24,19 @@ Browser SPA (Web Client)                     Logto (docker, :3001/:3002)
 ┌──────────────────────────────────────────────────────────┴────────────┐
 │ Runtime (AgentOS, :7777)                                              │
 │  JWTMiddleware: verify signature (JWT_JWKS_FILE) + iss + aud          │
-│  Authorization providers (OR):                                        │
-│    ScopeAuthorizationProvider  — admin-scope dev/service tokens       │
-│    AnyAuthenticatedProvider    — any verified token passes            │
+│  ScopeAuthorizationProvider: enforce JWT scopes per framework route   │
 │  UserDirectory (user_directory=True): JIT roster, disabled kill switch│
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
 - Every HTTP route requires a verified Bearer JWT except `/health` and the
   docs endpoints. No token or an invalid token → 401; a valid token from a
-  **disabled** user → 403.
-- All authenticated users have identical permissions (no roles in this
-  phase). [Per-user data isolation](data-isolation.md) scopes framework data
-  to the JWT subject; the directory built here is its foundation.
+  **disabled** user → 403. Insufficient scopes usually produce 403.
+- Logto owns the `user` and `admin` roles and their assignments. Agno's
+  scope provider enforces the resulting permissions; there is no Runtime
+  role store or `/authz` API.
+- [Per-user data isolation](data-isolation.md) scopes framework data to the
+  JWT subject. `agent_os:admin` is the operational cross-user break-glass.
 - `sub` of the JWT is the AgentOS `user_id`. On a subject's first request
   the UserDirectory auto-provisions a roster row
   (`ai.agno_authz_users` in the Runtime database). Disabling a user
@@ -48,14 +50,21 @@ Browser SPA (Web Client)                     Logto (docker, :3001/:3002)
 | `iss` | `$LOGTO_ENDPOINT/oidc` (e.g. `http://localhost:3001/oidc`) | yes (`JWT_ISSUER`) |
 | `aud` | API resource URI, `https://spectres.runtime/api` | yes (`JWT_AUDIENCE`) |
 | `sub` | Logto user id (or M2M app id) | identity |
+| `scopes` | Array of Agno-native permissions granted for the API resource | yes (route authorization) |
 | `exp`/`iat` | 1 h lifetime; SDK refreshes via refresh token | yes (signature validation) |
 | signature | ES384, OIDC signing key | yes (`JWT_JWKS_FILE`) |
 
 Logto only mints a **JWT** access token when the client requests the API
 resource indicator; without it the token is opaque and the Runtime rejects
 it. The Web Client requests the resource via `VITE_LOGTO_API_RESOURCE`.
-Logto's `scope` claim is not evaluated in this phase (authorization is
-authentication-only).
+Logto's custom claims emit `scopes` as a string array; the standard OAuth
+`scope` string is space-delimited and is not split by Agno.
+
+The default `user` role carries `config:read`, `registry:read`,
+`agents:read`, `agents:*:run`, session/memory/schedule/approval read-write-
+delete scopes, and `metrics:read`/`traces:read`. The `admin` role carries
+`agent_os:admin`, which grants all framework routes and bypasses isolation.
+Extensions have no role-specific scopes in this phase.
 
 ## 3. Configuration
 
@@ -97,6 +106,42 @@ Web Client: `VITE_LOGTO_ENDPOINT`, `VITE_LOGTO_APP_ID`,
 5. Export the JWKS for the Runtime:
    `curl -sf $LOGTO_ENDPOINT/oidc/jwks > docker/logto/jwks.json`
    (gitignored; never committed).
+
+### RBAC and Agno scope claims
+
+1. In Console → API resources → the Runtime resource → Permissions, create
+   the ordinary scopes listed in §2 and `agent_os:admin` using those exact
+   Agno-native names.
+2. In Console → Roles, create a global `user` role with the ordinary scopes
+   and enable it as the default for new users. Assign it to existing
+   ordinary users. Create `admin` with only `agent_os:admin` and assign it
+   only to intended administrators.
+3. In Console → JWT claims, add an access-token `getCustomJwtClaims` script
+   that translates Logto's granted API-resource scopes into Agno's array
+   contract:
+
+   ```javascript
+   const getCustomJwtClaims = async ({ context }) => {
+     const scopes = (context.user?.roles ?? [])
+       .flatMap((role) => role.scopes ?? [])
+       .filter((scope) => scope.resource?.indicator === "https://spectres.runtime/api")
+       .map((scope) => scope.name);
+     return { scopes: [...new Set(scopes)] };
+   };
+   ```
+
+   The source is Logto's server-side role assignments, not client-provided
+   role data or the OAuth `scope` request. This works with the SPA's existing
+   `openid profile` request. Custom JWT scripts run with Logto host
+   privileges: only trusted administrators may create, edit, or test them.
+4. Sign in as each role and inspect the access-token payload locally (never
+   log it): `scopes` must be an array; admin includes `agent_os:admin` and
+   user does not. Verify user `/agents` → 200 and `/users` → 403, admin
+   `/users` → 200, plus ordinary AG-UI and admin cross-user reads.
+5. Role/permission changes affect newly issued tokens. Refresh or sign in
+   again when testing them; Runtime's directory `disabled` flag remains the
+   immediate revocation path. The Web Client's management-only presentation
+   is implemented separately in its v0.3.1 milestone.
 
 ### Key rotation
 
