@@ -68,7 +68,7 @@ Extensions have no role-specific scopes in this phase.
 
 ## 3. Configuration
 
-Runtime (`.env`, see `.env.example`):
+Runtime (`.env` with optional `.env.local` overrides, see `.env.example`):
 
 | Variable | Purpose |
 |----------|---------|
@@ -91,10 +91,10 @@ Web Client: `VITE_LOGTO_ENDPOINT`, `VITE_LOGTO_APP_ID`,
 
 ### First-time deployment
 
-1. `docker compose up -d` (the `logto` service shares the `spectres-db`
+1. `docker compose --env-file .env --env-file .env.local up -d` (the `logto` service shares the `spectres-db`
    PostgreSQL container and stores its data in `LOGTO_DB_DATABASE`).
 2. First boot against an empty database requires the seed, run once:
-   `docker compose run --rm --entrypoint npm logto -w /etc/logto run db seed`
+   `docker compose --env-file .env --env-file .env.local run --rm --entrypoint npm logto -w /etc/logto run db seed`
    (then `... run alteration deploy latest` if the image tag moved since).
 3. If startup fails on a missing-RLS check for `_logto_configs`:
    `ALTER TABLE _logto_configs ENABLE ROW LEVEL SECURITY;` (ENABLE, not
@@ -154,7 +154,7 @@ verification.
 ### Upgrades
 
 Logto upgrades are two-step by design: bump the image tag, then run
-`docker compose run --rm --entrypoint npm logto -w /etc/logto run alteration deploy latest`
+`docker compose --env-file .env --env-file .env.local run --rm --entrypoint npm logto -w /etc/logto run alteration deploy latest`
 **before** starting the new version — the app refuses to boot on a pending
 alteration.
 

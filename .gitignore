@@ -24,8 +24,8 @@ coverage.xml
 env/
 venv/
 
-# Local environment overrides (.env.example / .env.test are committed on purpose)
-.env
+# Local environment overrides (.env and .env.test are committed)
+.env.local
 .env.test.local
 
 # Tool caches

@@ -1,10 +1,12 @@
 """Unit tests for Spectres Runtime configuration."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import create_engine as sa_create_engine
 
-from spectres.config import Settings
+from spectres.config import Settings, _environment_files
 
 
 @pytest.fixture
@@ -230,3 +232,51 @@ class TestSettingsValidation:
 
         engine = sa_create_engine(settings.database_url)
         assert engine.url.password == "p@ss/word%#1"
+
+
+@pytest.mark.parametrize(
+    ("env_file", "expected_files"),
+    [
+        (None, (".env", ".env.local")),
+        (".env.test", (".env.test", ".env.test.local")),
+    ],
+)
+def test_environment_files(
+    monkeypatch: pytest.MonkeyPatch,
+    env_file: str | None,
+    expected_files: tuple[str, str],
+) -> None:
+    """Select the local override belonging to each environment."""
+    if env_file is None:
+        monkeypatch.delenv("SPECTRES_ENV_FILE", raising=False)
+    else:
+        monkeypatch.setenv("SPECTRES_ENV_FILE", env_file)
+
+    assert _environment_files() == expected_files
+
+
+def test_test_local_environment_overrides_base(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    base_env: None,
+) -> None:
+    """Load test credentials from the local override file."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SPECTRES_ENV_FILE", ".env.test")
+    for name in ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASS", "DB_DATABASE"):
+        monkeypatch.delenv(name, raising=False)
+
+    (tmp_path / ".env.test").write_text(
+        "DB_HOST=127.0.0.1\nDB_PORT=5532\nDB_USER=base_user\nDB_PASS=base_password\nDB_DATABASE=spectres_runtime_test\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env.test.local").write_text(
+        "DB_USER=local_user\nDB_PASS=local_password\n",
+        encoding="utf-8",
+    )
+
+    settings = Settings()  # type: ignore[call-arg]
+
+    assert settings.db_user == "local_user"
+    assert settings.db_pass == "local_password"
+    assert settings.db_database == "spectres_runtime_test"

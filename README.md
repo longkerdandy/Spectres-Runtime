@@ -30,21 +30,27 @@ Install Git hooks so quality checks run automatically on every commit:
 uv run pre-commit install
 ```
 
+### Local configuration
+
+The committed `.env` and `.env.test` files contain only non-sensitive base configuration. Keep real credentials and private overrides in the gitignored `.env.local` and `.env.test.local` files. Development settings load `.env` followed by `.env.local`; test settings load `.env.test` followed by `.env.test.local`. Values in the local files take precedence, while process environment variables retain the highest priority.
+
+Docker Compose does not automatically read `.env.local`, so pass both files explicitly when starting local services. See `.env.example` for the available settings.
+
 ### Start the local database
 
-Spectres Runtime uses PostgreSQL with the pgvector extension for session and chat-history storage. Start it in Docker Desktop:
+Spectres Runtime uses PostgreSQL with the pgvector extension for session and chat-history storage. Configure the local database credentials and start it in Docker Desktop:
 
 ```bash
-cp .env.example .env
-# Optionally edit .env to change database credentials.
-docker compose up -d
+touch .env.local
+# Set DB_USER and DB_PASS in .env.local.
+docker compose --env-file .env --env-file .env.local up -d
 ```
 
 The PostgreSQL server will be available at `localhost:5532` by default, with both `spectres_runtime` and `spectres_runtime_test` databases created and the `pgvector` extension installed.
 
 ### Reset the local database
 
-To drop and recreate the development database (configured in `.env`) and reinstall the pgvector extension:
+To drop and recreate the development database configured in `.env` and `.env.local`, then reinstall the pgvector extension:
 
 ```bash
 uv run python scripts/reset_db.py
@@ -61,7 +67,7 @@ uv run python scripts/reset_db.py --force
 `v0.2.1` exposes the Team Leader Agent through the AG-UI protocol. Start the server with:
 
 ```bash
-docker compose up -d              # Start PostgreSQL if you need persistent sessions
+docker compose --env-file .env --env-file .env.local up -d              # Start PostgreSQL if you need persistent sessions
 uv run python -m spectres.main    # Or: uv run python src/spectres/main.py
 ```
 
@@ -75,7 +81,7 @@ With the server running, verify the endpoints with `curl`:
 # Health / status check
 curl http://localhost:7777/status
 
-# AG-UI streaming run (requires a configured LLM in .env)
+# AG-UI streaming run (requires real LLM settings in .env.local)
 curl -N -X POST http://localhost:7777/agui \
   -H "Content-Type: application/json" \
   -d '{
@@ -97,7 +103,7 @@ The MVP pairs this Runtime with the independently served [Spectres-Web-Client](.
 
 ```bash
 # Terminal 1: PostgreSQL
-docker compose up -d
+docker compose --env-file .env --env-file .env.local up -d
 
 # Terminal 2: Runtime (AG-UI on http://localhost:7777)
 uv run python -m spectres.main
@@ -132,7 +138,7 @@ uv run pre-commit run --all-files
 
 ### Test environment
 
-Tests use the committed `.env.test` file instead of your local `.env`. This keeps CI stable and configures the test suite to use GitHub Models rather than your production LLM.
+Tests load the committed `.env.test` followed by the gitignored `.env.test.local`, independently of the development `.env` and `.env.local` files. This keeps test configuration stable while allowing real credentials to remain local.
 
 By default, `uv run pytest` runs only fast unit tests. Integration tests that require external services are excluded unless explicitly selected:
 
@@ -154,10 +160,10 @@ Create the gitignored `.env.test.local` file next to `.env.test`:
 # .env.test.local (do not commit)
 DB_USER=ai
 DB_PASS=ai
-TEAM_LEADER_LLM_API_KEY=ghp_xxxxxxxxxxxxxxxxxxxx
+TEAM_LEADER_LLM_API_KEY=replace-with-real-api-key
 ```
 
-`tests/conftest.py` loads `.env.test.local` automatically when pytest runs.
+`Settings` loads `.env.test.local` automatically when tests run.
 
 **GitHub Actions**
 

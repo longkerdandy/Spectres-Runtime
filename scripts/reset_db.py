@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Reset the development PostgreSQL database.
 
-This script reads database credentials from `.env` (via spectres.config.settings),
-drops the configured database, recreates it, and installs the pgvector extension.
+This script reads database settings from `.env` and `.env.local` (via
+spectres.config.settings), drops the configured database, recreates it, and
+installs the pgvector extension.
 
 Usage:
     uv run python scripts/reset_db.py

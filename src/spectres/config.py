@@ -9,11 +9,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
 
+def _environment_files() -> tuple[str, str]:
+    env_file = os.getenv("SPECTRES_ENV_FILE", ".env")
+    local_file = ".env.test.local" if env_file == ".env.test" else ".env.local"
+    return env_file, local_file
+
+
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application settings loaded from base and local environment files."""
 
     model_config = SettingsConfigDict(
-        env_file=os.getenv("SPECTRES_ENV_FILE", ".env"),
+        env_file=_environment_files(),
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
