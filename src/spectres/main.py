@@ -5,8 +5,10 @@ import logging
 from agno.os import AgentOS
 from agno.os.authz.authorization import Authorization
 from agno.os.interfaces.agui import AGUI
+from fastapi import FastAPI
 
 from spectres.agents.team_leader import create_team_leader_agent
+from spectres.auth import UserProfileSyncMiddleware
 from spectres.config import settings
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.base import ExtensionContribution
@@ -54,9 +56,12 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
         if settings.jwt_auth_enabled
         else False
     )
+    base_app = FastAPI()
+    base_app.add_middleware(UserProfileSyncMiddleware)
     return (
         AgentOS(
             name="Spectres Runtime",
+            base_app=base_app,
             db=db,
             agents=[team_leader_agent],
             interfaces=[AGUI(agent=team_leader_agent)],

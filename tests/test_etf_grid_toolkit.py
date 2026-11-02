@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from agno.run import RunContext
 
 from spectres.config import settings
 from spectres.extensions.etf_grid.config import EtfGridConfig, PortfolioItem
-from spectres.extensions.etf_grid.service import EtfGridLedgerService
+from spectres.extensions.etf_grid.service import EtfGridInstrumentService, EtfGridLedgerService
 from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
 from spectres.extensions.etf_grid.types import Side, Source
 from spectres.logging import configure_logging, log_file_for_today
@@ -35,6 +36,15 @@ def config() -> EtfGridConfig:
         sync_max_retries=2,
         sync_retry_delay_seconds=300,
     )
+
+
+def _context(user_id: str = "alice") -> RunContext:
+    return RunContext(run_id="run", session_id="session", user_id=user_id)
+
+
+class _FakeInstruments(EtfGridInstrumentService):
+    def require_enabled(self, symbol: str, *, config: EtfGridConfig) -> str:
+        return symbol
 
 
 class FakeLedger(EtfGridLedgerService):
@@ -69,8 +79,8 @@ class TestGetGridStatus:
         """Decimals become strings, dates ISO strings; the payload is JSON-serializable."""
         canned = [{"symbol": "513330.XSHG", "avg_cost": Decimal("0.3724"), "close_date": date(2026, 9, 24), "signal": None}]
         monkeypatch.setattr("spectres.extensions.etf_grid.toolkit.get_portfolio_status", lambda **kwargs: canned)
-        toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger())
-        result = toolkit.get_grid_status()
+        toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger(), instrument_service=_FakeInstruments())
+        result = toolkit.get_grid_status(_context())
         assert result["ok"] is True
         data = result["data"]
         assert data[0]["avg_cost"] == "0.3724"
@@ -90,13 +100,14 @@ class TestRefreshGridData:
             return {"candles": {"513330.XSHG": 5}, "valuation": 2400, "errors": {}}
 
         def fake_compute(**kwargs: Any) -> dict[str, Any]:
+            assert kwargs["user_id"] == "alice"
             thread_ids.append(threading.get_ident())
             return {"signals": {"513330.XSHG": {"level": -3}}, "skipped": {}}
 
         monkeypatch.setattr("spectres.extensions.etf_grid.toolkit.sync_market_data", fake_sync)
         monkeypatch.setattr("spectres.extensions.etf_grid.toolkit.compute_daily_signals", fake_compute)
-        toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger())
-        result = await toolkit.refresh_grid_data()
+        toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger(), instrument_service=_FakeInstruments())
+        result = await toolkit.refresh_grid_data(_context())
         assert result["ok"] is True
         assert result["data"]["candles"] == {"513330.XSHG": 5}
         assert result["data"]["valuation"] == 2400
@@ -113,8 +124,9 @@ class TestRecordGridTrade:
     def test_arguments_translated(self, config: EtfGridConfig) -> None:
         """String inputs become date/Side/Decimal; source is AGENT; output normalized."""
         ledger = FakeLedger()
-        toolkit = EtfGridToolkit(config=config, ledger_service=ledger)
+        toolkit = EtfGridToolkit(config=config, ledger_service=ledger, instrument_service=_FakeInstruments())
         result = toolkit.record_grid_trade(
+            run_context=_context(),
             symbol="513330.XSHG",
             trade_date="2026-08-19",
             side="buy",
@@ -124,6 +136,7 @@ class TestRecordGridTrade:
             note="opening position backfill",
         )
         call = ledger.recorded
+        assert call["user_id"] == "alice"
         assert call["trade_date"] == date(2026, 8, 19)
         assert call["side"] is Side.BUY
         assert call["price"] == Decimal("0.4100")
@@ -141,11 +154,12 @@ class TestListGridTrades:
         """Rows come back newest-first, sliced to limit, order pushed to the service."""
         ledger = FakeLedger()
         ledger.rows = [{"id": i, "trade_date": date(2026, 9, 1), "net_amount": Decimal("1.00")} for i in range(25)]
-        toolkit = EtfGridToolkit(config=config, ledger_service=ledger)
-        result = toolkit.list_grid_trades(symbol="513330.XSHG")
+        toolkit = EtfGridToolkit(config=config, ledger_service=ledger, instrument_service=_FakeInstruments())
+        result = toolkit.list_grid_trades(_context(), symbol="513330.XSHG")
         assert result["ok"] is True
         assert len(result["data"]) == 20
         assert ledger.list_kwargs["symbol"] == "513330.XSHG"
+        assert ledger.list_kwargs["user_id"] == "alice"
         order_by = ledger.list_kwargs["order_by"]
         assert order_by[0].direction.value == "desc"
         assert result["data"][0]["net_amount"] == "1.00"
@@ -158,8 +172,8 @@ class TestErrorContract:
     def test_invalid_input_returns_structured_error(self, config: EtfGridConfig) -> None:
         """An unknown side yields ok=False with type/message/trace_id/hint; no service call happens."""
         ledger = FakeLedger()
-        toolkit = EtfGridToolkit(config=config, ledger_service=ledger)
-        result = toolkit.record_grid_trade(symbol="513330.XSHG", trade_date="2026-08-19", side="hold", price="0.4100", quantity=100, commission_rate="0.001")
+        toolkit = EtfGridToolkit(config=config, ledger_service=ledger, instrument_service=_FakeInstruments())
+        result = toolkit.record_grid_trade(run_context=_context(), symbol="513330.XSHG", trade_date="2026-08-19", side="hold", price="0.4100", quantity=100, commission_rate="0.001")
         assert result["ok"] is False
         error = result["error"]
         assert error["type"] == "ValueError"
@@ -170,6 +184,15 @@ class TestErrorContract:
         assert ledger.recorded == {}  # validation failed before any service call
         _assert_jsonable(result)
 
+    def test_missing_run_identity_fails_closed(self, config: EtfGridConfig) -> None:
+        """A tool without an authenticated run owner cannot read the ledger."""
+        ledger = FakeLedger()
+        toolkit = EtfGridToolkit(config=config, ledger_service=ledger, instrument_service=_FakeInstruments())
+        result = toolkit.list_grid_trades(_context(user_id=""))
+        assert result["ok"] is False
+        assert result["error"]["type"] == "PermissionError"
+        assert ledger.list_kwargs == {}
+
     def test_service_failure_returns_structured_error(self, config: EtfGridConfig) -> None:
         """An exception from the service layer is wrapped the same way."""
         ledger = FakeLedger()
@@ -179,8 +202,10 @@ class TestErrorContract:
             raise RuntimeError("db down")
 
         ledger.list_trades = _raise  # type: ignore[method-assign]
-        toolkit = EtfGridToolkit(config=config, ledger_service=ledger)
-        result = toolkit.list_grid_trades()
+        toolkit = EtfGridToolkit(config=config, ledger_service=ledger, instrument_service=_FakeInstruments())
+        result = toolkit.list_grid_trades(
+            _context(),
+        )
         assert result["ok"] is False
         assert result["error"]["type"] == "RuntimeError"
         assert result["error"]["message"] == "db down"
@@ -196,8 +221,8 @@ class TestErrorContract:
         monkeypatch.setattr(settings, "log_dir", str(tmp_path))
         try:
             configure_logging(settings)
-            toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger())
-            result = toolkit.record_grid_trade(symbol="513330.XSHG", trade_date="2026-08-19", side="hold", price="0.4100", quantity=100, commission_rate="0.001")
+            toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger(), instrument_service=_FakeInstruments())
+            result = toolkit.record_grid_trade(run_context=_context(), symbol="513330.XSHG", trade_date="2026-08-19", side="hold", price="0.4100", quantity=100, commission_rate="0.001")
             for handler in root.handlers:
                 handler.flush()
             trace_id = result["error"]["trace_id"]
@@ -222,6 +247,10 @@ class TestErrorContract:
 
 def test_toolkit_registers_four_functions(config: EtfGridConfig) -> None:
     """The toolkit exposes exactly four tools across sync and async registries."""
-    toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger())
+    toolkit = EtfGridToolkit(config=config, ledger_service=FakeLedger(), instrument_service=_FakeInstruments())
     assert set(toolkit.functions) == {"get_grid_status", "record_grid_trade", "list_grid_trades"}
     assert set(toolkit.async_functions) == {"refresh_grid_data"}
+    record = toolkit.functions["record_grid_trade"]
+    record.process_entrypoint()
+    assert {"symbol", "trade_date", "side", "price", "quantity", "commission_rate"} <= set(record.parameters["properties"])
+    assert "run_context" not in record.parameters["properties"]

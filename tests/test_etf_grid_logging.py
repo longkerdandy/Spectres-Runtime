@@ -21,6 +21,7 @@ from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.models import EtfGridBase
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
+    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     EtfGridValuationService,
@@ -59,6 +60,13 @@ def config() -> EtfGridConfig:
 def _records(caplog: pytest.LogCaptureFixture, event: str) -> list[logging.LogRecord]:
     """Return captured records carrying the given structured event name."""
     return [record for record in caplog.records if getattr(record, "event", None) == event]
+
+
+def _instruments() -> MagicMock:
+    service = MagicMock(spec=EtfGridInstrumentService)
+    service.effective_portfolio.side_effect = lambda *, config: config.portfolio
+    service.require_enabled.side_effect = lambda symbol, *, config: symbol
+    return service
 
 
 class TestExtensionRegisterLogging:
@@ -131,7 +139,7 @@ class TestSyncMarketDataLogging:
         valuation = MagicMock(spec=EtfGridValuationService)
         valuation.upsert_valuation.return_value = 1
         with caplog.at_level(logging.INFO, logger="spectres.extensions.etf_grid.marketdata"):
-            result = sync_market_data(config=config, candle_service=MagicMock(spec=EtfGridCandleService), valuation_service=valuation, fetcher=fetcher)
+            result = sync_market_data(config=config, candle_service=MagicMock(spec=EtfGridCandleService), valuation_service=valuation, instrument_service=_instruments(), fetcher=fetcher)
         assert "ETF_GRID_FTSHARE_API_KEY is required" in result["errors"]["candles"]
         assert result["valuation"] == 1
 
@@ -156,6 +164,7 @@ class TestTradeRecordedAudit:
         ledger = EtfGridLedgerService(session_factory=session_factory)
         with caplog.at_level(logging.INFO, logger="spectres.extensions.etf_grid.service"):
             ledger.record_trade(
+                user_id="alice",
                 trade_date=date(2026, 8, 19),
                 symbol="513330.XSHG",
                 side=Side.BUY,
@@ -206,7 +215,7 @@ class _FakeLedgerService(EtfGridLedgerService):
     def __init__(self) -> None:
         """No state needed."""
 
-    def get_position(self, symbol: str) -> Position | None:
+    def get_position(self, symbol: str, *, user_id: str) -> Position | None:
         """Return no position."""
         return None
 
@@ -219,6 +228,8 @@ class TestSignalSkipLogging:
         candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(62)]
         with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
             result = compute_daily_signals(
+                user_id="alice",
+                instrument_service=_instruments(),
                 config=config,
                 ledger_service=_FakeLedgerService(),
                 candle_service=_FakeCandleService(candles),
@@ -256,7 +267,7 @@ class _FlakyLedgerService(EtfGridLedgerService):
         """Set up with the symbol that should fail."""
         self._failing_symbol = failing_symbol
 
-    def get_position(self, symbol: str) -> Position | None:
+    def get_position(self, symbol: str, *, user_id: str) -> Position | None:
         """Raise for the failing symbol, otherwise report no position."""
         if symbol == self._failing_symbol:
             raise ValueError("sell quantity exceeds holdings")
@@ -291,6 +302,8 @@ class TestSignalErrorIsolation:
         signal_service = MagicMock(spec=EtfGridSignalService)
         with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
             result = compute_daily_signals(
+                user_id="alice",
+                instrument_service=_instruments(),
                 config=_two_symbol_config(),
                 ledger_service=_FakeLedgerService(),
                 candle_service=_FlakyCandleService(candles, "513120.XSHG"),
@@ -310,6 +323,8 @@ class TestSignalErrorIsolation:
         """A ValueError from replaying one symbol's ledger skips only that symbol."""
         candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(62)]
         result = compute_daily_signals(
+            user_id="alice",
+            instrument_service=_instruments(),
             config=_two_symbol_config(),
             ledger_service=_FlakyLedgerService("513330.XSHG"),
             candle_service=_FakeCandleService(candles),
@@ -326,6 +341,8 @@ class TestSignalErrorIsolation:
         signal_service.upsert_signals.side_effect = RuntimeError("db down")
         with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
             result = compute_daily_signals(
+                user_id="alice",
+                instrument_service=_instruments(),
                 config=_two_symbol_config(),
                 ledger_service=_FakeLedgerService(),
                 candle_service=_FakeCandleService(candles),
@@ -367,6 +384,8 @@ class TestSignalCandleFetch:
         candle_service = _SpyCandleService(candles)
         signal_service = MagicMock(spec=EtfGridSignalService)
         result = compute_daily_signals(
+            user_id="alice",
+            instrument_service=_instruments(),
             config=_two_symbol_config(),
             ledger_service=_FakeLedgerService(),
             candle_service=candle_service,
@@ -388,12 +407,20 @@ class TestApiRejectionLogging:
         ledger = MagicMock(spec=EtfGridLedgerService)
         ledger.record_trade.side_effect = ValueError("price must be positive, got 0")
         app = FastAPI()
+
+        @app.middleware("http")
+        async def set_user(request: Any, call_next: Any) -> Any:
+            request.state.user_id = "alice"
+            request.state.scopes = []
+            return await call_next(request)
+
         app.include_router(
             create_router(
                 ledger_service=ledger,
                 candle_service=MagicMock(spec=EtfGridCandleService),
                 valuation_service=MagicMock(spec=EtfGridValuationService),
                 signal_service=MagicMock(spec=EtfGridSignalService),
+                instrument_service=_instruments(),
             )
         )
         client = TestClient(app, raise_server_exceptions=False)

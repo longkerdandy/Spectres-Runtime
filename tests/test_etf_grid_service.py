@@ -15,6 +15,7 @@ from spectres.extensions.etf_grid.core.ledger import Position
 from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
+    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     get_portfolio_status,
@@ -33,6 +34,8 @@ def services() -> Services:
     with session_factory() as session, session.begin():
         for table in (EtfGridSignal, EtfGridValuation, EtfGridCandle, EtfGridTrade):
             session.execute(delete(table))
+    instruments = EtfGridInstrumentService(session_factory=session_factory)
+    instruments.bootstrap([item.symbol for item in EtfGridConfig().portfolio])  # type: ignore[call-arg]
     return (
         EtfGridLedgerService(session_factory=session_factory),
         EtfGridCandleService(session_factory=session_factory),
@@ -59,6 +62,7 @@ class TestGetPortfolioStatusUnrealized:
         """Unrealized = close x shares - avg_cost x shares, for both signs."""
         ledger, candles, signals = services
         ledger.record_trade(
+            user_id="alice",
             trade_date=date(2026, 8, 19),
             symbol="513330.XSHG",
             side=Side.BUY,
@@ -73,7 +77,7 @@ class TestGetPortfolioStatusUnrealized:
         candles.upsert_candles(
             [CandleInput(symbol="513330.XSHG", trade_date=date(2026, 9, 1), open=Decimal("0.9000"), high=Decimal("0.9000"), low=Decimal("0.9000"), close=Decimal("0.9000"), volume=1000)]
         )
-        row = _status_row(get_portfolio_status(config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513330.XSHG")
+        row = _status_row(get_portfolio_status(user_id="alice", config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513330.XSHG")
         assert row["unrealized"] == Decimal("0.9000") * 24300 - cost_basis
         assert row["unrealized"] > 0
         assert row["unrealized_percent"] == row["unrealized"] / cost_basis
@@ -82,7 +86,7 @@ class TestGetPortfolioStatusUnrealized:
         candles.upsert_candles(
             [CandleInput(symbol="513330.XSHG", trade_date=date(2026, 9, 2), open=Decimal("0.3000"), high=Decimal("0.3000"), low=Decimal("0.3000"), close=Decimal("0.3000"), volume=1000)]
         )
-        row = _status_row(get_portfolio_status(config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513330.XSHG")
+        row = _status_row(get_portfolio_status(user_id="alice", config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513330.XSHG")
         assert row["unrealized"] == Decimal("0.3000") * 24300 - cost_basis
         assert row["unrealized"] < 0
         assert row["unrealized_percent"] == row["unrealized"] / cost_basis
@@ -93,7 +97,7 @@ class TestGetPortfolioStatusUnrealized:
         candles.upsert_candles(
             [CandleInput(symbol="513120.XSHG", trade_date=date(2026, 9, 1), open=Decimal("1.0000"), high=Decimal("1.0000"), low=Decimal("1.0000"), close=Decimal("1.0000"), volume=1000)]
         )
-        row = _status_row(get_portfolio_status(config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513120.XSHG")
+        row = _status_row(get_portfolio_status(user_id="alice", config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513120.XSHG")
         assert row["unrealized"] is None
         assert row["unrealized_percent"] is None
 
@@ -101,6 +105,7 @@ class TestGetPortfolioStatusUnrealized:
         """A symbol with a position but no candles reports both fields as None."""
         ledger, candles, signals = services
         ledger.record_trade(
+            user_id="alice",
             trade_date=date(2026, 8, 19),
             symbol="513530.XSHG",
             side=Side.BUY,
@@ -109,7 +114,7 @@ class TestGetPortfolioStatusUnrealized:
             commission_rate=Decimal("0.001"),
             commission=Decimal("1.00"),
         )
-        row = _status_row(get_portfolio_status(config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513530.XSHG")
+        row = _status_row(get_portfolio_status(user_id="alice", config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513530.XSHG")
         assert row["unrealized"] is None
         assert row["unrealized_percent"] is None
 
@@ -119,12 +124,12 @@ class TestGetPortfolioStatusUnrealized:
         monkeypatch.setattr(
             ledger,
             "get_positions",
-            lambda: {"513330.XSHG": Position(shares=100, avg_cost=Decimal(0), realized=Decimal(0), lots=())},
+            lambda **kwargs: {"513330.XSHG": Position(shares=100, avg_cost=Decimal(0), realized=Decimal(0), lots=())},
         )
         candles.upsert_candles(
             [CandleInput(symbol="513330.XSHG", trade_date=date(2026, 9, 1), open=Decimal("1.0000"), high=Decimal("1.0000"), low=Decimal("1.0000"), close=Decimal("1.0000"), volume=1000)]
         )
-        row = _status_row(get_portfolio_status(config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513330.XSHG")
+        row = _status_row(get_portfolio_status(user_id="alice", config=config, ledger_service=ledger, candle_service=candles, signal_service=signals), "513330.XSHG")
         assert row["unrealized"] == Decimal("1.0000") * 100
         assert row["unrealized_percent"] is None
 
@@ -136,7 +141,7 @@ class _FakeLedgerService(EtfGridLedgerService):
         """Set up with canned positions."""
         self._positions = positions
 
-    def get_positions(self) -> dict[str, Position]:
+    def get_positions(self, *, user_id: str) -> dict[str, Position]:
         """Return the canned positions."""
         return self._positions
 
@@ -163,10 +168,18 @@ class _FakeSignalService(EtfGridSignalService):
         self._latest = latest
         self.calls = 0
 
-    def latest_signals(self, symbols: Sequence[str]) -> dict[str, dict[str, Any]]:
+    def latest_signals(self, symbols: Sequence[str], *, user_id: str) -> dict[str, dict[str, Any]]:
         """Return the canned latest rows."""
         self.calls += 1
         return self._latest
+
+
+class _FakeInstrumentService(EtfGridInstrumentService):
+    """Configuration-only instrument stand-in (no database)."""
+
+    def effective_portfolio(self, *, config: EtfGridConfig) -> list[Any]:
+        """Return every configured item."""
+        return config.portfolio
 
 
 @pytest.mark.unit
@@ -178,7 +191,9 @@ class TestGetPortfolioStatusBulkQueries:
         positions = {"513330.XSHG": Position(shares=1000, avg_cost=Decimal("0.5000"), realized=Decimal("2.00"), lots=())}
         candles = _FakeCandleService({"513330.XSHG": {"trade_date": date(2026, 9, 2), "close": Decimal("0.6000")}})
         signals = _FakeSignalService({"513330.XSHG": {"level": -3}})
-        status = get_portfolio_status(config=config, ledger_service=_FakeLedgerService(positions), candle_service=candles, signal_service=signals)
+        status = get_portfolio_status(
+            user_id="alice", config=config, ledger_service=_FakeLedgerService(positions), candle_service=candles, signal_service=signals, instrument_service=_FakeInstrumentService()
+        )
         assert candles.calls == 1
         assert signals.calls == 1
         row = _status_row(status, "513330.XSHG")
@@ -193,10 +208,12 @@ class TestGetPortfolioStatusBulkQueries:
     def test_none_branches(self, config: EtfGridConfig) -> None:
         """No position/candle/signal yields zero shares and None market fields."""
         status = get_portfolio_status(
+            user_id="alice",
             config=config,
             ledger_service=_FakeLedgerService({}),
             candle_service=_FakeCandleService({}),
             signal_service=_FakeSignalService({}),
+            instrument_service=_FakeInstrumentService(),
         )
         row = _status_row(status, "513330.XSHG")
         assert row["shares"] == 0

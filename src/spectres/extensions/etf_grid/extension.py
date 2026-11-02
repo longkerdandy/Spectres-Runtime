@@ -12,10 +12,10 @@ name = "etf_grid"
 
 
 def register(ctx: ExtensionContext) -> ExtensionContribution:
-    """Create the extension's tables (idempotent) and build its toolkit + router.
+    """Create tables, bootstrap instrument selection, and build the surfaces.
 
-    Idempotent and side-effect-free apart from ``create_all``; performs no
-    network calls at load time.
+    Table creation and selection bootstrap are idempotent; no network calls
+    happen at load time.
     The daily sync schedule is only declared here — core registers it with
     the AgentOS scheduler after loading (spectres/scheduler.py).
     """
@@ -25,12 +25,15 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     # web/agent frameworks are only pulled in when surfaces are built.
     from spectres.extensions.etf_grid.api import create_router
     from spectres.extensions.etf_grid.config import load_config
+    from spectres.extensions.etf_grid.service import EtfGridInstrumentService
     from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
 
     config = load_config()
+    instruments = EtfGridInstrumentService()
+    instruments.bootstrap([item.symbol for item in config.portfolio])
     contribution = ExtensionContribution(
-        toolkits=[EtfGridToolkit(config=config)],
-        routers=[create_router(config=config)],
+        toolkits=[EtfGridToolkit(config=config, instrument_service=instruments)],
+        routers=[create_router(config=config, instrument_service=instruments)],
         schedules=[
             ScheduleSpec(
                 name="etf_grid_daily_sync",

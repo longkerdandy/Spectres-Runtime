@@ -8,7 +8,7 @@
 > convention — see [Runtime Extensions §6.2](runtime-extensions.md)),
 > registered here once implemented.
 >
-> Last updated: 2026-10-16.
+> Last updated: 2026-11-01.
 
 ---
 
@@ -51,19 +51,34 @@ extension code; access goes through Agno's db handle.
 Owned by Runtime extensions under the `<extension>_*` prefix convention.
 Created by the owning extension (SQLAlchemy `create_all`), never by Agno.
 
+### `etf_grid_instruments` (ETF Grid Trading extension)
+
+Global administrator-controlled selection for symbols already defined in
+`ETF_GRID_PORTFOLIO`. Strategy values remain in configuration; this table
+owns only whether each symbol is enabled. Startup inserts missing configured
+symbols without overwriting existing choices. Model:
+`src/spectres/extensions/etf_grid/models.py`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `symbol` | String(16) PK | configured FTShare full code |
+| `enabled` | Boolean NOT NULL | participates in normal sync/status/compute |
+| `updated_by` | String(128) NULL | last admin subject; NULL for bootstrap |
+| `created_at` / `updated_at` | DateTime(tz) NOT NULL | creation / last selection change |
+
 ### `etf_grid_trades` (ETF Grid Trading extension)
 
-Append-only trades ledger: every executed buy/sell of the ETF grid
-portfolio. An opening-position backfill is recorded as a plain `buy`
-(it replays identically; the backfill semantics go in `note`). The
-ledger is the single source of truth for positions; holdings and
-average cost are derived by replaying it
+Append-only, user-owned trades ledger. An opening-position backfill is a
+plain `buy` (the backfill semantics go in `note`). Each user's ledger is the
+single source of truth for their positions; holdings and average cost are
+derived by replaying only rows with that `user_id`
 (`spectres.extensions.etf_grid.core.ledger.replay_ledger`). Model:
 `src/spectres/extensions/etf_grid/models.py`.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | BigInteger PK | autoincrement |
+| `user_id` | String(128) NOT NULL | owner JWT subject |
 | `trade_date` | Date NOT NULL | execution date |
 | `symbol` | String(16) NOT NULL | FTShare full code, e.g. `513330.XSHG` |
 | `side` | String(8) NOT NULL | CHECK in (`buy`, `sell`), generated from the `Side` enum |
@@ -77,9 +92,9 @@ average cost are derived by replaying it
 | `note` | Text NULL | free-form note |
 | `created_at` | DateTime(tz) NOT NULL | `server_default=func.now()` |
 
-Index: `(symbol, trade_date)`. No CSV migration: the quant-advisor
-history is considered potentially inaccurate and will be re-entered
-manually (owner decision).
+Index: `(user_id, symbol, trade_date, id)`. No CSV migration: the quant-advisor
+history is considered potentially inaccurate and will be re-entered manually
+(owner decision).
 
 ### `etf_grid_candles` (ETF Grid Trading extension)
 
@@ -122,17 +137,18 @@ csindex history revisions self-heal.
 
 ### `etf_grid_signals` (ETF Grid Trading extension)
 
-Computed daily grid state snapshot plus the advised limit orders per
-symbol, persisted by `compute_daily_signals()`. Makes "why buy / not
-buy that day" auditable and UI-renderable. Execution model (owner
-decision): actionable limit orders at grid boundaries, not the
+Computed daily grid state snapshot plus advised limit orders per user and
+symbol, persisted by `compute_daily_signals(user_id=...)`. Signals are private
+because shares and open lots from the owner's ledger affect the advice.
+Execution model: actionable limit orders at grid boundaries, not the
 backtest's next-day-open operation. Model:
 `src/spectres/extensions/etf_grid/models.py`.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `symbol` | String(16) PK | FTShare full code (composite PK, part 1) |
-| `trade_date` | Date PK | trading day the signal is for (composite PK, part 2) |
+| `user_id` | String(128) PK | owner JWT subject (composite PK, part 1) |
+| `symbol` | String(16) PK | FTShare full code (composite PK, part 2) |
+| `trade_date` | Date PK | trading day the signal is for (composite PK, part 3) |
 | `close` | Numeric(10,4) NOT NULL | qfq close used for the computation |
 | `anchor_ma60` | Numeric(10,4) NOT NULL | MA60 anchor |
 | `level` / `prev_level` | Integer NOT NULL | grid level today / yesterday (clamped to ±max_grids) |
@@ -143,9 +159,10 @@ backtest's next-day-open operation. Model:
 | `gate_closed` | Boolean NULL | NULL for gateless symbols |
 | `computed_at` | DateTime(tz) NOT NULL | `server_default=func.now()` |
 
-Upsert on recompute: a same-day recomputation overwrites the row (the
-signal is advice, not fact; the audit trail lives in `etf_grid_trades`).
-No position columns — holdings derive from the ledger on demand.
+Upsert on recompute: a same-day recomputation overwrites only that owner's
+row (the signal is advice, not fact; the audit trail lives in
+`etf_grid_trades`). No position columns — holdings derive from the same
+owner's ledger on demand.
 
 ## 3. Notes
 

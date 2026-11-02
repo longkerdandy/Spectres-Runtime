@@ -1,8 +1,9 @@
 # Per-User Data Isolation
 
-> How AgentOS partitions user-owned data after JWT authentication. Implemented
-> in v0.6.1 ([plan](../plan/v0.6.1-user-data-isolation.md)); the extension
-> data-sharing exception is part of the v0.6.x contract.
+> How AgentOS partitions user-owned data after JWT authentication. Framework
+> isolation was implemented in v0.6.1; ETF Grid added explicit private-ledger
+> and signal isolation in v0.6.3
+> ([plan](../plan/v0.6.3-etf-grid-multi-user.md)).
 
 ---
 
@@ -96,23 +97,42 @@ not see it in `/schedules`; admins and the internal executor do. It targets
 an extension endpoint and creates no Agent session/run rows, only the
 unowned `agno_schedule_runs` audit records.
 
-## 6. Extension exclusion
+## 6. Extension-owned data
 
 AgentOS authentication middleware protects extension HTTP routes, but Agno's
 user-isolation plane does not automatically scope extension-owned tables or
-service calls. ETF Grid tables intentionally have no `user_id`: every
-authenticated user reads and mutates the same portfolio, market data, and
-signals. Agent tool calls share that same data.
+service calls. Every extension must make its ownership model explicit;
+setting `user_isolation=True` alone is insufficient.
 
-A future per-user extension must make isolation an explicit part of its API,
-tool, and persistence design, using `get_scoped_user_id(request)` on every
-read and `enforce_owner_on_entity(...)` or equivalent owner validation on
-every write. Setting `user_isolation=True` alone is insufficient.
+ETF Grid separates public inputs from private state:
+
+- `etf_grid_candles`, `etf_grid_valuation`, and `etf_grid_instruments` are
+  global. Strategy parameters still come from `ETF_GRID_PORTFOLIO`; only the
+  administrator-controlled enabled/disabled selection lives in the database.
+- `etf_grid_trades` and `etf_grid_signals` carry a required `user_id`. Every
+  ledger read/write/count/replay and signal read/upsert filters by owner, and
+  the signal key is `(user_id, symbol, trade_date)`. Positions are derived
+  only from the caller's ledger.
+- Normal REST routes self-scope to `request.state.user_id`, including when an
+  administrator uses them. They do not propagate the `None` returned for an
+  admin by `get_scoped_user_id()` into an unscoped query. Client-supplied
+  ownership fields are never authoritative.
+- Agent tools receive the same owner through Agno's injected
+  `RunContext.user_id`; the LLM has no ownership argument.
+- The unowned scheduled refresh reads distinct ledger owners internally and
+  computes each user's signals after one shared market-data sync. This is a
+  trusted system fan-out, not a public cross-user query path.
+
+Other per-user extensions should follow Agno's `user_scope.py` helper pattern
+or an equivalent explicit owner-validation contract on every read and write.
 
 ## 7. Rollout and verification
 
-The project has no production dataset. v0.6.1 starts directly with isolation
-enabled and includes no migration or backfill; development data may be reset.
+The project has no production dataset. v0.6.1 started directly with isolation
+enabled and included no migration or backfill; v0.6.3 likewise permits a
+development database rebuild because `create_all()` cannot alter the existing
+ledger and signal keys. Preserving an old shared ETF ledger requires an
+explicit, reviewed one-owner backfill rather than copying it to every user.
 
 `tests/test_user_isolation.py` uses real PostgreSQL, JWT dev tokens, and
 AgentOS routes to cover sessions, runs, memories, AG-UI cross-user writes,

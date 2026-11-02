@@ -15,7 +15,9 @@ from spectres.extensions.etf_grid.core.grid import (
 )
 from spectres.extensions.etf_grid.types import normalize_symbol
 
+from .base import _require_user_id
 from .candles import EtfGridCandleService
+from .instruments import EtfGridInstrumentService
 from .ledger import EtfGridLedgerService
 from .signals import EtfGridSignalService, _snapshot_to_row
 from .valuation import EtfGridValuationService
@@ -26,15 +28,17 @@ logger = logging.getLogger(__name__)
 def compute_daily_signals(
     symbols: Sequence[str] | None = None,
     *,
+    user_id: str,
     config: EtfGridConfig | None = None,
     ledger_service: EtfGridLedgerService | None = None,
     candle_service: EtfGridCandleService | None = None,
     valuation_service: EtfGridValuationService | None = None,
     signal_service: EtfGridSignalService | None = None,
+    instrument_service: EtfGridInstrumentService | None = None,
 ) -> dict[str, Any]:
-    """Compute and persist daily grid signals for the portfolio.
+    """Compute and persist daily grid signals for one user's portfolio.
 
-    For each configured symbol: read the latest 61 candle bars (MA60
+    For each enabled configured symbol: read the latest 61 candle bars (MA60
     today plus MA60 yesterday), replay the ledger for the position and
     lot queue, resolve the valuation gate when configured, compute the
     signal via ``core.grid``, and upsert the snapshot.
@@ -54,14 +58,16 @@ def compute_daily_signals(
     Returns:
         ``{"signals": {symbol: signal dict}, "skipped": {symbol: reason}}``.
     """
+    user_id = _require_user_id(user_id)
     config = config or load_config()
     ledger_service = ledger_service or EtfGridLedgerService()
     candle_service = candle_service or EtfGridCandleService()
     valuation_service = valuation_service or EtfGridValuationService()
     signal_service = signal_service or EtfGridSignalService()
+    instrument_service = instrument_service or EtfGridInstrumentService()
 
     wanted = None if symbols is None else {normalize_symbol(s) for s in symbols}
-    items = [item for item in config.portfolio if wanted is None or item.symbol in wanted]
+    items = [item for item in instrument_service.effective_portfolio(config=config) if wanted is None or item.symbol in wanted]
     valuation_rows: list[dict[str, Any]] | None = None
 
     signals: dict[str, Any] = {}
@@ -95,7 +101,7 @@ def compute_daily_signals(
             anchor = moving_average(closes)
             prev_anchor = moving_average(closes[:-1])
             assert anchor is not None and prev_anchor is not None  # guaranteed by the >=61 candle check
-            position = ledger_service.get_position(item.symbol)
+            position = ledger_service.get_position(item.symbol, user_id=user_id)
             snapshot = compute_signal(
                 GridSignalInput(
                     symbol=item.symbol,
@@ -113,16 +119,16 @@ def compute_daily_signals(
                 config.grid_step,
             )
             snapshots.append(snapshot)
-            signals[item.symbol] = _snapshot_to_row(snapshot)
+            signals[item.symbol] = _snapshot_to_row(snapshot, user_id=user_id)
         except Exception as exc:
             skipped[item.symbol] = f"error: {type(exc).__name__}: {exc}"
             logger.error(
                 "signal computation failed",
                 exc_info=exc,
-                extra={"event": "signal_error", "symbol": item.symbol},
+                extra={"event": "signal_error", "user_id": user_id, "symbol": item.symbol},
             )
     try:
-        signal_service.upsert_signals(snapshots)
+        signal_service.upsert_signals(snapshots, user_id=user_id)
     except Exception as exc:
         logger.error(
             "signal persistence failed",
@@ -137,29 +143,28 @@ def compute_daily_signals(
 
 def get_portfolio_status(
     *,
+    user_id: str,
     config: EtfGridConfig | None = None,
     ledger_service: EtfGridLedgerService | None = None,
     candle_service: EtfGridCandleService | None = None,
     signal_service: EtfGridSignalService | None = None,
+    instrument_service: EtfGridInstrumentService | None = None,
 ) -> list[dict[str, Any]]:
-    """Per-symbol portfolio summary for presentation surfaces (toolkit/UI).
-
-    Combines the ledger-derived position (shares, average cost, realized
-    P&L) with the latest close (market value, unrealized P&L and percent)
-    and the latest persisted signal snapshot. Positions always come from
-    the ledger — never from stored snapshots.
-    """
+    """Build one user's portfolio summary from shared inputs and private state."""
+    user_id = _require_user_id(user_id)
     config = config or load_config()
     ledger_service = ledger_service or EtfGridLedgerService()
     candle_service = candle_service or EtfGridCandleService()
     signal_service = signal_service or EtfGridSignalService()
+    instrument_service = instrument_service or EtfGridInstrumentService()
 
-    positions = ledger_service.get_positions()
-    portfolio_symbols = [item.symbol for item in config.portfolio]
+    items = instrument_service.effective_portfolio(config=config)
+    positions = ledger_service.get_positions(user_id=user_id)
+    portfolio_symbols = [item.symbol for item in items]
     latest_candles = candle_service.latest_candles(portfolio_symbols)
-    latest_signals = signal_service.latest_signals(portfolio_symbols)
+    latest_signals = signal_service.latest_signals(portfolio_symbols, user_id=user_id)
     status: list[dict[str, Any]] = []
-    for item in config.portfolio:
+    for item in items:
         position = positions.get(item.symbol)
         latest = latest_candles.get(item.symbol)
         close = latest["close"] if latest else None

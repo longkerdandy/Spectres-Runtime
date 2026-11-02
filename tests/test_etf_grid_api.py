@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,6 +21,7 @@ from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
+    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     EtfGridValuationService,
@@ -49,6 +51,19 @@ class TestTradeCreateModel:
             TradeCreate(symbol="513330.XSHG", trade_date=date(2026, 8, 19), side="hold", price=Decimal("0.4100"), quantity=100, commission_rate=Decimal("0.001"))  # type: ignore[arg-type]
 
 
+def _add_test_identity(app: FastAPI) -> None:
+    @app.middleware("http")
+    async def set_identity(request: Any, call_next: Any) -> Any:
+        request.state.user_id = request.headers.get("x-test-user", "alice")
+        request.state.scopes = request.headers.get("x-test-scopes", "").split(",") if request.headers.get("x-test-scopes") else []
+        request.state.is_internal_service = request.headers.get("x-test-internal") == "true"
+        return await call_next(request)
+
+
+def _admin_headers() -> dict[str, str]:
+    return {"x-test-scopes": "agent_os:admin"}
+
+
 @pytest.fixture
 def api_client() -> TestClient:
     """A minimal FastAPI app mounting only the etf_grid router over cleaned tables."""
@@ -60,6 +75,7 @@ def api_client() -> TestClient:
             session.execute(delete(table))
     config = EtfGridConfig()  # type: ignore[call-arg]  # required fields come from .env.test
     app = FastAPI()
+    _add_test_identity(app)
     app.include_router(
         create_router(
             config=config,
@@ -67,6 +83,7 @@ def api_client() -> TestClient:
             candle_service=EtfGridCandleService(session_factory=session_factory),
             valuation_service=EtfGridValuationService(session_factory=session_factory),
             signal_service=EtfGridSignalService(session_factory=session_factory),
+            instrument_service=EtfGridInstrumentService(session_factory=session_factory),
         )
     )
     return TestClient(app)
@@ -78,7 +95,9 @@ def seeded(api_client: TestClient) -> TestClient:
     session_factory = sessionmaker(bind=get_postgres_db().db_engine)
     ledger = EtfGridLedgerService(session_factory=session_factory)
     candles = EtfGridCandleService(session_factory=session_factory)
-    ledger.record_trade(trade_date=date(2026, 8, 19), symbol="513330.XSHG", side=Side.BUY, price=Decimal("0.4100"), quantity=24300, commission_rate=Decimal("0.001"), commission=Decimal("9.96"))
+    ledger.record_trade(
+        user_id="alice", trade_date=date(2026, 8, 19), symbol="513330.XSHG", side=Side.BUY, price=Decimal("0.4100"), quantity=24300, commission_rate=Decimal("0.001"), commission=Decimal("9.96")
+    )
     start = date(2026, 1, 1)
     candles.upsert_candles(
         [
@@ -217,9 +236,67 @@ class TestEtfGridApi:
             "spectres.extensions.etf_grid.api.sync_market_data",
             lambda **kwargs: {"candles": None, "valuation": None, "errors": {"candles": "boom", "valuation": "boom"}},
         )
-        response = api_client.post("/api/v1/extensions/etf-grid/sync")
+        response = api_client.post("/api/v1/extensions/etf-grid/sync", headers=_admin_headers())
         assert response.status_code == 200
         assert response.json()["errors"] == {"candles": "boom", "valuation": "boom"}
+        internal = api_client.post("/api/v1/extensions/etf-grid/sync", headers={"x-test-internal": "true"})
+        assert internal.status_code == 200
+
+    def test_two_user_portfolios_and_ledgers_are_isolated(self, seeded: TestClient) -> None:
+        """Caller identity, not a payload user_id, determines ledger ownership."""
+        bob_headers = {"x-test-user": "bob"}
+        bob_status = seeded.get("/api/v1/extensions/etf-grid/status", headers=bob_headers)
+        bob_row = next(row for row in bob_status.json() if row["symbol"] == "513330.XSHG")
+        assert bob_row["shares"] == 0
+        assert seeded.get("/api/v1/extensions/etf-grid/trades", headers=bob_headers).json()["total"] == 0
+
+        created = seeded.post(
+            "/api/v1/extensions/etf-grid/trades",
+            headers=bob_headers,
+            json={
+                "user_id": "alice",
+                "symbol": "513330.XSHG",
+                "trade_date": "2026-09-09",
+                "side": "buy",
+                "price": "0.3590",
+                "quantity": 1000,
+                "commission_rate": "0.001",
+            },
+        )
+        assert created.status_code == 201
+        assert created.json()["user_id"] == "bob"
+        assert seeded.get("/api/v1/extensions/etf-grid/trades", headers=bob_headers).json()["total"] == 1
+        assert seeded.get("/api/v1/extensions/etf-grid/trades").json()["total"] == 1
+
+        bob_row = next(row for row in seeded.get("/api/v1/extensions/etf-grid/status", headers=bob_headers).json() if row["symbol"] == "513330.XSHG")
+        alice_row = next(row for row in seeded.get("/api/v1/extensions/etf-grid/status").json() if row["symbol"] == "513330.XSHG")
+        assert bob_row["shares"] == 1000
+        assert alice_row["shares"] == 24300
+
+    def test_admin_controls_configured_symbol_selection(self, seeded: TestClient) -> None:
+        """Disabled symbols stop normal work without deleting owner history."""
+        path = "/api/v1/extensions/etf-grid/admin/instruments/513330.XSHG"
+        assert seeded.patch(path, json={"enabled": False}).status_code == 403
+        disabled = seeded.patch(path, json={"enabled": False}, headers=_admin_headers())
+        assert disabled.status_code == 200
+        assert disabled.json()["previous_enabled"] is True
+        assert disabled.json()["enabled"] is False
+
+        assert "513330.XSHG" not in {row["symbol"] for row in seeded.get("/api/v1/extensions/etf-grid/instruments").json()}
+        assert "513330.XSHG" not in {row["symbol"] for row in seeded.get("/api/v1/extensions/etf-grid/status").json()}
+        rejected = seeded.post(
+            "/api/v1/extensions/etf-grid/trades",
+            json={"symbol": "513330.XSHG", "trade_date": "2026-09-09", "side": "buy", "price": "0.3590", "quantity": 100, "commission_rate": "0.001"},
+        )
+        assert rejected.status_code == 422
+        assert seeded.get("/api/v1/extensions/etf-grid/trades", params={"symbol": "513330.XSHG"}).json()["total"] == 1
+
+    def test_private_and_admin_authorization_boundaries(self, api_client: TestClient) -> None:
+        """Private routes require identity and global routes require admin scope."""
+        assert api_client.get("/api/v1/extensions/etf-grid/status", headers={"x-test-user": ""}).status_code == 403
+        assert api_client.get("/api/v1/extensions/etf-grid/admin/instruments").status_code == 403
+        assert api_client.post("/api/v1/extensions/etf-grid/sync").status_code == 403
+        assert api_client.get("/api/v1/extensions/etf-grid/admin/instruments", headers=_admin_headers()).status_code == 200
 
     def test_register_creates_tables_idempotently(self) -> None:
         """register() is idempotent and returns the toolkit + router + schedule contribution."""
@@ -250,7 +327,8 @@ class TestTradesEndpoint:
         ledger.list_trades.return_value = [{"id": 2, "trade_date": date(2026, 9, 9)}]
         ledger.count_trades.return_value = 7
         app = FastAPI()
-        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger))  # type: ignore[call-arg]  # required fields come from .env.test
+        _add_test_identity(app)
+        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger, instrument_service=MagicMock(spec=EtfGridInstrumentService)))  # type: ignore[call-arg]  # required fields come from .env.test
         client = TestClient(app)
 
         response = client.get(
@@ -263,6 +341,7 @@ class TestTradesEndpoint:
         ledger.list_trades.assert_called_once()
         args, kwargs = ledger.list_trades.call_args
         assert args == ("513330.XSHG",)
+        assert kwargs["user_id"] == "alice"
         assert kwargs["start"] == date(2026, 9, 1)
         assert kwargs["end"] == date(2026, 9, 30)
         assert kwargs["limit"] == 1
@@ -270,7 +349,7 @@ class TestTradesEndpoint:
         assert len(kwargs["order_by"]) == 1
         assert kwargs["order_by"][0].field.value == "trade_date"
         assert kwargs["order_by"][0].direction.value == "desc"
-        ledger.count_trades.assert_called_once_with("513330.XSHG", start=date(2026, 9, 1), end=date(2026, 9, 30))
+        ledger.count_trades.assert_called_once_with("513330.XSHG", user_id="alice", start=date(2026, 9, 1), end=date(2026, 9, 30))
 
 
 @pytest.mark.unit
@@ -281,7 +360,16 @@ class TestRefreshEndpoint:
     def refresh_client(self) -> TestClient:
         """A minimal app mounting only the router; no db is touched while both steps are patched."""
         app = FastAPI()
-        app.include_router(create_router(config=EtfGridConfig()))  # type: ignore[call-arg]  # required fields come from .env.test
+        _add_test_identity(app)
+        ledger = MagicMock(spec=EtfGridLedgerService)
+        ledger.list_user_ids.return_value = ["alice"]
+        app.include_router(
+            create_router(
+                config=EtfGridConfig(),  # type: ignore[call-arg]  # required fields come from .env.test
+                ledger_service=ledger,
+                instrument_service=MagicMock(spec=EtfGridInstrumentService),
+            )
+        )
         return TestClient(app, raise_server_exceptions=False)
 
     def test_happy_path_returns_both_results(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -294,11 +382,35 @@ class TestRefreshEndpoint:
             "spectres.extensions.etf_grid.api.compute_daily_signals",
             lambda **kwargs: {"signals": {}, "skipped": {}},
         )
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
         assert response.status_code == 200
         body = response.json()
         assert body["sync"]["errors"] == {}
-        assert body["signals"] == {"signals": {}, "skipped": {}}
+        assert body["signals"] == {"computed_users": 1, "errors": {}}
+
+    def test_refresh_syncs_once_and_computes_each_known_user(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Scheduled fan-out never repeats shared sync per user."""
+        app = FastAPI()
+        _add_test_identity(app)
+        ledger = MagicMock(spec=EtfGridLedgerService)
+        ledger.list_user_ids.return_value = ["alice", "bob"]
+        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger, instrument_service=MagicMock(spec=EtfGridInstrumentService)))  # type: ignore[call-arg]
+        client = TestClient(app)
+        sync = MagicMock(return_value={"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}})
+        computed_users: list[str] = []
+
+        def compute(**kwargs: Any) -> dict[str, Any]:
+            computed_users.append(kwargs["user_id"])
+            return {"signals": {}, "skipped": {}}
+
+        monkeypatch.setattr("spectres.extensions.etf_grid.api.sync_market_data", sync)
+        monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
+
+        response = client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
+        assert response.status_code == 200
+        assert response.json()["signals"] == {"computed_users": 2, "errors": {}}
+        sync.assert_called_once()
+        assert computed_users == ["alice", "bob"]
 
     def test_partial_source_failure_is_200_with_errors(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         """One failed source still computes signals over the partial data: 200 + errors."""
@@ -308,7 +420,7 @@ class TestRefreshEndpoint:
             lambda **kwargs: {"candles": None, "valuation": 1, "errors": {"candles": "boom"}},
         )
         monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
         assert response.status_code == 200
         assert response.json()["sync"]["errors"] == {"candles": "boom"}
         compute.assert_called_once()
@@ -321,12 +433,12 @@ class TestRefreshEndpoint:
             lambda **kwargs: {"candles": None, "valuation": None, "errors": {"candles": "boom", "valuation": "boom"}},
         )
         monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
         assert response.status_code == 502
         compute.assert_not_called()
 
-    def test_compute_failure_is_500(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A compute exception propagates as 500 — nothing usable was produced."""
+    def test_compute_failure_is_a_scoped_partial_error(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A user compute failure is isolated after shared sync succeeds."""
         monkeypatch.setattr(
             "spectres.extensions.etf_grid.api.sync_market_data",
             lambda **kwargs: {"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}},
@@ -336,5 +448,7 @@ class TestRefreshEndpoint:
             raise RuntimeError("db down")
 
         monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", boom)
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh")
-        assert response.status_code == 500
+        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
+        assert response.status_code == 200
+        assert response.json()["signals"]["computed_users"] == 0
+        assert response.json()["signals"]["errors"]["alice"] == "RuntimeError: db down"

@@ -9,7 +9,7 @@ import pytest
 
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.marketdata import CST, MAX_WINDOW_DAYS, bar_to_candle, sync_candles
-from spectres.extensions.etf_grid.service import EtfGridCandleService
+from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridInstrumentService
 from spectres.extensions.etf_grid.types import CandleInput
 
 pytestmark = pytest.mark.unit
@@ -91,6 +91,14 @@ class FakeCandleService(EtfGridCandleService):
         return len(candles)
 
 
+class FakeInstrumentService(EtfGridInstrumentService):
+    """Configuration-only instrument stand-in (no database)."""
+
+    def effective_portfolio(self, *, config: EtfGridConfig) -> list[Any]:
+        """Return every configured item."""
+        return config.portfolio
+
+
 class TestSyncCandles:
     """sync_candles orchestration: window computation, call params, translation."""
 
@@ -156,7 +164,7 @@ class TestSyncCandles:
         """symbols=None syncs every symbol in the configured portfolio."""
         client = MockClient([])
         service = FakeCandleService(latest=None)
-        result = sync_candles(client=client, candle_service=service)
+        result = sync_candles(client=client, candle_service=service, instrument_service=FakeInstrumentService())
         assert {call["symbol"] for call in client.calls} == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
         assert set(result) == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
 

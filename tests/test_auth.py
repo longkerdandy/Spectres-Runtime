@@ -21,7 +21,7 @@ TEST_ROUTE = "/api/v1/extensions/etf-grid/status"
 USER_SCOPES = ["agents:read", "agents:*:run"]
 
 
-def _dev_token(sub: str, scopes: list[str] | None = None) -> str:
+def _dev_token(sub: str, scopes: list[str] | None = None, name: str | None = None) -> str:
     from agno.os.auth import create_dev_token
 
     return create_dev_token(
@@ -29,7 +29,7 @@ def _dev_token(sub: str, scopes: list[str] | None = None) -> str:
         secret=DEV_KEY,
         audience=DEV_AUDIENCE,
         email=f"{sub}@example.com",
-        name=sub.title(),
+        name=name or sub.title(),
         scopes=USER_SCOPES if scopes is None else scopes,
     )
 
@@ -148,6 +148,22 @@ class TestUserDirectory:
         user = store.get("alice")
         assert user is not None
         assert user["email"] == "alice@example.com"
+        assert user["name"] == "Alice"
+
+    def test_existing_user_name_is_refreshed_in_admin_api(self, authed_client: TestClient) -> None:
+        """A later JWT updates an existing directory name returned by /users."""
+        store = cast(FastAPI, authed_client.app).state.user_store
+        store.upsert("profile-user", name="Old Name")
+        old_headers = {"Authorization": f"Bearer {_dev_token('profile-user', name='Old Name')}"}
+        new_headers = {"Authorization": f"Bearer {_dev_token('profile-user', name='New Name')}"}
+        assert authed_client.get("/agents", headers=old_headers).status_code == 200
+        assert authed_client.get("/agents", headers=new_headers).status_code == 200
+
+        admin_headers = {"Authorization": f"Bearer {_dev_token('operator', scopes=['agent_os:admin'])}"}
+        response = authed_client.get("/users?search=profile-user", headers=admin_headers)
+        assert response.status_code == 200
+        user = next(row for row in response.json()["data"] if row["id"] == "profile-user")
+        assert user["name"] == "New Name"
 
     def test_disabled_user_denied_with_valid_token(self, authed_client: TestClient) -> None:
         """Disabling a user denies their still-valid token."""

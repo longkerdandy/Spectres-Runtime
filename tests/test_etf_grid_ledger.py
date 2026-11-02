@@ -273,6 +273,7 @@ class TestRecordTradeValidation:
     def valid_kwargs(self) -> dict[str, object]:
         """Return a baseline of valid record_trade arguments."""
         return {
+            "user_id": "alice",
             "trade_date": date(2026, 9, 22),
             "symbol": "513330.XSHG",
             "side": Side.BUY,

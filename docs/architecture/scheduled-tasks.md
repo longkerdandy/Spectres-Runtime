@@ -5,7 +5,7 @@
 > [ADR 0007](../adr/0007-scheduled-tasks-agno-scheduler.md) (2026-10-14);
 > the first schedule (`etf_grid_daily_sync`) runs on this substrate.
 >
-> Last updated: 2026-10-29.
+> Last updated: 2026-11-01 (ETF Grid per-user signal fan-out).
 
 ---
 
@@ -145,8 +145,8 @@ every spec through `ScheduleManager` — startup stays idempotent and
 code-registered schedules self-heal on restart.
 
 Reference realization — **ETF Grid** (the first consumer). The daily task
-has two steps — network pull then signal recompute — covered by **one
-composite route** owned by the extension:
+uses one composite route to synchronize public data and then recompute each
+known user's private signals:
 
 | Schedule | Cron (Asia/Shanghai) | Endpoint |
 |----------|----------------------|----------|
@@ -154,8 +154,8 @@ composite route** owned by the extension:
 
 The task is registered without `user_id`, so it remains an unowned system
 schedule under isolation. It creates only unowned schedule-run audit rows —
-no Agent session/run rows — and its extension endpoint continues to operate
-on shared ETF Grid data.
+no Agent session/run rows. Only an administrator or the verified internal
+scheduler caller may invoke its extension endpoint.
 
 The schedule's operational fields (cron, timezone, enabled, retries) load
 from the extension's `ETF_GRID_SYNC_*` config, so a deployment can retime
@@ -164,20 +164,25 @@ endpoint) stay in code. `ETF_GRID_SYNC_SCHEDULE_ENABLED=false` pauses the
 task — registration converges the DB row to the configured state on
 restart.
 
-`POST .../etf-grid/refresh` runs `sync_market_data()` then
-`compute_daily_signals()` in one call and returns both results. Error
-contract, aligned with the executor's "2xx = success" semantics:
+`POST .../etf-grid/refresh` first runs `sync_market_data()` once for the
+enabled configured symbols, then reads distinct owners from the private
+ledger and calls `compute_daily_signals(user_id=...)` for each. Market data
+is never fetched once per user, and there are no per-user Agno schedules.
+A user with no trades can compute zero-position signals manually and joins
+the scheduled fan-out after their first ledger row. Error contract, aligned
+with the executor's "2xx = success" semantics:
 
 - **All data sources failed** → 5xx, so the schedule run records `failed`
   and `max_retries` kicks in;
-- **Partial source failure** → 200 with a per-source `errors` field
-  (matching `/sync`'s body convention) — partial data is still worth
-  computing signals over;
-- **Compute failure** → 5xx (nothing usable was produced).
+- **Partial source failure** → 200 with a per-source `errors` field;
+- **One user's compute failure** → isolated in the response's per-user
+  `errors` after shared sync succeeds; other users still compute;
+- **Shared-pipeline failure** → 5xx.
 
-The existing granular routes (`/sync`, `/signals/compute`) stay — they
-serve the Client page and ad-hoc tool calls; `refresh` is the
-schedule-facing composite.
+The existing granular routes stay: `/sync` is an admin/internal shared-data
+operation, while `/signals/compute` is self-scoped to the authenticated
+caller. `refresh_grid_data` performs shared sync plus only the current run
+owner's computation.
 
 ## 5. Evolution path (deferred, not built now)
 

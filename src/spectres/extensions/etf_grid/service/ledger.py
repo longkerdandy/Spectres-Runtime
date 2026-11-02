@@ -26,7 +26,7 @@ from spectres.extensions.etf_grid.types import (
     normalize_symbol,
 )
 
-from .base import _SessionBound
+from .base import _require_user_id, _SessionBound
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +67,9 @@ def _order_clauses(order_by: Sequence[SortSpec[TradeSortField]] | None) -> list[
     return clauses
 
 
-def _trade_filters(symbol: str | None, start: date | None, end: date | None) -> list[ColumnElement[Any]]:
-    """Build the shared SQL predicates for trade pages and counts."""
-    filters: list[ColumnElement[Any]] = []
+def _trade_filters(user_id: str, symbol: str | None, start: date | None, end: date | None) -> list[ColumnElement[Any]]:
+    """Build the shared owner and optional trade predicates."""
+    filters: list[ColumnElement[Any]] = [EtfGridTrade.user_id == user_id]
     if symbol is not None:
         filters.append(EtfGridTrade.symbol == normalize_symbol(symbol))
     if start is not None:
@@ -85,6 +85,7 @@ class EtfGridLedgerService(_SessionBound):
     def record_trade(
         self,
         *,
+        user_id: str,
         trade_date: date,
         symbol: str,
         side: Side,
@@ -99,6 +100,7 @@ class EtfGridLedgerService(_SessionBound):
         """Validate, compute amounts for, and persist one ledger trade.
 
         Args:
+            user_id: Authenticated owner of the new ledger row.
             trade_date: Execution date of the trade.
             symbol: FTShare-style symbol (``<code>.<exchange>``); normalized
                 with strip + upper and loosely validated.
@@ -119,6 +121,7 @@ class EtfGridLedgerService(_SessionBound):
         Raises:
             ValueError: If the symbol or any numeric input fails validation.
         """
+        user_id = _require_user_id(user_id)
         symbol = normalize_symbol(symbol)
         if price <= 0:
             raise ValueError(f"price must be positive, got {price}")
@@ -133,6 +136,7 @@ class EtfGridLedgerService(_SessionBound):
 
         amounts = compute_trade_amounts(side, price, quantity, commission_rate, commission, net_amount)
         trade = EtfGridTrade(
+            user_id=user_id,
             trade_date=trade_date,
             symbol=symbol,
             side=side,
@@ -155,6 +159,7 @@ class EtfGridLedgerService(_SessionBound):
             extra={
                 "event": "trade_recorded",
                 "trade_id": result["id"],
+                "user_id": user_id,
                 "symbol": result["symbol"],
                 "side": side.value,
                 "quantity": result["quantity"],
@@ -169,35 +174,16 @@ class EtfGridLedgerService(_SessionBound):
         self,
         symbol: str | None = None,
         *,
+        user_id: str,
         start: date | None = None,
         end: date | None = None,
         limit: int | None = None,
         offset: int | None = None,
         order_by: Sequence[SortSpec[TradeSortField]] | None = None,
     ) -> list[dict[str, Any]]:
-        """Return ledger trades with filtering, sorting, and pagination in SQL.
-
-        Args:
-            symbol: Restrict the result to one symbol when given.
-            start: Inclusive lower bound for the trade date.
-            end: Inclusive upper bound for the trade date.
-            limit: Optional maximum number of rows, pushed down into SQL.
-            offset: Optional number of matching rows to skip, pushed down into SQL.
-            order_by: Sort keys as whitelisted ``SortSpec`` items; directions
-                are pushed down into SQL. ``None`` keeps the replay-canonical
-                order ``(symbol ASC, trade_date ASC, id ASC)`` that
-                ``get_positions`` relies on. Unless ``id`` is an explicit
-                sort key, ``id ASC`` is appended as a stable tiebreaker, so
-                every ordering is fully deterministic — a precondition for
-                LIMIT/OFFSET pagination.
-
-        Returns:
-            The matching trades as structured dicts, in the requested order.
-        """
-        stmt = select(EtfGridTrade).order_by(*_order_clauses(order_by))
-        filters = _trade_filters(symbol, start, end)
-        if filters:
-            stmt = stmt.where(*filters)
+        """Return one owner's trades with filtering, sorting, and SQL pagination."""
+        user_id = _require_user_id(user_id)
+        stmt = select(EtfGridTrade).where(*_trade_filters(user_id, symbol, start, end)).order_by(*_order_clauses(order_by))
         if limit is not None:
             stmt = stmt.limit(limit)
         if offset is not None:
@@ -205,49 +191,28 @@ class EtfGridLedgerService(_SessionBound):
         with self._session_factory() as session:
             return [_trade_to_dict(trade) for trade in session.scalars(stmt)]
 
-    def count_trades(self, symbol: str | None = None, *, start: date | None = None, end: date | None = None) -> int:
-        """Count trades matching the same filters as ``list_trades``."""
-        stmt = select(func.count()).select_from(EtfGridTrade)
-        filters = _trade_filters(symbol, start, end)
-        if filters:
-            stmt = stmt.where(*filters)
+    def count_trades(self, symbol: str | None = None, *, user_id: str, start: date | None = None, end: date | None = None) -> int:
+        """Count trades matching the same owner and filters as ``list_trades``."""
+        user_id = _require_user_id(user_id)
+        stmt = select(func.count()).select_from(EtfGridTrade).where(*_trade_filters(user_id, symbol, start, end))
         with self._session_factory() as session:
             return session.scalar(stmt) or 0
 
-    def get_positions(self) -> dict[str, Position]:
-        """Replay the ledger per symbol and return the current positions.
+    def list_user_ids(self) -> list[str]:
+        """Return users with ledger rows for scheduled signal recomputation."""
+        with self._session_factory() as session:
+            return list(session.scalars(select(EtfGridTrade.user_id).distinct().order_by(EtfGridTrade.user_id)))
 
-        Positions are always derived from the append-only ledger, never
-        stored: ``replay_ledger`` folds each symbol's trades (in the
-        replay-canonical order provided by ``list_trades()``) into a
-        ``Position`` — current shares, moving weighted-average cost
-        (fee-inclusive, via ``net_amount``), realized P&L from sells, and
-        the open-lot queue kept cheapest-entry-first for the grid's
-        cost-protection sell pairing.
-
-        This is the single source of "what do I hold" for both the grid
-        signal computation (lots and average cost feed the strategy) and
-        any presentation surface (holdings answers in chat, the future
-        ledger page). It reflects ledger facts only; market value and
-        unrealized P&L require candle data and are layered on elsewhere.
-
-        Returns:
-            A mapping of symbol to its replayed ``Position``.
-        """
+    def get_positions(self, *, user_id: str) -> dict[str, Position]:
+        """Replay one owner's ledger per symbol and return current positions."""
         positions: dict[str, list[LedgerTrade]] = {}
-        for trade in self.list_trades():
+        for trade in self.list_trades(user_id=user_id):
             positions.setdefault(trade["symbol"], []).append(_to_ledger_trade(trade))
         return {symbol: replay_ledger(trades) for symbol, trades in positions.items()}
 
-    def get_position(self, symbol: str) -> Position | None:
-        """Replay the ledger for one symbol and return its current position.
-
-        Returns ``None`` when the symbol has no trades. The per-symbol
-        companion of ``get_positions()``: callers that must keep one
-        symbol's ledger failure from aborting the rest of the portfolio
-        (signal computation) use this inside their isolation boundary.
-        """
-        trades = [_to_ledger_trade(trade) for trade in self.list_trades(symbol)]
+    def get_position(self, symbol: str, *, user_id: str) -> Position | None:
+        """Replay one owner's ledger for one symbol."""
+        trades = [_to_ledger_trade(trade) for trade in self.list_trades(symbol, user_id=user_id)]
         return replay_ledger(trades) if trades else None
 
 
@@ -265,6 +230,7 @@ def _trade_to_dict(trade: EtfGridTrade) -> dict[str, Any]:
     """Convert a trade ORM row into a structured dict."""
     return {
         "id": trade.id,
+        "user_id": trade.user_id,
         "trade_date": trade.trade_date,
         "symbol": trade.symbol,
         "side": trade.side,

@@ -32,7 +32,8 @@ Spectres is a personal AI assistant. Three physical layers:
 ```
 
 Current phase: multiple authenticated users, full stack deployed at home;
-framework data is isolated per user and extension data remains shared.
+framework and ETF Grid user data are isolated per user, while ETF Grid market
+inputs and strategy configuration remain shared.
 
 ## 2. Agent Architecture
 
@@ -182,7 +183,9 @@ auto-start, power settings) are recorded in ADR 0005.
 - **Per-user data isolation** ([Data Isolation](data-isolation.md)):
   `AgentOS(user_isolation=True)` scopes sessions, runs, memories, traces,
   metrics, and schedules to the JWT subject; AG-UI rejects cross-user thread
-  writes. Extension data remains shared by explicit contract.
+  writes. ETF Grid explicitly applies the same owner boundary to private
+  trades and signals while reusing public candles, valuation, and strategy
+  configuration.
 - **Sensitive operations** (e.g., door unlock) share one HITL path regardless
   of trigger (user or automation): member tool marked for confirmation → pause
   propagates to the team run → AgentOS `/approvals` or AG-UI resume →

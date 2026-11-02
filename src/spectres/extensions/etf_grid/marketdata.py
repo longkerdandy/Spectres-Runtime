@@ -17,7 +17,7 @@ import ftshare as ft
 
 from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
 from spectres.extensions.etf_grid.csindex import fetch_index_perf, sync_valuation
-from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridValuationService
+from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridInstrumentService, EtfGridValuationService
 from spectres.extensions.etf_grid.types import CandleInput, normalize_symbol
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ def sync_candles(
     client: Any | None = None,
     candle_service: EtfGridCandleService | None = None,
     config: EtfGridConfig | None = None,
+    instrument_service: EtfGridInstrumentService | None = None,
 ) -> dict[str, int]:
     """Incrementally sync daily candles from FTShare into the local cache.
 
@@ -68,12 +69,13 @@ def sync_candles(
     like 513530, deviated from deliberately.
 
     Args:
-        symbols: Symbols to sync; ``None`` syncs the whole configured
+        symbols: Symbols to sync; ``None`` syncs the enabled configured
             portfolio. Symbols are normalized and loosely validated.
         client: FTShare client; created via ``ft.market_api`` only when
             None (tests inject a mock).
         candle_service: Persistence target; defaults to the shared service.
         config: Extension settings; loaded from the environment when None.
+        instrument_service: Source of enabled configured symbols.
 
     Returns:
         A mapping of symbol to the number of distinct trading days written.
@@ -84,8 +86,9 @@ def sync_candles(
     """
     config = config or load_config()
     candle_service = candle_service or EtfGridCandleService()
+    instrument_service = instrument_service or EtfGridInstrumentService()
     if symbols is None:
-        symbols = [item.symbol for item in config.portfolio]
+        symbols = [item.symbol for item in instrument_service.effective_portfolio(config=config)]
     if client is None:
         if not config.ftshare_api_key:
             raise ValueError("ETF_GRID_FTSHARE_API_KEY is required for market data sync")
@@ -126,6 +129,7 @@ def sync_market_data(
     config: EtfGridConfig | None = None,
     candle_service: EtfGridCandleService | None = None,
     valuation_service: EtfGridValuationService | None = None,
+    instrument_service: EtfGridInstrumentService | None = None,
     client: Any | None = None,
     fetcher: Any = fetch_index_perf,
 ) -> dict[str, Any]:
@@ -143,6 +147,7 @@ def sync_market_data(
         config: Extension settings; loaded from the environment when None.
         candle_service: Candle persistence target.
         valuation_service: Valuation persistence target.
+        instrument_service: Source of enabled configured symbols.
         client: FTShare client; created from the configured key when None.
         fetcher: csindex fetch function; injectable for tests.
 
@@ -152,7 +157,7 @@ def sync_market_data(
     """
     result: dict[str, Any] = {"candles": None, "valuation": None, "errors": {}}
     try:
-        result["candles"] = sync_candles(config=config, candle_service=candle_service, client=client)
+        result["candles"] = sync_candles(config=config, candle_service=candle_service, client=client, instrument_service=instrument_service)
     except Exception as exc:  # provider/network failure must not abort the pipeline
         logger.error("candles sync failed", exc_info=exc, extra={"event": "sync_source_failed", "source": "candles"})
         result["errors"]["candles"] = str(exc)

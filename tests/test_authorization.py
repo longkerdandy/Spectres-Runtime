@@ -125,11 +125,26 @@ def test_user_cannot_manage_directory_users(scoped_client: TestClient) -> None:
     assert store.get("victim")["disabled"] is False
 
 
-def test_extension_remains_shared_between_roles(scoped_client: TestClient) -> None:
-    """Role enforcement adds no extension-specific scope or data partition."""
+def test_extension_scopes_portfolios_independently_between_roles(scoped_client: TestClient) -> None:
+    """Normal portfolio routes self-scope both user and admin identities."""
     path = "/api/v1/extensions/etf-grid/status"
-    user_response = scoped_client.get(path, headers=_headers("alice", USER_SCOPES))
-    admin_response = scoped_client.get(path, headers=_headers("operator", ADMIN_SCOPES))
+    user_headers = _headers("alice", USER_SCOPES)
+    admin_headers = _headers("operator", ADMIN_SCOPES)
+    payload = {
+        "symbol": "513330.XSHG",
+        "trade_date": "2026-09-09",
+        "side": "buy",
+        "price": "0.3590",
+        "quantity": 100,
+        "commission_rate": "0.001",
+    }
+    assert scoped_client.post("/api/v1/extensions/etf-grid/trades", headers=user_headers, json=payload).status_code == 201
+
+    user_response = scoped_client.get(path, headers=user_headers)
+    admin_response = scoped_client.get(path, headers=admin_headers)
     assert user_response.status_code == 200
     assert admin_response.status_code == 200
-    assert user_response.json() == admin_response.json()
+    user_row = next(row for row in user_response.json() if row["symbol"] == "513330.XSHG")
+    admin_row = next(row for row in admin_response.json() if row["symbol"] == "513330.XSHG")
+    assert user_row["shares"] == 100
+    assert admin_row["shares"] == 0

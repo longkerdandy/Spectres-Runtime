@@ -17,12 +17,24 @@ class EtfGridBase(DeclarativeBase):
     """Declarative base shared by all ETF grid extension tables."""
 
 
+class EtfGridInstrument(EtfGridBase):
+    """Administrator-controlled selection for a configured ETF symbol."""
+
+    __tablename__ = "etf_grid_instruments"
+
+    symbol: Mapped[str] = mapped_column(String(16), primary_key=True, comment="Configured FTShare-style symbol")
+    enabled: Mapped[bool] = mapped_column(Boolean, comment="Whether the symbol participates in normal sync, status, and computation")
+    updated_by: Mapped[str | None] = mapped_column(String(128), comment="Administrator who last changed the selection; NULL for bootstrap")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class EtfGridTrade(EtfGridBase):
     """One executed trade in the append-only ETF grid trades ledger.
 
-    This table is the sole source of truth for positions and cost basis:
-    ``core.ledger.replay_ledger`` derives holdings by replaying rows ordered
-    by ``(symbol, trade_date, id)``.
+    This table is the sole source of truth for each user's positions and cost
+    basis: ``core.ledger.replay_ledger`` derives holdings by replaying that
+    user's rows ordered by ``(symbol, trade_date, id)``.
 
     Invariants:
 
@@ -49,6 +61,7 @@ class EtfGridTrade(EtfGridBase):
     __tablename__ = "etf_grid_trades"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(128), comment="Owner of this private ledger row")
     trade_date: Mapped[date] = mapped_column(Date, comment="Execution date of the trade")
     symbol: Mapped[str] = mapped_column(String(16), comment="FTShare-style symbol, e.g. '513330.XSHG'")
     side: Mapped[str] = mapped_column(String(8), comment="Trade direction: buy | sell (values generated from the Side enum)")
@@ -64,9 +77,8 @@ class EtfGridTrade(EtfGridBase):
 
     __table_args__ = (
         CheckConstraint(f"side IN ({_SIDE_CHECK})", name="ck_etf_grid_trades_side"),
-        # Replay always reads one symbol ordered by date; the index also
-        # documents the canonical access pattern.
-        Index("ix_etf_grid_trades_symbol_trade_date", "symbol", "trade_date"),
+        # Replay always reads one user's symbol ordered by date and id.
+        Index("ix_etf_grid_trades_user_symbol_date_id", "user_id", "symbol", "trade_date", "id"),
     )
 
 
@@ -133,10 +145,10 @@ class EtfGridSignal(EtfGridBase):
     Persisted by ``service.compute_daily_signals()``; makes "why buy /
     not buy that day" auditable and UI-renderable. Contracts:
 
-    - **Upsert on recompute**: a same-day recomputation overwrites the
-      row — the signal is advice, not fact, and the latest computation
-      is always the most accurate (e.g. after recording a trade). The
-      audit trail lives in the append-only ``etf_grid_trades`` ledger.
+    - **Upsert on recompute**: a same-day recomputation overwrites only the
+      same user's row — the signal is advice, not fact, and the latest
+      computation is always the most accurate (e.g. after recording a trade).
+      The audit trail lives in the append-only ``etf_grid_trades`` ledger.
     - **No position columns**: holdings are derived from the ledger on
       demand; duplicating them here would drift.
     - ``orders`` is a JSONB list of order advices (side, limit_price,
@@ -150,6 +162,7 @@ class EtfGridSignal(EtfGridBase):
 
     __tablename__ = "etf_grid_signals"
 
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True, comment="Owner of this private signal snapshot")
     symbol: Mapped[str] = mapped_column(String(16), primary_key=True, comment="FTShare-style symbol, e.g. '513330.XSHG'")
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True, comment="Trading day the signal is for")
     close: Mapped[Decimal] = mapped_column(Numeric(10, 4), comment="qfq close used for the computation")

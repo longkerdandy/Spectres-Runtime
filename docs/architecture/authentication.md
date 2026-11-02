@@ -49,7 +49,8 @@ Browser SPA (Web Client)                     Logto (docker, :3001/:3002)
 |-------|-------|--------------------|
 | `iss` | `$LOGTO_ENDPOINT/oidc` (e.g. `http://localhost:3001/oidc`) | yes (`JWT_ISSUER`) |
 | `aud` | API resource URI, `https://spectres.runtime/api` | yes (`JWT_AUDIENCE`) |
-| `sub` | Logto user id (or M2M app id) | identity |
+| `sub` | Logto user id (or M2M app id) | identity and `/users.id` |
+| `name` | Logto user's display name | `/users.name`; refreshed on authenticated requests |
 | `scopes` | Array of Agno-native permissions granted for the API resource | yes (route authorization) |
 | `exp`/`iat` | 1 h lifetime; SDK refreshes via refresh token | yes (signature validation) |
 | signature | ES384, OIDC signing key | yes (`JWT_JWKS_FILE`) |
@@ -63,8 +64,10 @@ Logto's custom claims emit `scopes` as a string array; the standard OAuth
 The default `user` role carries `config:read`, `registry:read`,
 `agents:read`, `agents:*:run`, session/memory/schedule/approval read-write-
 delete scopes, and `metrics:read`/`traces:read`. The `admin` role carries
-`agent_os:admin`, which grants all framework routes and bypasses isolation.
-Extensions have no role-specific scopes in this phase.
+`agent_os:admin`, which grants all framework routes and bypasses framework
+isolation. Extensions introduce no new role-specific scopes; ETF Grid reuses
+`agent_os:admin` for instrument administration and shared sync, while normal
+portfolio routes self-scope both user and admin identities.
 
 ## 3. Configuration
 
@@ -118,7 +121,7 @@ Web Client: `VITE_LOGTO_ENDPOINT`, `VITE_LOGTO_APP_ID`,
    only to intended administrators.
 3. In Console → JWT claims, add an access-token `getCustomJwtClaims` script
    that translates Logto's granted API-resource scopes into Agno's array
-   contract:
+   contract and includes the user's display name:
 
    ```javascript
    const getCustomJwtClaims = async ({ context }) => {
@@ -126,19 +129,20 @@ Web Client: `VITE_LOGTO_ENDPOINT`, `VITE_LOGTO_APP_ID`,
        .flatMap((role) => role.scopes ?? [])
        .filter((scope) => scope.resource?.indicator === "https://spectres.runtime/api")
        .map((scope) => scope.name);
-     return { scopes: [...new Set(scopes)] };
+     return { scopes: [...new Set(scopes)], name: context.user?.name };
    };
    ```
 
-   The source is Logto's server-side role assignments, not client-provided
-   role data or the OAuth `scope` request. This works with the SPA's existing
-   `openid profile` request. Custom JWT scripts run with Logto host
-   privileges: only trusted administrators may create, edit, or test them.
+   The source is Logto's server-side role assignments and user profile, not
+   client-provided role data or the OAuth `scope` request. This works with the
+   SPA's existing `openid profile` request. Custom JWT scripts run with Logto
+   host privileges: only trusted administrators may create, edit, or test them.
 4. Sign in as each role and inspect the access-token payload locally (never
    log it): `scopes` must be an array; admin includes `agent_os:admin` and
-   user does not. Verify user `/agents` → 200 and `/users` → 403, admin
-   `/users` → 200, plus ordinary AG-UI and admin cross-user reads.
-5. Role/permission changes affect newly issued tokens. Refresh or sign in
+   user does not; `name` matches the Logto display name. Verify user
+   `/agents` → 200 and `/users` → 403, admin `/users` → 200 with readable
+   `id`/`name` fields, plus ordinary AG-UI and admin cross-user reads.
+5. Role/permission and profile changes affect newly issued tokens. Refresh or sign in
    again when testing them; Runtime's directory `disabled` flag remains the
    immediate revocation path. The Web Client's management-only presentation
    is implemented separately in its v0.3.1 milestone.

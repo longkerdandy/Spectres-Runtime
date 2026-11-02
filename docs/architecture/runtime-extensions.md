@@ -5,7 +5,7 @@
 > the first extension (ETF Grid Trading) runs on this contract: in-tree
 > loader, toolkit on the Team Leader, versioned router.
 >
-> Last updated: 2026-10-29.
+> Last updated: 2026-11-01 (ETF Grid user isolation and admin selection).
 
 ---
 
@@ -116,8 +116,9 @@ class Extension(Protocol):
 
 Rules:
 
-- **Idempotent, side-effect-free `register()`** apart from table creation
-  (§6.2). No network calls, no scheduler threads at load time — schedules
+- **Idempotent `register()`** with side effects limited to table creation and
+  idempotent data bootstrap (§6.2). No network calls or scheduler threads at
+  load time — schedules
   are only *declared*; core registers them with the AgentOS scheduler after
   loading (`spectres/scheduler.py`).
 - An extension may contribute **any combination** of surfaces: tool-only,
@@ -206,12 +207,11 @@ capability fails with an explicit error at call time instead.
   extension keeps its revisions in its own directory.
 - The extension's tables are the **only** source of truth for its domain
   (e.g. the trade ledger replaces quant-advisor's CSVs).
-- **Extension data is outside Agno's automatic isolation plane.** In the
-  v0.6.x contract, extension tables have no `user_id`; every authenticated
-  user sees and mutates the same extension data through both REST and agent
-  tools. Future per-user extensions must explicitly scope every read and
-  write with Agno's `user_scope.py` helpers — `user_isolation=True` alone
-  does not isolate extension persistence. See
+- **Extension data is outside Agno's automatic isolation plane.** Each
+  extension must explicitly distinguish shared rows from user-owned rows and
+  scope every private read/write. ETF Grid keeps market inputs and instrument
+  selection global but requires `user_id` on trades and signals;
+  `user_isolation=True` alone does not isolate extension persistence. See
   [Per-User Data Isolation](data-isolation.md).
 
 ### 6.3 Agent surface (tools)
@@ -223,6 +223,8 @@ capability fails with an explicit error at call time instead.
   names; introduce a prefix convention if a collision ever appears.)
 - Tools return structured JSON (dicts), not prose; the agent narrates, the
   Client renders. The toolkit adapts — it contains no domain logic.
+- Private tools obtain the owner from Agno's injected `RunContext.user_id`.
+  Ownership is never an LLM-visible argument; missing identity fails closed.
 - Sensitive mutations follow the shared HITL path (README §6): e.g.
   `record_grid_trade` is marked for confirmation so a wrong ledger entry
   can't slip through unnoticed.
@@ -236,8 +238,9 @@ capability fails with an explicit error at call time instead.
 - Read endpoints serve the Client's standalone pages; mutation endpoints
   mirror the tools (`POST .../trades` ≈ `record_grid_trade`) so the page
   and the chat can never disagree — both delegate to `service.py`.
-- CORS is handled globally by AgentOS; auth (when it arrives, per ADR 0005)
-  applies to extension routes the same as core routes.
+- CORS and authentication are handled globally by AgentOS. Private ownership
+  and administrator scope checks are explicit in the extension router; the
+  framework's route mappings do not automatically cover custom routes.
 
 ### 6.5 Logging
 
@@ -294,29 +297,33 @@ symbol) into the Runtime. Naming: product name **ETF Grid Trading**,
 extension id **`etf_grid`** — deliberately descriptive over a codename,
 since the id appears in table names, tool names, env prefixes, and URLs.
 
+- **Ownership model**: candles, valuation, and administrator-controlled
+  instrument selection are shared. `ETF_GRID_PORTFOLIO` remains authoritative
+  for `name`, `per_grid_amount`, `max_grids`, and `gate` for every user.
+  Trades and signals carry `user_id`; positions and P&L derive only from the
+  caller's ledger. Admin selection only enables/disables symbols already
+  present in configuration and survives idempotent startup bootstrap.
 - **Trigger model**: user-initiated and scheduled. Conversation-side,
-  `refresh_grid_data` runs an incremental market-data sync (idempotent, via
-  the FTShare MCP endpoint with `FTSHARE_API_KEY`), then recomputes and
-  persists the signal snapshots; `get_grid_status` reads the latest
-  persisted snapshot. Schedule-side (v0.5.0, ADR 0007), the extension
-  contributes `etf_grid_daily_sync` (`0 9 * * 1,5`, Asia/Shanghai) pointing
-  at the composite `POST .../refresh` route — a deterministic layer-1
-  trigger with zero LLM calls.
+  `refresh_grid_data` runs an incremental shared market-data sync
+  (idempotent, via the official FTShare SDK with `FTSHARE_API_KEY`), then
+  recomputes only the current run owner's signals; `get_grid_status` reads
+  that owner's latest snapshot. Schedule-side, one unowned
+  `etf_grid_daily_sync` (`0 9 * * 1,5`, Asia/Shanghai) calls the composite
+  `POST .../refresh` route, which syncs shared data once and then computes
+  each distinct ledger owner with independent error boundaries.
 - **Core** ports the proven computation (`level_of`, anchor scan, ledger
   replay with cost-protection sell pairing); grid parameters live in
   extension config, not hardcoded constants.
 - **Tools**: `get_grid_status`, `refresh_grid_data`, `record_grid_trade`,
-  `list_grid_trades` — stable names per §6.3, all returning the §6.5
-  `{ok, data}` / `{ok, error}` envelope with bare payload shapes
-  (`list_grid_trades` truncates silently at `limit`). HITL confirmation for
-  `record_grid_trade` is the design (§6.3) but not yet adopted — the tool
-  executes immediately today.
-- **API**: `GET .../status`, `POST .../signals/compute`, `POST .../sync`,
-  `POST .../refresh` (composite sync+compute for the scheduler, v0.5.0),
-  `GET/POST .../trades` under `/api/v1/extensions/etf-grid`. (A
-  `GET .../signals` history route existed in v0.4.x but was removed in
-  v0.5.0 — no consumer; the Client renders the latest signal embedded in
-  `/status`, and the service-layer `list_signals` remains available.)
+  `list_grid_trades` — stable names per §6.3, all scoped by injected
+  `RunContext.user_id` and returning the §6.5 `{ok, data}` / `{ok, error}`
+  envelope (`list_grid_trades` truncates silently at `limit`). HITL
+  confirmation for `record_grid_trade` remains unadopted.
+- **API**: self-scoped `GET .../status`, `POST .../signals/compute`, and
+  `GET/POST .../trades`; shared `GET .../instruments`; admin-only
+  `GET .../admin/instruments`, `PATCH .../admin/instruments/{symbol}`,
+  `POST .../sync`, and schedule/internal `POST .../refresh`, all under
+  `/api/v1/extensions/etf-grid`.
 - **Client contract**: chat shows the agent's markdown narration plus
   custom tool cards registered via CopilotKit `useRenderTool`
   (`@copilotkit/react-core/v2`) on the stable tool names; the standalone
