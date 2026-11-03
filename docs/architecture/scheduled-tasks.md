@@ -179,10 +179,10 @@ with the executor's "2xx = success" semantics:
   `errors` after shared sync succeeds; other users still compute;
 - **Shared-pipeline failure** → 5xx.
 
-The existing granular routes stay: `/sync` is an admin/internal shared-data
-operation, while `/signals/compute` is self-scoped to the authenticated
-caller. `refresh_grid_data` performs shared sync plus only the current run
-owner's computation.
+The existing granular routes stay: `/sync` is an authenticated-user/internal
+shared-data operation, while `/signals/compute` is self-scoped to the
+authenticated caller. `refresh_grid_data` performs shared sync plus only the
+current run owner's computation.
 
 ## 5. Evolution path (deferred, not built now)
 

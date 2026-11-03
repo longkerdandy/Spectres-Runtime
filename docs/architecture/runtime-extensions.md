@@ -320,10 +320,10 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   envelope (`list_grid_trades` truncates silently at `limit`). HITL
   confirmation for `record_grid_trade` remains unadopted.
 - **API**: self-scoped `GET .../status`, `POST .../signals/compute`, and
-  `GET/POST .../trades`; shared `GET .../instruments`; admin-only
-  `GET .../admin/instruments`, `PATCH .../admin/instruments/{symbol}`,
-  `POST .../sync`, and schedule/internal `POST .../refresh`, all under
-  `/api/v1/extensions/etf-grid`.
+  `GET/POST .../trades`; shared `GET .../instruments` and authenticated-user
+  `POST .../sync`; admin-only `GET .../admin/instruments` and
+  `PATCH .../admin/instruments/{symbol}`; admin/schedule/internal
+  `POST .../refresh`, all under `/api/v1/extensions/etf-grid`.
 - **Client contract**: chat shows the agent's markdown narration plus
   custom tool cards registered via CopilotKit `useRenderTool`
   (`@copilotkit/react-core/v2`) on the stable tool names; the standalone

@@ -230,13 +230,13 @@ class TestEtfGridApi:
         assert triggered["side"] == "buy"
         assert triggered["grids"] == 3
 
-    def test_post_sync_never_500s_on_provider_failure(self, api_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        """POST /sync reports per-source errors in the body instead of failing."""
+    def test_post_sync_allows_users_and_never_500s_on_provider_failure(self, api_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        """POST /sync allows ordinary users and reports per-source errors in the body."""
         monkeypatch.setattr(
             "spectres.extensions.etf_grid.api.sync_market_data",
             lambda **kwargs: {"candles": None, "valuation": None, "errors": {"candles": "boom", "valuation": "boom"}},
         )
-        response = api_client.post("/api/v1/extensions/etf-grid/sync", headers=_admin_headers())
+        response = api_client.post("/api/v1/extensions/etf-grid/sync")
         assert response.status_code == 200
         assert response.json()["errors"] == {"candles": "boom", "valuation": "boom"}
         internal = api_client.post("/api/v1/extensions/etf-grid/sync", headers={"x-test-internal": "true"})
@@ -292,10 +292,10 @@ class TestEtfGridApi:
         assert seeded.get("/api/v1/extensions/etf-grid/trades", params={"symbol": "513330.XSHG"}).json()["total"] == 1
 
     def test_private_and_admin_authorization_boundaries(self, api_client: TestClient) -> None:
-        """Private routes require identity and global routes require admin scope."""
+        """Shared routes require identity; management routes require admin scope."""
         assert api_client.get("/api/v1/extensions/etf-grid/status", headers={"x-test-user": ""}).status_code == 403
         assert api_client.get("/api/v1/extensions/etf-grid/admin/instruments").status_code == 403
-        assert api_client.post("/api/v1/extensions/etf-grid/sync").status_code == 403
+        assert api_client.post("/api/v1/extensions/etf-grid/sync", headers={"x-test-user": ""}).status_code == 403
         assert api_client.get("/api/v1/extensions/etf-grid/admin/instruments", headers=_admin_headers()).status_code == 200
 
     def test_register_creates_tables_idempotently(self) -> None:

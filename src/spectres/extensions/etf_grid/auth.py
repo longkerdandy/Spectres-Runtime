@@ -11,6 +11,13 @@ def require_user_id(request: Request) -> str:
     return user_id
 
 
+def require_user_or_internal(request: Request) -> str:
+    """Allow an authenticated user or the verified internal scheduler caller."""
+    if getattr(request.state, "is_internal_service", False) or getattr(request.state, "_agno_verified_internal", False):
+        return "internal-scheduler"
+    return require_user_id(request)
+
+
 def require_admin_or_internal(request: Request) -> str:
     """Allow an Agno administrator or the verified internal scheduler caller."""
     if getattr(request.state, "is_internal_service", False) or getattr(request.state, "_agno_verified_internal", False):

@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 
-from spectres.extensions.etf_grid.auth import require_admin_or_internal, require_user_id
+from spectres.extensions.etf_grid.auth import require_admin_or_internal, require_user_id, require_user_or_internal
 from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
 from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.service import (
@@ -123,7 +123,7 @@ def create_router(
 
     @router.post("/sync")
     def sync(request: Request) -> dict[str, Any]:
-        require_admin_or_internal(request)
+        require_user_or_internal(request)
         return to_jsonable(sync_market_data(config=config, candle_service=candles, valuation_service=valuation, instrument_service=instruments))
 
     @router.post("/refresh")
