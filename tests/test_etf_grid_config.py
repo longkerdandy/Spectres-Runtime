@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -67,6 +68,27 @@ class TestRequiredFields:
         required_env.delenv("ETF_GRID_FTSHARE_API_KEY", raising=False)
         required_env.setenv("FTSHARE_API_KEY", "bare-key")
         assert EtfGridConfig(_env_file=None).ftshare_api_key is None  # type: ignore[call-arg]
+
+
+class TestEnvironmentFiles:
+    """Extension settings follow the core base/local file convention."""
+
+    def test_local_environment_overrides_base(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        required_env: pytest.MonkeyPatch,
+    ) -> None:
+        """Load the real credential from the local override instead of the base placeholder."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("SPECTRES_ENV_FILE", ".env.test")
+        required_env.delenv("ETF_GRID_FTSHARE_API_KEY", raising=False)
+        (tmp_path / ".env.test").write_text("ETF_GRID_FTSHARE_API_KEY=base-key\n", encoding="utf-8")
+        (tmp_path / ".env.test.local").write_text("ETF_GRID_FTSHARE_API_KEY=local-key\n", encoding="utf-8")
+
+        config = EtfGridConfig()  # type: ignore[call-arg]
+
+        assert config.ftshare_api_key == "local-key"
 
 
 class TestPortfolioParsing:

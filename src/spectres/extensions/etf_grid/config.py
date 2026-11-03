@@ -12,6 +12,12 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from spectres.extensions.etf_grid.types import normalize_symbol
 
 
+def _environment_files() -> tuple[str, str]:
+    env_file = os.getenv("SPECTRES_ENV_FILE", ".env")
+    local_file = ".env.test.local" if env_file == ".env.test" else ".env.local"
+    return env_file, local_file
+
+
 class GateConfig(BaseModel):
     """Valuation gate: pause opening new grids when the index valuation is extreme."""
 
@@ -42,7 +48,7 @@ class EtfGridConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="ETF_GRID_",
-        env_file=os.getenv("SPECTRES_ENV_FILE", ".env"),
+        env_file=_environment_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
