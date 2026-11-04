@@ -2,8 +2,8 @@
 
 > How AgentOS partitions user-owned data after JWT authentication. Framework
 > isolation was implemented in v0.6.1; ETF Grid added explicit private-ledger
-> and signal isolation in v0.6.3
-> ([plan](../plan/v0.6.3-etf-grid-multi-user.md)).
+> and signal isolation in v0.6.3; native schedule read APIs were verified in
+> v0.6.4 ([plan](../plan/v0.6.4-scheduled-task-read-api.md)).
 
 ---
 
@@ -96,6 +96,15 @@ ownership rule.
 not see it in `/schedules`; admins and the internal executor do. It targets
 an extension endpoint and creates no Agent session/run rows, only the
 unowned `agno_schedule_runs` audit records.
+
+The native read surface is `GET /schedules`, `GET /schedules/{schedule_id}`,
+`GET /schedules/{schedule_id}/runs`, and
+`GET /schedules/{schedule_id}/runs/{run_id}`. It requires `schedules:read` or
+`agent_os:admin`. An ordinary caller's list is filtered to the JWT subject;
+direct reads of public, cross-user, or nonexistent rows all return 404. Admin
+reads are unscoped. Run history follows the parent's owner, and run detail
+validates both owner scope and the path's schedule/run relationship. Query
+parameters never override these ownership rules.
 
 ## 6. Extension-owned data
 

@@ -5,7 +5,7 @@
 > [ADR 0007](../adr/0007-scheduled-tasks-agno-scheduler.md) (2026-10-14);
 > the first schedule (`etf_grid_daily_sync`) runs on this substrate.
 >
-> Last updated: 2026-11-01 (ETF Grid per-user signal fan-out).
+> Last updated: 2026-11-03 (native schedule read API contract).
 
 ---
 
@@ -107,6 +107,26 @@ every regular user. See [Per-User Data Isolation](data-isolation.md).
   ops and future Client pages.
 - **`SchedulerTools`** toolkit: lets an agent manage schedules from
   conversation. Deferred (§5).
+
+The read API contract is Agno-native:
+
+| Method | Path | Required scope |
+|--------|------|----------------|
+| GET | `/schedules` | `schedules:read` or `agent_os:admin` |
+| GET | `/schedules/{schedule_id}` | `schedules:read` or `agent_os:admin` |
+| GET | `/schedules/{schedule_id}/runs` | `schedules:read` or `agent_os:admin` |
+| GET | `/schedules/{schedule_id}/runs/{run_id}` | `schedules:read` or `agent_os:admin` |
+
+The schedule list supports `enabled`, `limit`, and `page`; run history supports
+`limit` and `page`. Both return Agno's `{data, meta}` pagination envelope.
+Detail reads return 404 for nonexistent and out-of-scope rows alike. Run detail
+also requires the run's `schedule_id` to match the path, so accessible and
+inaccessible ids cannot be mixed to bypass ownership.
+
+An unowned schedule is a **public/system task** in product terminology, but
+“public” does not mean readable by every user. Ordinary users receive only
+their owned personal tasks and runs; administrators receive every public and
+personal task and run. No `user_id` query parameter can broaden this scope.
 
 ## 3. Design: deterministic tasks, direct to REST endpoints
 

@@ -5,7 +5,8 @@
 > locally and enforces permissions. Decision rationale:
 > [ADR 0009](../adr/0009-idp-logto-self-hosted.md) and
 > [ADR 0010](../adr/0010-logto-rbac-agno-jwt-scopes.md).
-> Authentication implemented in v0.6.0; Logto RBAC added in v0.6.2.
+> Authentication implemented in v0.6.0; Logto RBAC added in v0.6.2; schedule
+> read authorization verified in v0.6.4.
 
 ---
 
@@ -65,7 +66,10 @@ The default `user` role carries `config:read`, `registry:read`,
 `agents:read`, `agents:*:run`, session/memory/schedule/approval read-write-
 delete scopes, and `metrics:read`/`traces:read`. The `admin` role carries
 `agent_os:admin`, which grants all framework routes and bypasses framework
-isolation. Extensions introduce no new role-specific scopes; ETF Grid reuses
+isolation. In particular, `schedules:read` lets an ordinary user read only
+their personal schedules and runs through Agno's `/schedules` GET routes;
+`agent_os:admin` adds all users' personal schedules and unowned system
+schedules. Extensions introduce no new role-specific scopes; ETF Grid reuses
 `agent_os:admin` for instrument administration and shared sync, while normal
 portfolio routes self-scope both user and admin identities.
 
