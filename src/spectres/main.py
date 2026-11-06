@@ -71,6 +71,7 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
             workflows=workflows,
             interfaces=[AGUI(agent=team_leader_agent)],
             cors_allowed_origins=settings.cors_allowed_origins,
+            telemetry=settings.agno_telemetry,
             scheduler=settings.scheduler_enabled,
             scheduler_poll_interval=settings.scheduler_poll_interval,
             scheduler_base_url=settings.scheduler_base_url,

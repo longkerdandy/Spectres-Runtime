@@ -7,6 +7,8 @@ import pytest
 
 # Point the settings loader at the committed test environment file.
 os.environ.setdefault("SPECTRES_ENV_FILE", ".env.test")
+# Keep external Agno telemetry disabled throughout the test process.
+os.environ["AGNO_TELEMETRY"] = "false"
 
 
 def _reset_test_database() -> None:

@@ -168,8 +168,8 @@ def test_shutdown_lifespan_closes_postgres_db(monkeypatch: pytest.MonkeyPatch) -
     mock_db.close.assert_called_once()
 
 
-def test_extension_workflows_are_passed_to_agent_os(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Extension Workflow contributions join the AgentOS component registry."""
+def test_agent_os_receives_extension_workflows_and_telemetry_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AgentOS receives extension Workflows and the configured telemetry switch."""
     from agno.workflow import Workflow
 
     import spectres.main as main_module
@@ -187,3 +187,4 @@ def test_extension_workflows_are_passed_to_agent_os(monkeypatch: pytest.MonkeyPa
     main_module.create_agent_os()
 
     assert agent_os_cls.call_args.kwargs["workflows"] == [workflow]
+    assert agent_os_cls.call_args.kwargs["telemetry"] is False

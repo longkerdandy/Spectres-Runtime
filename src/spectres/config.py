@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # AgentOS server
     agent_os_host: str = Field(alias="AGENT_OS_HOST")
     agent_os_port: int = Field(alias="AGENT_OS_PORT")
+    agno_telemetry: bool = Field(alias="AGNO_TELEMETRY", default=True)
 
     # Team Leader Agent (OpenAI-compatible API for open-source / self-hosted LLMs)
     team_leader_llm_provider: Literal["openai", "gemini"] = Field(alias="TEAM_LEADER_LLM_PROVIDER", default="openai")
