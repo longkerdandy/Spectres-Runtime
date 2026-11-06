@@ -10,28 +10,26 @@ os.environ.setdefault("SPECTRES_ENV_FILE", ".env.test")
 
 
 def _reset_test_database() -> None:
-    """Drop and recreate the test database, then install pgvector."""
+    """Delete all test data while preserving tables and database metadata."""
     import psycopg
     from psycopg.sql import SQL, Identifier
 
     from spectres.config import settings
 
-    admin_url = f"postgresql://{settings.db_user}:{settings.db_pass}@{settings.db_host}:{settings.db_port}/postgres"
-    with psycopg.connect(admin_url, autocommit=True) as conn, conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT pg_terminate_backend(pid)
-            FROM pg_stat_activity
-            WHERE datname = %s AND pid <> pg_backend_pid()
-            """,
-            (settings.db_database,),
-        )
-        cur.execute(SQL("DROP DATABASE IF EXISTS {}").format(Identifier(settings.db_database)))
-        cur.execute(SQL("CREATE DATABASE {}").format(Identifier(settings.db_database)))
-
     target_url = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(target_url, autocommit=True) as conn, conn.cursor() as cur:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        cur.execute(
+            """
+            SELECT schemaname, tablename
+            FROM pg_tables
+            WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+              AND schemaname NOT LIKE 'pg_toast%'
+            """
+        )
+        tables = cur.fetchall()
+        if not tables:
+            return
+        cur.execute(SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(SQL(", ").join(SQL("{}.{}").format(Identifier(schema), Identifier(table)) for schema, table in tables)))
 
 
 @pytest.fixture(autouse=True)
@@ -50,8 +48,8 @@ def reset_trace_context() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def reset_database_for_integration(request: pytest.FixtureRequest) -> None:
-    """Reset the test database before each integration test."""
-    if request.node.get_closest_marker("integration") is None:
+def reset_database_for_db_tests(request: pytest.FixtureRequest) -> None:
+    """Reset the test database before each database test."""
+    if request.node.get_closest_marker("db") is None:
         return
     _reset_test_database()

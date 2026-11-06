@@ -44,7 +44,7 @@ def _headers(sub: str, scopes: list[str]) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def scoped_client() -> Iterator[TestClient]:
     """Build the full application with JWT scope authorization enabled."""
     from spectres import main as main_module

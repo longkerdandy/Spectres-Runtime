@@ -49,7 +49,7 @@ def _headers(sub: str, scopes: list[str] | None = None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def isolated_client() -> Iterator[TestClient]:
     """Build the full application with JWT authentication and user isolation."""
     from spectres import main as main_module

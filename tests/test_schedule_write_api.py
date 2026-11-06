@@ -50,7 +50,7 @@ def _schedule_payload(name: str, endpoint: str = RECOMPUTE_ENDPOINT) -> dict[str
     }
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def schedule_write_client() -> Iterator[TestClient]:
     """Build the full application with JWT scopes and user isolation enabled."""
     from spectres import main as main_module

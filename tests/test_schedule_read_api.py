@@ -41,7 +41,7 @@ def _headers(sub: str, scopes: list[str] | None = None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def schedule_client() -> Iterator[TestClient]:
     """Build the full application with JWT scopes and user isolation enabled."""
     from spectres import main as main_module
@@ -63,7 +63,7 @@ def schedule_client() -> Iterator[TestClient]:
         settings.jwt_verification_key, settings.jwt_audience, settings.jwt_algorithm = old_key, old_audience, old_algorithm
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def schedule_fixtures(schedule_client: TestClient) -> Iterator[ScheduleFixtures]:
     """Seed and clean public/personal data without using production write routes."""
     del schedule_client

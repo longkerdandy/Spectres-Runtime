@@ -55,15 +55,9 @@ class TestJwtSettings:
         assert Settings().jwt_auth_enabled is True  # type: ignore[call-arg]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def authed_client() -> Iterator[TestClient]:
-    """A full application instance with JWT authentication enabled.
-
-    Module-scoped: the app is built once because schedule registration and
-    table creation happen at build time. Marked tests use the ``db`` marker
-    (not ``integration``) so the shared test database is not dropped between
-    tests of this module.
-    """
+    """Build a fresh application after the per-test database reset."""
     from spectres import main as main_module
     from spectres.config import settings
 
