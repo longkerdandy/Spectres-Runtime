@@ -313,8 +313,10 @@ class TestEtfGridApi:
             assert spec.name == "etf_grid_daily_sync"
             assert spec.cron == "0 9 * * 1,5"
             assert spec.timezone == "Asia/Shanghai"
-            assert spec.endpoint == "/api/v1/extensions/etf-grid/refresh"
+            assert spec.endpoint == "/workflows/etf_grid_data_sync/runs"
+            assert spec.payload == {"message": "Run scheduled ETF Grid shared-data synchronization"}
             assert spec.enabled is True
+            assert [workflow.id for workflow in contribution.workflows] == ["etf_grid_data_sync", "etf_grid_recompute"]
 
 
 @pytest.mark.unit

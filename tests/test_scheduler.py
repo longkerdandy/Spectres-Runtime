@@ -17,7 +17,7 @@ class TestRegisterSchedules:
         defaults: dict[str, Any] = {
             "name": "etf_grid_daily_sync",
             "cron": "0 9 * * 1,5",
-            "endpoint": "/api/v1/extensions/etf-grid/refresh",
+            "endpoint": "/workflows/etf_grid_data_sync/runs",
             "method": "POST",
             "timezone": "Asia/Shanghai",
             "timeout_seconds": 3600,
@@ -42,7 +42,7 @@ class TestRegisterSchedules:
         manager.create.assert_called_once_with(
             name="etf_grid_daily_sync",
             cron="0 9 * * 1,5",
-            endpoint="/api/v1/extensions/etf-grid/refresh",
+            endpoint="/workflows/etf_grid_data_sync/runs",
             method="POST",
             payload=None,
             timezone="Asia/Shanghai",

@@ -27,6 +27,7 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     from spectres.extensions.etf_grid.config import load_config
     from spectres.extensions.etf_grid.service import EtfGridInstrumentService
     from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
+    from spectres.extensions.etf_grid.workflows import DATA_SYNC_WORKFLOW_ID, create_workflows
 
     config = load_config()
     instruments = EtfGridInstrumentService()
@@ -34,12 +35,14 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     contribution = ExtensionContribution(
         toolkits=[EtfGridToolkit(config=config, instrument_service=instruments)],
         routers=[create_router(config=config, instrument_service=instruments)],
+        workflows=create_workflows(config=config, instrument_service=instruments),
         schedules=[
             ScheduleSpec(
                 name="etf_grid_daily_sync",
                 cron=config.sync_cron,
-                endpoint="/api/v1/extensions/etf-grid/refresh",
+                endpoint=f"/workflows/{DATA_SYNC_WORKFLOW_ID}/runs",
                 method="POST",
+                payload={"message": "Run scheduled ETF Grid shared-data synchronization"},
                 timezone=config.sync_timezone,
                 timeout_seconds=3600,
                 max_retries=config.sync_max_retries,
@@ -55,6 +58,7 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
             "symbols": [item.symbol for item in config.portfolio],
             "toolkits": len(contribution.toolkits),
             "routers": len(contribution.routers),
+            "workflows": len(contribution.workflows),
             "schedules": len(contribution.schedules),
         },
     )

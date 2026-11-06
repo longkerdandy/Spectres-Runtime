@@ -1,6 +1,6 @@
 # ADR 0007: Scheduled Tasks — Agno Built-in Scheduler, Deterministic-Only MVP
 
-- **Status**: Accepted
+- **Status**: Partially superseded by ADR 0011
 - **Date**: 2026-10-14
 - **Deciders**: Project owner + architecture discussion
 

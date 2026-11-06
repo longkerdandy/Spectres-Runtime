@@ -166,3 +166,24 @@ def test_shutdown_lifespan_closes_postgres_db(monkeypatch: pytest.MonkeyPatch) -
         pass
 
     mock_db.close.assert_called_once()
+
+
+def test_extension_workflows_are_passed_to_agent_os(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Extension Workflow contributions join the AgentOS component registry."""
+    from agno.workflow import Workflow
+
+    import spectres.main as main_module
+    from spectres.extensions.base import ExtensionContribution
+
+    workflow = Workflow(id="extension-workflow")
+    monkeypatch.setattr(main_module, "get_postgres_db", lambda: MagicMock())
+    monkeypatch.setattr(main_module, "load_extensions", lambda *args, **kwargs: [ExtensionContribution(workflows=[workflow])])
+    monkeypatch.setattr(main_module, "register_schedules", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: MagicMock())
+    monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
+    agent_os_cls = MagicMock()
+    monkeypatch.setattr(main_module, "AgentOS", agent_os_cls)
+
+    main_module.create_agent_os()
+
+    assert agent_os_cls.call_args.kwargs["workflows"] == [workflow]

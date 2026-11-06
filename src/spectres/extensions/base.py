@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from agno.db.postgres import PostgresDb
 from agno.tools.toolkit import Toolkit
+from agno.workflow import Workflow
 from fastapi import APIRouter
 
 from spectres.config import Settings
@@ -47,6 +48,7 @@ class ExtensionContribution:
 
     toolkits: list[Toolkit] = field(default_factory=list)
     routers: list[APIRouter] = field(default_factory=list)
+    workflows: list[Workflow] = field(default_factory=list)
     schedules: list[ScheduleSpec] = field(default_factory=list)
 
 

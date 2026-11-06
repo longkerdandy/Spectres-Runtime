@@ -6,7 +6,8 @@
 > [ADR 0009](../adr/0009-idp-logto-self-hosted.md) and
 > [ADR 0010](../adr/0010-logto-rbac-agno-jwt-scopes.md).
 > Authentication implemented in v0.6.0; Logto RBAC added in v0.6.2; schedule
-> read authorization verified in v0.6.4.
+> read authorization verified in v0.6.4; Workflow-targeted schedule writes
+> added in v0.6.5.
 
 ---
 
@@ -63,15 +64,16 @@ Logto's custom claims emit `scopes` as a string array; the standard OAuth
 `scope` string is space-delimited and is not split by Agno.
 
 The default `user` role carries `config:read`, `registry:read`,
-`agents:read`, `agents:*:run`, session/memory/schedule/approval read-write-
-delete scopes, and `metrics:read`/`traces:read`. The `admin` role carries
-`agent_os:admin`, which grants all framework routes and bypasses framework
-isolation. In particular, `schedules:read` lets an ordinary user read only
-their personal schedules and runs through Agno's `/schedules` GET routes;
-`agent_os:admin` adds all users' personal schedules and unowned system
-schedules. Extensions introduce no new role-specific scopes; ETF Grid reuses
-`agent_os:admin` for instrument administration and shared sync, while normal
-portfolio routes self-scope both user and admin identities.
+`agents:read`, `agents:*:run`, `workflows:read`, `workflows:run`,
+session/memory/schedule/approval read-write-delete scopes, and
+`metrics:read`/`traces:read`. The global Workflow run grant lets ordinary users
+run and schedule every registered Workflow, including `etf_grid_data_sync`.
+The `admin` role carries `agent_os:admin`, which grants all framework routes and
+bypasses framework isolation. Schedule writes combine the native schedule
+scopes with permission to run the target Workflow. Ordinary users still cannot
+schedule arbitrary extension HTTP endpoints, which remain admin-only targets.
+ETF Grid reuses `agent_os:admin` for instrument administration and shared sync,
+while normal portfolio routes self-scope both user and admin identities.
 
 ## 3. Configuration
 

@@ -1,11 +1,11 @@
 # Runtime Extensions — Architecture
 
 > Topic deep-dive companion to [`README.md`](README.md).
-> Status: **implemented** (v0.4.1; logging conventions added in v0.4.2) —
+> Status: **implemented** (v0.4.1; Workflow contributions added in v0.6.5) —
 > the first extension (ETF Grid Trading) runs on this contract: in-tree
-> loader, toolkit on the Team Leader, versioned router.
+> loader, toolkit on the Team Leader, versioned router, and Agno Workflows.
 >
-> Last updated: 2026-11-01 (ETF Grid user isolation and admin selection).
+> Last updated: 2026-11-04 (extension Workflow contributions).
 
 ---
 
@@ -55,25 +55,27 @@ src/spectres/extensions/
     ├── core/                 # pure domain logic — no Agno/FastAPI/SQLAlchemy imports
     │   ├── grid.py           #   anchor, level, signal computation
     │   └── ledger.py         #   lot bookkeeping, position/cost replay
-    ├── marketdata.py         # external data access (FTShare MCP client, valuation feed)
+    ├── marketdata.py         # external data access (FTShare SDK client, valuation feed)
     ├── models.py             # SQLAlchemy tables, all prefixed `etf_grid_`
     ├── service.py            # application service: orchestrates core + marketdata + db
     ├── toolkit.py            # Agno Toolkit: the agent surface
+    ├── workflows.py          # Agno Workflows: scheduled/background execution
     └── api.py                # FastAPI APIRouter: the HTTP surface
 ```
 
 Layering inside an extension:
 
 ```
-toolkit.py ─┐
-            ├─> service.py ─> core/  (pure functions, testable in isolation)
-api.py ─────┘           ├────> marketdata.py
-                        └────> models.py (db)
+toolkit.py ──┐
+api.py ──────┼─> service.py ─> core/  (pure functions, testable in isolation)
+workflows.py ┘           ├────> marketdata.py
+                         └────> models.py (db)
 ```
 
-`toolkit.py` and `api.py` are thin adapters containing no business logic;
-both call the same `service.py`. This keeps the conversational answer and
-the standalone page consistent by construction.
+`toolkit.py`, `api.py`, and `workflows.py` are thin adapters containing no
+business logic; all call the same application services. This keeps the
+conversational answer, standalone page, and scheduled execution consistent by
+construction.
 
 ## 4. The extension contract
 
@@ -107,6 +109,7 @@ class ExtensionContribution:
     """What an extension gives back to Runtime."""
     toolkits: list[Toolkit] = field(default_factory=list)
     routers: list[APIRouter] = field(default_factory=list)
+    workflows: list[Workflow] = field(default_factory=list)
     schedules: list[ScheduleSpec] = field(default_factory=list)
 
 class Extension(Protocol):
@@ -170,8 +173,9 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     db = get_postgres_db()
     contributions = load_extensions(settings, db)  # discovery + DI, one call
     toolkits = [t for c in contributions for t in c.toolkits]
+    workflows = [w for c in contributions for w in c.workflows]
     team_leader_agent = create_team_leader_agent(db, extra_tools=toolkits)
-    return AgentOS(..., agents=[team_leader_agent], ...), contributions
+    return AgentOS(..., agents=[team_leader_agent], workflows=workflows, ...), contributions
 
 agent_os, contributions = create_agent_os()
 app = agent_os.get_app()
@@ -270,20 +274,28 @@ fresh one). Extensions participate by convention:
 - **Secrets never enter log records**; the redaction filter on core
   handlers is defense in depth, not a license to log carelessly.
 
-### 6.6 Schedule surface (since v0.5.0, ADR 0007)
+### 6.6 Workflow and schedule surfaces (since v0.5.0/v0.6.5)
 
-- Extensions declare scheduled tasks as `ScheduleSpec`s in their
-  contribution; core registers them with the AgentOS scheduler at startup
-  (`spectres/scheduler.py`, fail-loud like the loader). Full design:
+- Extensions return Agno `Workflow` instances in `contribution.workflows`;
+  core mounts them in AgentOS. A Workflow may contain one deterministic step
+  or an ordered sequence. There is no Runtime Action abstraction or dispatch
+  registry. Private steps obtain the owner from `RunContext.user_id` and fail
+  closed when it is absent.
+- Extensions declare only automatic system schedules as `ScheduleSpec`s; core
+  registers them idempotently at startup (`spectres/scheduler.py`, fail-loud
+  like the loader). Personal schedules are created through Agno-native CRUD and
+  are never seeded or reconciled by extension startup. Full design:
   [scheduled-tasks.md](scheduled-tasks.md).
-- **The carrier is the extension's own REST route** — a schedule fires one
-  HTTP call and **2xx is success**, so schedule-facing routes must map
-  "nothing usable was produced" to 5xx (partial failures may stay 200 with
-  a body-level `errors` field). The scheduler records only status/timings;
-  domain results live in the extension's own tables.
-- Scheduled endpoints must be **idempotent**: the DB lease coordinates
-  workers but side effects are not exactly-once, and a schedule missed
-  during downtime fires once on recovery.
+- **Workflow run endpoints are the preferred extension carrier** because native
+  schedule writes let ordinary users target only component runs covered by
+  their scopes. Arbitrary extension REST targets remain admin-only. Workflow
+  schedule runs retain linked run/session ids and structured output; ordinary
+  HTTP targets retain only status/timings. Schedule-management clients use
+  Agno's native `GET /workflows` catalog and derive run targets from Workflow
+  ids; there is no separate Runtime target catalog or system-target filter.
+- Scheduled work must be **idempotent**: the DB lease coordinates workers but
+  side effects are not exactly-once, and a schedule missed during downtime
+  fires once on recovery.
 - **Operational fields come from the extension's config fragment** (cron,
   timezone, enabled, retries — e.g. `ETF_GRID_SYNC_*`); structural fields
   (name, endpoint) stay in code, derived from the extension id.
@@ -308,9 +320,10 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   (idempotent, via the official FTShare SDK with `FTSHARE_API_KEY`), then
   recomputes only the current run owner's signals; `get_grid_status` reads
   that owner's latest snapshot. Schedule-side, one unowned
-  `etf_grid_daily_sync` (`0 9 * * 1,5`, Asia/Shanghai) calls the composite
-  `POST .../refresh` route, which syncs shared data once and then computes
-  each distinct ledger owner with independent error boundaries.
+  `etf_grid_daily_sync` (`0 9 * * 1,5`, Asia/Shanghai) runs the
+  `etf_grid_data_sync` Workflow only. Users can create independent personal
+  schedules for `etf_grid_recompute`; Runtime never creates them automatically
+  and does not guarantee sync-before-recompute ordering.
 - **Core** ports the proven computation (`level_of`, anchor scan, ledger
   replay with cost-protection sell pairing); grid parameters live in
   extension config, not hardcoded constants.
@@ -322,7 +335,7 @@ since the id appears in table names, tool names, env prefixes, and URLs.
 - **API**: self-scoped `GET .../status`, `POST .../signals/compute`, and
   `GET/POST .../trades`; shared `GET .../instruments` and authenticated-user
   `POST .../sync`; admin-only `GET .../admin/instruments` and
-  `PATCH .../admin/instruments/{symbol}`; admin/schedule/internal
+  `PATCH .../admin/instruments/{symbol}`; manual admin/internal
   `POST .../refresh`, all under `/api/v1/extensions/etf-grid`.
 - **Client contract**: chat shows the agent's markdown narration plus
   custom tool cards registered via CopilotKit `useRenderTool`

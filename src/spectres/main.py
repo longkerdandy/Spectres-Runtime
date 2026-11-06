@@ -5,9 +5,11 @@ import logging
 from agno.os import AgentOS
 from agno.os.authz.authorization import Authorization
 from agno.os.interfaces.agui import AGUI
+from agno.workflow import RemoteWorkflow, Workflow, WorkflowFactory
 from fastapi import FastAPI
 
 from spectres.agents.team_leader import create_team_leader_agent
+from spectres.api import create_api_router
 from spectres.auth import UserProfileSyncMiddleware
 from spectres.config import settings
 from spectres.db.postgres import get_postgres_db
@@ -25,9 +27,9 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     Logging is configured before anything else so startup logs use the
     runtime handlers. Extensions load between db
     setup and app assembly: their toolkits attach to the Team Leader, their
-    routers mount onto the FastAPI app returned by ``agent_os.get_app()``
-    before ``serve()``, and their schedules register with the AgentOS
-    scheduler.
+    Workflows join the AgentOS registry, their routers mount onto the FastAPI
+    app returned by ``agent_os.get_app()`` before ``serve()``, and their
+    schedules register with the AgentOS scheduler.
 
     When JWT verification material is configured, authentication is wired
     in as an ``Authorization`` object and the user directory is enabled;
@@ -42,6 +44,7 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     contributions = load_extensions(settings, db)
     register_schedules(contributions, db)
     toolkits = [toolkit for contribution in contributions for toolkit in contribution.toolkits]
+    workflows: list[Workflow | RemoteWorkflow | WorkflowFactory] = [workflow for contribution in contributions for workflow in contribution.workflows]
     team_leader_agent = create_team_leader_agent(db, extra_tools=toolkits)
     authorization = (
         Authorization(
@@ -58,12 +61,14 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     )
     base_app = FastAPI()
     base_app.add_middleware(UserProfileSyncMiddleware)
+    base_app.include_router(create_api_router(contributions))
     return (
         AgentOS(
             name="Spectres Runtime",
             base_app=base_app,
             db=db,
             agents=[team_leader_agent],
+            workflows=workflows,
             interfaces=[AGUI(agent=team_leader_agent)],
             cors_allowed_origins=settings.cors_allowed_origins,
             scheduler=settings.scheduler_enabled,

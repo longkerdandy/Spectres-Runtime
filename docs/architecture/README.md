@@ -22,7 +22,7 @@ Spectres is a personal AI assistant. Three physical layers:
 ┌──────────────────────────▼─────────────────────────────────┐
 │  Runtime (this repository)                                 │
 │  Master Agent (Agno Team) → Slave Agents → Tools           │
-│  Extensions: domain capabilities (tools + REST + schedules)│
+│  Extensions: domain capabilities (tools + REST + Workflows)│
 │  PostgreSQL: sessions, history, memory, extension tables   │
 └──────────────────────────┬─────────────────────────────────┘
                            │  authenticated channel to Edge Gateway
@@ -96,8 +96,8 @@ device state before acting and by routing sensitive actions through one shared
 HITL approval path.
 
 Layer 1 is implemented: the Agno AgentOS scheduler fires cron schedules at
-extension REST endpoints (ADR 0007 — see
-[Scheduled Tasks](scheduled-tasks.md)). Layers 2–3 are deferred design.
+extension Workflows or admin-managed REST endpoints (ADR 0007 and ADR 0011 —
+see [Scheduled Tasks](scheduled-tasks.md)). Layers 2–3 are deferred design.
 
 ## 4. Client Interface (AG-UI)
 
@@ -218,13 +218,14 @@ Implemented (through v0.6.1):
   web search when `TAVILY_API_KEY` is configured
   ([ADR 0006](../adr/0006-web-search-tool-tavily.md)).
 - **Extension system** ([Runtime Extensions](runtime-extensions.md)):
-  in-tree loader, contract of toolkits/routers/schedules; first extension
-  **ETF Grid Trading** (ledger, candles, valuation gate, daily signals,
-  REST API, agent toolkit).
+  in-tree loader, contract of toolkits/routers/Workflows/schedules; first
+  extension **ETF Grid Trading** (ledger, candles, valuation gate, daily
+  signals, REST API, agent toolkit).
 - **Structured logging**: JSONL daily files + stdout, `trace_id`-correlated,
   tool error envelope contract.
-- **Scheduled tasks** ([Scheduled Tasks](scheduled-tasks.md), ADR 0007):
-  Agno AgentOS scheduler; ETF Grid's sync + signal compute runs on cron.
+- **Scheduled tasks** ([Scheduled Tasks](scheduled-tasks.md), ADR 0007/0011):
+  Agno AgentOS scheduler and native CRUD; automatic system data sync plus
+  user-managed recompute schedules targeting extension Workflows.
 
 Not yet implemented: Slave Agents (Team coordinate mode), long-term memory
 (Mem0/Hindsight), knowledge base/RAG, tool ACL, judgment-layer automation,

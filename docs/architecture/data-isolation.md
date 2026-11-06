@@ -2,8 +2,8 @@
 
 > How AgentOS partitions user-owned data after JWT authentication. Framework
 > isolation was implemented in v0.6.1; ETF Grid added explicit private-ledger
-> and signal isolation in v0.6.3; native schedule read APIs were verified in
-> v0.6.4 ([plan](../plan/v0.6.4-scheduled-task-read-api.md)).
+> and signal isolation in v0.6.3; native schedule management and Workflow owner
+> propagation were verified in v0.6.4–v0.6.5.
 
 ---
 
@@ -92,19 +92,25 @@ scope, while an unowned schedule executes unscoped. Schedule-run records
 copy the parent schedule's `user_id` so history queries follow the same
 ownership rule.
 
-`etf_grid_daily_sync` remains unowned (`user_id IS NULL`). Regular users do
-not see it in `/schedules`; admins and the internal executor do. It targets
-an extension endpoint and creates no Agent session/run rows, only the
-unowned `agno_schedule_runs` audit records.
+`etf_grid_daily_sync` remains the only automatically registered ETF Grid
+schedule and is unowned (`user_id IS NULL`). Regular users do not see it in
+`/schedules`; admins and the internal executor do. It targets the unowned
+`etf_grid_data_sync` Workflow. Personal recompute schedules are never seeded:
+each user creates them through native CRUD and owns both the schedule and its
+Workflow runs. Recompute reads `RunContext.user_id`, which Agno derives from
+the verified caller or schedule owner rather than payload input.
 
-The native read surface is `GET /schedules`, `GET /schedules/{schedule_id}`,
+The native management surface includes POST/PATCH/DELETE, enable/disable,
+manual trigger, `GET /schedules`, `GET /schedules/{schedule_id}`,
 `GET /schedules/{schedule_id}/runs`, and
-`GET /schedules/{schedule_id}/runs/{run_id}`. It requires `schedules:read` or
-`agent_os:admin`. An ordinary caller's list is filtered to the JWT subject;
-direct reads of public, cross-user, or nonexistent rows all return 404. Admin
-reads are unscoped. Run history follows the parent's owner, and run detail
-validates both owner scope and the path's schedule/run relationship. Query
-parameters never override these ownership rules.
+`GET /schedules/{schedule_id}/runs/{run_id}`. Reads require `schedules:read`;
+writes additionally use `schedules:write` or `schedules:delete`, plus run
+permission for the target Workflow where Agno requires it. An ordinary
+caller's list is filtered to the JWT subject; direct reads and writes of
+public, cross-user, or nonexistent rows all return 404. Admin access is
+unscoped. Run history follows the parent's owner, and run detail validates
+both owner scope and the path's schedule/run relationship. Query parameters
+and payload user ids never override these ownership rules.
 
 ## 6. Extension-owned data
 
@@ -126,11 +132,12 @@ ETF Grid separates public inputs from private state:
   administrator uses them. They do not propagate the `None` returned for an
   admin by `get_scoped_user_id()` into an unscoped query. Client-supplied
   ownership fields are never authoritative.
-- Agent tools receive the same owner through Agno's injected
-  `RunContext.user_id`; the LLM has no ownership argument.
-- The unowned scheduled refresh reads distinct ledger owners internally and
-  computes each user's signals after one shared market-data sync. This is a
-  trusted system fan-out, not a public cross-user query path.
+- Agent tools and the recompute Workflow receive the same owner through Agno's
+  injected `RunContext.user_id`; neither the LLM nor schedule payload has an
+  ownership argument. An unowned recompute run fails closed.
+- The unowned data-sync Workflow never enumerates ledger owners. Personal
+  recompute schedules execute independently and affect only their owner's
+  signals; Runtime does not automatically create those schedules.
 
 Other per-user extensions should follow Agno's `user_scope.py` helper pattern
 or an equivalent explicit owner-validation contract on every read and write.

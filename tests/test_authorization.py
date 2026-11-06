@@ -16,6 +16,8 @@ USER_SCOPES = [
     "registry:read",
     "agents:read",
     "agents:*:run",
+    "workflows:read",
+    "workflows:run",
     "sessions:read",
     "sessions:write",
     "sessions:delete",
