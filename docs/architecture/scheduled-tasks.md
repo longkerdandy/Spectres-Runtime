@@ -6,7 +6,7 @@
 > [ADR 0007](../adr/0007-scheduled-tasks-agno-scheduler.md) and
 > [ADR 0011](../adr/0011-extension-workflows-for-scheduled-tasks.md).
 >
-> Last updated: 2026-11-04 (extension Workflows and user-managed recompute).
+> Last updated: 2026-11-06 (preserve stored system schedules on restart).
 
 ---
 
@@ -105,9 +105,13 @@ means a system task, not a schedule shared with every regular user. See
 
 ### 2.4 Management surfaces
 
-- **Code registration** (system tasks): `ScheduleManager(db).create(
-  ..., if_exists="update")` at startup — idempotent on restart. ETF Grid uses
-  this only for its sole unowned data-sync schedule.
+- **Code registration** (system tasks): startup looks up each unowned schedule
+  by name and skips an existing row without modifying it. Missing rows are
+  created with `if_exists="skip"`; `enabled=False` is applied only to a newly
+  created row. ETF Grid uses this only for its sole unowned data-sync schedule.
+  Configuration therefore supplies initial values, while subsequent cron,
+  targeting, retry, timing, and enable/disable changes belong to the database
+  and survive restarts.
 - **REST API** (personal tasks and administration): native `/schedules` CRUD,
   state changes, manual trigger, and run history. Runtime never seeds personal
   schedules.
@@ -186,22 +190,25 @@ class ExtensionContribution:
 
 After `load_extensions()`, core passes all Workflows to AgentOS and registers
 each declarative `ScheduleSpec` through `ScheduleManager`. Workflow ids are
-stable and extension-prefixed. Code registration remains idempotent and is used
-only for system schedules; personal schedules use native REST CRUD and are not
-reconciled or recreated at startup.
+stable and extension-prefixed. Code registration is used only for system
+schedules: an existing current-name row is skipped, while a row found under a
+declared `previous_names` entry is renamed without changing any other field.
+Personal schedules use native REST CRUD and are not reconciled or recreated at
+startup.
 
 Reference realization — **ETF Grid**:
 
 | Workflow | Ownership | Automatic schedule |
 |----------|-----------|--------------------|
-| `etf_grid_data_sync` | Unowned system execution | One `etf_grid_daily_sync`, using the configured cron and timezone |
+| `etf_grid_data_sync` | Unowned system execution | One `ETF Grid Daily Sync`, initially using the configured cron and timezone; migrated from `etf_grid_daily_sync` |
 | `etf_grid_recompute` | Required JWT/schedule owner | None; each user creates and manages their own |
 
 The data-sync Workflow calls `sync_market_data()` once for enabled configured
 symbols and never enumerates private ledger owners. Total source failure
 returns an unsuccessful step so schedule retries apply; partial source failure
-remains successful with a body-level `errors` field. Its schedule retains the
-existing `ETF_GRID_SYNC_*` operational configuration and unowned run history.
+remains successful with a body-level `errors` field. Its schedule uses
+`ETF_GRID_SYNC_*` for initial operational configuration and retains its stored
+configuration, identity, and unowned run history on later restarts.
 
 The recompute Workflow calls `compute_daily_signals(user_id=...)` with
 `RunContext.user_id`. Missing identity fails closed, and payload user ids are

@@ -193,18 +193,55 @@ def test_unowned_schedule_is_hidden_from_users_but_visible_to_admin(isolated_cli
     """The system ETF schedule remains unowned rather than becoming user-shared."""
     user_response = isolated_client.get("/schedules", headers=_headers("alice"))
     assert user_response.status_code == 200
-    assert "etf_grid_daily_sync" not in {row["name"] for row in user_response.json()["data"]}
+    assert "ETF Grid Daily Sync" not in {row["name"] for row in user_response.json()["data"]}
 
     admin_response = isolated_client.get("/schedules", headers=_headers("operator", ["agent_os:admin"]))
     assert admin_response.status_code == 200
-    assert "etf_grid_daily_sync" in {row["name"] for row in admin_response.json()["data"]}
+    assert "ETF Grid Daily Sync" in {row["name"] for row in admin_response.json()["data"]}
+
+
+def test_system_schedule_restart_preserves_stored_configuration(isolated_client: TestClient) -> None:
+    """Startup registration does not overwrite administrator-managed schedule fields."""
+    from spectres import main as main_module
+    from spectres.scheduler import register_schedules
+
+    db = get_postgres_db()
+    row = db.get_schedule_by_name("ETF Grid Daily Sync", user_id=None)
+    assert row is not None
+    fields = (
+        "cron_expr",
+        "endpoint",
+        "method",
+        "payload",
+        "timezone",
+        "timeout_seconds",
+        "max_retries",
+        "retry_delay_seconds",
+        "enabled",
+        "next_run_at",
+    )
+    original = {field: row[field] for field in fields}
+    administrator_changes = original | {
+        "cron_expr": "15 4 * * 3",
+        "enabled": False,
+        "next_run_at": 1760000001,
+    }
+    assert db.update_schedule(row["id"], **administrator_changes) is not None
+    try:
+        register_schedules(main_module.extension_contributions, db)
+        stored = db.get_schedule_by_name("ETF Grid Daily Sync", user_id=None)
+        assert stored is not None
+        assert {field: stored[field] for field in fields} == administrator_changes
+        assert db.get_schedule_by_name("etf_grid_daily_sync", user_id=None) is None
+    finally:
+        db.update_schedule(row["id"], **original)
 
 
 @pytest.mark.asyncio
 async def test_unowned_schedule_still_executes(isolated_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """The official Executor records a successful unowned run under isolation."""
     db = get_postgres_db()
-    schedule_row = db.get_schedule_by_name("etf_grid_daily_sync")
+    schedule_row = db.get_schedule_by_name("ETF Grid Daily Sync")
     assert schedule_row is not None
     schedule = Schedule.from_dict(schedule_row)
     assert schedule.user_id is None

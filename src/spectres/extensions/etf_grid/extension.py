@@ -38,7 +38,8 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
         workflows=create_workflows(config=config, instrument_service=instruments),
         schedules=[
             ScheduleSpec(
-                name="etf_grid_daily_sync",
+                name="ETF Grid Daily Sync",
+                previous_names=("etf_grid_daily_sync",),
                 cron=config.sync_cron,
                 endpoint=f"/workflows/{DATA_SYNC_WORKFLOW_ID}/runs",
                 method="POST",

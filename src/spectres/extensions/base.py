@@ -25,12 +25,13 @@ class ScheduleSpec:
 
     A schedule is ``{cron, endpoint, method, payload}``: the AgentOS
     scheduler fires one HTTP call to ``endpoint`` on the cron cadence, and
-    for non-run endpoints a 2xx response is success. All fields are
-    required except ``payload``; registration always uses
-    ``if_exists="update"`` so restarts converge the DB row to code.
+    for non-run endpoints a 2xx response is success. All fields are required
+    except ``payload`` and ``previous_names``. Startup creates missing rows
+    and preserves existing configuration; previous names allow a system
+    schedule to be renamed without changing its identity or run history.
     """
 
-    name: str  # unique, prefixed with the extension id, e.g. "etf_grid_daily_sync"
+    name: str  # unique per owner; system schedules may use a human-readable display name
     cron: str
     endpoint: str
     method: str
@@ -38,7 +39,8 @@ class ScheduleSpec:
     timeout_seconds: int
     max_retries: int
     retry_delay_seconds: int
-    enabled: bool  # False: register (idempotently) then disable, so config state converges the DB row
+    enabled: bool  # Applied only when creating the row; later administrator changes survive restarts
+    previous_names: tuple[str, ...] = ()
     payload: dict[str, Any] | None = None
 
 

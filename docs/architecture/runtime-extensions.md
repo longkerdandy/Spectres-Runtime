@@ -5,7 +5,7 @@
 > the first extension (ETF Grid Trading) runs on this contract: in-tree
 > loader, toolkit on the Team Leader, versioned router, and Agno Workflows.
 >
-> Last updated: 2026-11-04 (extension Workflow contributions).
+> Last updated: 2026-11-06 (preserve stored system schedules on restart).
 
 ---
 
@@ -101,8 +101,8 @@ class ScheduleSpec:
     endpoint: str           # fired with one HTTP call on the cron cadence
     method: str = "POST"
     # ... payload, timezone, timeout_seconds, max_retries,
-    #     retry_delay_seconds, enabled — all required except payload;
-    #     registration always uses if_exists="update"
+    #     retry_delay_seconds, enabled, previous_names — all required except
+    #     payload and previous_names; existing rows are never reconfigured
 
 @dataclass
 class ExtensionContribution:
@@ -134,9 +134,10 @@ Rules:
 
 ### 4.1 Naming convention
 
-The extension id is defined once in snake_case (`etf_grid`); every surface
-derives from it. Rule of thumb: **snake_case everywhere, except URLs which
-use kebab-case** — the only surface that transforms the id.
+The extension id is defined once in snake_case (`etf_grid`); machine-facing
+surfaces derive from it. Rule of thumb: **snake_case for identifiers, except
+URLs which use kebab-case**. Schedule names are user-visible display names and
+may use human-readable capitalization and spaces.
 
 | Surface | Form | Example |
 |---------|------|---------|
@@ -145,6 +146,7 @@ use kebab-case** — the only surface that transforms the id.
 | Tool function names | snake_case (provider tool-name charset limits) | `get_grid_status` |
 | Env var prefix | UPPER_SNAKE | `ETF_GRID_...` |
 | URL paths | kebab-case | `/api/v1/extensions/etf-grid/...` |
+| Schedule display name | Human-readable | `ETF Grid Daily Sync` |
 
 The loader rejects ids that are not valid snake_case Python identifiers
 at load time, before any `register()` call.
@@ -296,10 +298,12 @@ fresh one). Extensions participate by convention:
 - Scheduled work must be **idempotent**: the DB lease coordinates workers but
   side effects are not exactly-once, and a schedule missed during downtime
   fires once on recovery.
-- **Operational fields come from the extension's config fragment** (cron,
-  timezone, enabled, retries — e.g. `ETF_GRID_SYNC_*`); structural fields
-  (name, endpoint) stay in code, derived from the extension id.
-  `enabled=False` converges the DB row to disabled on restart.
+- **Operational fields come from the extension's config fragment only when a
+  schedule is first created** (cron, timezone, enabled, retries — e.g.
+  `ETF_GRID_SYNC_*`); names and endpoints stay in code. Existing rows are
+  skipped without changes, including their enabled state and next run time. A
+  `previous_names` match migrates only the display name and preserves the row
+  identity, stored configuration, and run history.
 
 ## 7. Reference extension: ETF Grid Trading (`etf_grid`)
 
@@ -320,10 +324,11 @@ since the id appears in table names, tool names, env prefixes, and URLs.
   (idempotent, via the official FTShare SDK with `FTSHARE_API_KEY`), then
   recomputes only the current run owner's signals; `get_grid_status` reads
   that owner's latest snapshot. Schedule-side, one unowned
-  `etf_grid_daily_sync` (`0 9 * * 1,5`, Asia/Shanghai) runs the
-  `etf_grid_data_sync` Workflow only. Users can create independent personal
-  schedules for `etf_grid_recompute`; Runtime never creates them automatically
-  and does not guarantee sync-before-recompute ordering.
+  `ETF Grid Daily Sync` (initially `0 9 * * 1,5`, Asia/Shanghai) runs the
+  `etf_grid_data_sync` Workflow only. The former `etf_grid_daily_sync` row is
+  renamed in place on startup. Users can create independent personal schedules
+  for `etf_grid_recompute`; Runtime never creates them automatically and does
+  not guarantee sync-before-recompute ordering.
 - **Core** ports the proven computation (`level_of`, anchor scan, ledger
   replay with cost-protection sell pairing); grid parameters live in
   extension config, not hardcoded constants.

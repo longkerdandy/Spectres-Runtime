@@ -188,4 +188,4 @@ class TestInternalServiceToken:
         response = authed_client.get("/schedules", headers={"Authorization": f"Bearer {internal_token}"})
         assert response.status_code == 200
         names = [row.get("name") for row in response.json().get("data", [])]
-        assert "etf_grid_daily_sync" in names
+        assert "ETF Grid Daily Sync" in names

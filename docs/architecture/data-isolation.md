@@ -92,7 +92,7 @@ scope, while an unowned schedule executes unscoped. Schedule-run records
 copy the parent schedule's `user_id` so history queries follow the same
 ownership rule.
 
-`etf_grid_daily_sync` remains the only automatically registered ETF Grid
+`ETF Grid Daily Sync` remains the only automatically registered ETF Grid
 schedule and is unowned (`user_id IS NULL`). Regular users do not see it in
 `/schedules`; admins and the internal executor do. It targets the unowned
 `etf_grid_data_sync` Workflow. Personal recompute schedules are never seeded:
