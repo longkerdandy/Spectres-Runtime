@@ -1,173 +1,137 @@
-# Database Schema — Table Inventory
+# Database Schema
 
-> Topic reference companion to [`README.md`](README.md).
-> Every table that actually exists in the Runtime's PostgreSQL database,
-> and its purpose. Runtime does not define core tables of its own:
-> session/agent state is managed by Agno (`agno_*` defaults, uncustomized).
-> Domain data lives in extension-owned tables (`<extension>_*` prefix
-> convention — see [Runtime Extensions §6.2](runtime-extensions.md)),
-> registered here once implemented.
->
-> Last updated: 2026-11-01.
+> Runtime table inventory for Agno 3.1.2 and current extensions. Last updated:
+> 2026-11-06.
 
----
+## 1. Storage Layout
 
-## 1. Agno-managed tables (`agno_*`)
+- Agno tables use the `ai` PostgreSQL schema and default `agno_*` names.
+- Extension tables use the default `public` schema and an `<extension>_` prefix.
+- Logto has a separate database in the same PostgreSQL container; its internal
+  tables are not listed here.
+- `get_postgres_db()` supplies one process-wide `PostgresDb` and connection pool.
+  Extensions create their SQLAlchemy models with `metadata.create_all()`; no
+  migration tool is configured.
+- Agno creates framework tables on demand. Extensions must access Agno data
+  through its db APIs, never by mutating framework tables directly.
 
-Created and owned by the framework; **lazy** — a table appears only when
-the corresponding feature is first used. Never query or mutate these from
-extension code; access goes through Agno's db handle.
+## 2. Agno-Managed Tables
 
-| Table | Purpose | Status |
-|-------|---------|--------|
-| `agno_sessions` | Agent/team sessions: state and conversation history, isolated by `session_id` | In use (Team Leader) |
-| `agno_runs` | Individual run records, FK to `agno_sessions` | In use |
-| `agno_schema_versions` | Framework schema migration bookkeeping | In use |
-| `agno_memories` | Long-term user memories, aggregated by `user_id` | Unused (no MemoryManager yet) |
-| `agno_metrics` | Token/usage metrics per run | Unused |
-| `agno_eval_runs` | Evaluation runs | Unused |
-| `agno_knowledge` | Knowledge base documents/chunks (RAG) | Unused |
-| `agno_traces` | Observability traces | Unused |
-| `agno_spans` | Observability spans (child of traces) | Unused |
-| `agno_components` | AgentOS component registry (agents/teams/workflows) | Unused |
-| `agno_component_configs` | Registry component configurations | Unused |
-| `agno_component_links` | Registry component relationships | Unused |
-| `agno_learnings` | Learning-machine store | Unused |
-| `agno_schedules` | Scheduler definitions | In use (system data sync and user-managed recompute) |
-| `agno_schedule_runs` | Scheduler execution records | In use (Workflow-linked system and personal runs) |
-| `agno_jobs` | Background jobs | Unused |
-| `agno_tool_results` | Tool call results (paused/HITL runs) | Unused |
-| `agno_approvals` | HITL approval requests | Unused |
-| `agno_auth_tokens` | AgentOS RBAC auth tokens | Unused |
-| `agno_service_accounts` | AgentOS service accounts | Unused |
-| `agno_mcp_oauth_clients` | MCP OAuth client registrations | Unused |
-| `agno_mcp_oauth_transactions` | MCP OAuth in-flight transactions | Unused |
-| `agno_mcp_oauth_codes` | MCP OAuth authorization codes | Unused |
-| `agno_mcp_oauth_refresh_tokens` | MCP OAuth refresh tokens | Unused |
-| `agno_mcp_oauth_keys` | MCP OAuth signing keys | Unused |
+“Available” means the schema exists in Agno, not that the corresponding Runtime
+feature is enabled.
 
-## 2. Extension tables
+| Table | Purpose | Runtime usage |
+|-------|---------|---------------|
+| `agno_sessions` | Agent/Team/Workflow sessions and history | Team Leader and Workflow sessions |
+| `agno_runs` | Run records linked to sessions | In use |
+| `agno_schema_versions` | Framework schema bookkeeping | In use |
+| `agno_schedules` | Schedule definitions and ownership | System and personal schedules |
+| `agno_schedule_runs` | Schedule attempts and linked output | In use |
+| `agno_jobs` | Durable background component jobs | Background Workflow runs |
+| `agno_authz_users` | JIT user directory and disabled flag | In use with JWT user directory |
+| `agno_memories` | User memories | API available; Team Leader memory not enabled |
+| `agno_metrics` | Usage aggregates | Available; not enabled on Team Leader |
+| `agno_eval_runs` | Evaluation runs | Available; unused |
+| `agno_knowledge` | Knowledge content | Available; RAG not enabled |
+| `agno_traces`, `agno_spans` | Trace and span observability | Available; tracing not enabled |
+| `agno_components`, `agno_component_configs`, `agno_component_links` | Component registry/configuration | Available; unused |
+| `agno_learnings` | Learning store | Available; unused |
+| `agno_compactions` | Session compaction records | Available; unused |
+| `agno_tool_results` | Stored tool-result content | Available; no explicit Runtime use |
+| `agno_approvals` | Human approval requests | Available; no current tool requests confirmation |
+| `agno_auth_tokens` | Provider/service token data | Available; unused |
+| `agno_service_accounts` | AgentOS service accounts | Available; scheduler uses internal token instead |
+| `agno_authz_policy`, `agno_authz_grouping`, `agno_authz_roles` | Agno-managed roles and assignments | Unused; Logto owns roles |
+| `agno_authz_audit`, `agno_authz_decisions` | Authorization audit trails | Unused; Agno audit sink not configured |
+| `agno_mcp_oauth_clients`, `agno_mcp_oauth_transactions`, `agno_mcp_oauth_codes`, `agno_mcp_oauth_refresh_tokens`, `agno_mcp_oauth_keys` | Built-in MCP OAuth server | Available; MCP OAuth not configured |
 
-Owned by Runtime extensions under the `<extension>_*` prefix convention.
-Created by the owning extension (SQLAlchemy `create_all`), never by Agno.
+If custom names or a different `db_schema` are passed to `PostgresDb`, update
+this inventory in the same change.
 
-### `etf_grid_instruments` (ETF Grid Trading extension)
+## 3. ETF Grid Tables
 
-Global administrator-controlled selection for symbols already defined in
-`ETF_GRID_PORTFOLIO`. Strategy values remain in configuration; this table
-owns only whether each symbol is enabled. Startup inserts missing configured
-symbols without overwriting existing choices. Model:
-`src/spectres/extensions/etf_grid/models.py`.
+Models live in `src/spectres/extensions/etf_grid/models.py`.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `symbol` | String(16) PK | configured FTShare full code |
-| `enabled` | Boolean NOT NULL | participates in normal sync/status/compute |
-| `updated_by` | String(128) NULL | last admin subject; NULL for bootstrap |
-| `created_at` / `updated_at` | DateTime(tz) NOT NULL | creation / last selection change |
+### `etf_grid_instruments`
 
-### `etf_grid_trades` (ETF Grid Trading extension)
-
-Append-only, user-owned trades ledger. An opening-position backfill is a
-plain `buy` (the backfill semantics go in `note`). Each user's ledger is the
-single source of truth for their positions; holdings and average cost are
-derived by replaying only rows with that `user_id`
-(`spectres.extensions.etf_grid.core.ledger.replay_ledger`). Model:
-`src/spectres/extensions/etf_grid/models.py`.
+Shared administrator-controlled enablement for symbols already present in
+`ETF_GRID_PORTFOLIO`. Startup inserts missing configured symbols without
+overwriting existing selections.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | BigInteger PK | autoincrement |
-| `user_id` | String(128) NOT NULL | owner JWT subject |
-| `trade_date` | Date NOT NULL | execution date |
-| `symbol` | String(16) NOT NULL | FTShare full code, e.g. `513330.XSHG` |
-| `side` | String(8) NOT NULL | CHECK in (`buy`, `sell`), generated from the `Side` enum |
-| `price` | Numeric(10,4) NOT NULL | execution price per share |
-| `quantity` | Integer NOT NULL | shares |
-| `gross_amount` | Numeric(12,2) NOT NULL | `price x quantity` |
-| `commission_rate` | Numeric(8,6) NOT NULL | broker commission rate |
-| `commission` | Numeric(10,2) NOT NULL | `ROUND_HALF_UP(gross_amount x commission_rate, 2)` unless overridden |
-| `net_amount` | Numeric(12,2) NOT NULL | buy: `gross + commission`; sell: `gross - commission` |
-| `source` | String(32) NOT NULL | `manual` / `agent`, default `manual` |
-| `note` | Text NULL | free-form note |
-| `created_at` | DateTime(tz) NOT NULL | `server_default=func.now()` |
+| `symbol` | String(16) PK | Configured FTShare full code |
+| `enabled` | Boolean NOT NULL | Included in normal sync/status/compute |
+| `updated_by` | String(128) NULL | Last admin subject; NULL for bootstrap |
+| `created_at`, `updated_at` | DateTime(tz) NOT NULL | Creation and last selection change |
 
-Index: `(user_id, symbol, trade_date, id)`. No CSV migration: the quant-advisor
-history is considered potentially inaccurate and will be re-entered manually
-(owner decision).
+### `etf_grid_trades`
 
-### `etf_grid_candles` (ETF Grid Trading extension)
-
-Forward-adjusted (qfq) daily-K cache, sourced solely from FTShare
-`ft_v1_etf_candlesticks` (`adjust_kind=Forward`). A dividend recomputes
-all historical bars, so rows are **upserted, never append-only** — sync
-refetches a trailing ~90-day window (covering the MA60 window) so
-re-adjustments self-heal. Model:
-`src/spectres/extensions/etf_grid/models.py`.
+Append-only, user-owned execution ledger. Positions and cost basis derive by
+replaying only the owner's rows. An opening-position backfill is a normal `buy`.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `symbol` | String(16) PK | FTShare full code, e.g. `513330.XSHG` (composite PK, part 1) |
-| `trade_date` | Date PK | trading day (composite PK, part 2) |
-| `open`/`high`/`low`/`close` | Numeric(10,4) NOT NULL | forward-adjusted OHLC |
-| `volume` | BigInteger NOT NULL | shares (800M+ values exist in history) |
-| `fetched_at` | DateTime(tz) NOT NULL | `server_default=func.now()`, refreshed on every upsert |
+| `id` | BigInteger PK | Autoincrement |
+| `user_id` | String(128) NOT NULL | Owner JWT subject |
+| `trade_date` | Date NOT NULL | Execution date |
+| `symbol` | String(16) NOT NULL | FTShare full code |
+| `side` | String(8) NOT NULL | CHECK: `buy` or `sell` |
+| `price` | Numeric(10,4) NOT NULL | Execution price per share |
+| `quantity` | Integer NOT NULL | Shares |
+| `gross_amount` | Numeric(12,2) NOT NULL | `price × quantity` |
+| `commission_rate` | Numeric(8,6) NOT NULL | Broker rate stored per trade |
+| `commission` | Numeric(10,2) NOT NULL | Rounded to cents unless overridden |
+| `net_amount` | Numeric(12,2) NOT NULL | Buy: gross + fee; sell: gross − fee |
+| `source` | String(32) NOT NULL | `manual` or `agent`; default `manual` |
+| `note` | Text NULL | Free-form note |
+| `created_at` | DateTime(tz) NOT NULL | Database timestamp |
 
-The composite PK is the upsert key and covers the only access pattern
-(history per symbol, date-ordered); no surrogate id, no extra indexes.
+Index: `(user_id, symbol, trade_date, id)`.
 
-### `etf_grid_valuation` (ETF Grid Trading extension)
+### `etf_grid_candles`
 
-Valuation series of the 930914 index — the input of the valuation gate
-(pause opening new grids when the index is expensive). Sourced solely
-from the csindex.com.cn public JSON API (`csindex.py`); `dyr` is
-reconstructed locally from the price index and its H20914 total-return
-twin. Model: `src/spectres/extensions/etf_grid/models.py`.
+Shared forward-adjusted daily candles from FTShare. Rows are upserted by symbol
+and date. Incremental sync refetches the configured trailing window so historical
+re-adjustments self-heal.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `trade_date` | Date PK | trading day |
-| `close` | Numeric(10,2) NOT NULL | price index close |
+| `symbol`, `trade_date` | String(16), Date | Composite primary/upsert key |
+| `open`, `high`, `low`, `close` | Numeric(10,4) NOT NULL | Forward-adjusted OHLC |
+| `volume` | BigInteger NOT NULL | Shares |
+| `fetched_at` | DateTime(tz) NOT NULL | Last refresh timestamp |
+
+### `etf_grid_valuation`
+
+Shared 930914 valuation history from the csindex public API. `dyr` is derived
+from the price index and H20914 total-return series. Rows are upserted by date.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `trade_date` | Date PK | Trading day |
+| `close` | Numeric(10,2) NOT NULL | Price-index close |
 | `pe_ttm` | Numeric(10,2) NOT NULL | PE-TTM |
-| `dyr` | Numeric(8,4) NULL | trailing-12m dividend yield (0.0532 = 5.32%); NULL for the first 252 trading days |
-| `fetched_at` | DateTime(tz) NOT NULL | `server_default=func.now()`, refreshed on every upsert |
+| `dyr` | Numeric(8,4) NULL | Trailing dividend yield; NULL before a full window exists |
+| `fetched_at` | DateTime(tz) NOT NULL | Last refresh timestamp |
 
-Single-index table (930914 only). Upsert semantics like candles so
-csindex history revisions self-heal.
+### `etf_grid_signals`
 
-### `etf_grid_signals` (ETF Grid Trading extension)
-
-Computed daily grid state snapshot plus advised limit orders per user and
-symbol, persisted by `compute_daily_signals(user_id=...)`. Signals are private
-because shares and open lots from the owner's ledger affect the advice.
-Execution model: actionable limit orders at grid boundaries, not the
-backtest's next-day-open operation. Model:
-`src/spectres/extensions/etf_grid/models.py`.
+Private daily grid snapshot and advised limit orders. Recomputing the same user,
+symbol, and date overwrites that row; execution history remains in the ledger.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `user_id` | String(128) PK | owner JWT subject (composite PK, part 1) |
-| `symbol` | String(16) PK | FTShare full code (composite PK, part 2) |
-| `trade_date` | Date PK | trading day the signal is for (composite PK, part 3) |
-| `close` | Numeric(10,4) NOT NULL | qfq close used for the computation |
+| `user_id`, `symbol`, `trade_date` | String(128), String(16), Date | Composite primary/upsert key |
+| `close` | Numeric(10,4) NOT NULL | Adjusted close used |
 | `anchor_ma60` | Numeric(10,4) NOT NULL | MA60 anchor |
-| `level` / `prev_level` | Integer NOT NULL | grid level today / yesterday (clamped to ±max_grids) |
-| `orders` | JSONB NOT NULL | advised limit orders `[{side, limit_price, grids, shares_est, kind, note}]` (triggered first, then pending buy, pending sell) |
-| `block_reason` | String(32) NULL | `gate_closed` / `max_grids_reached` / `cost_protection` / `no_position` |
-| `gate_metric_value` | Numeric(8,4) NULL | current gate metric |
-| `gate_percentile` | Numeric(6,4) NULL | metric percentile over full history, 0~1 |
+| `level`, `prev_level` | Integer NOT NULL | Current/previous grid level |
+| `orders` | JSONB NOT NULL | Advised limit-order list |
+| `block_reason` | String(32) NULL | Reason a level change was not actionable |
+| `gate_metric_value` | Numeric(8,4) NULL | Current gate metric |
+| `gate_percentile` | Numeric(6,4) NULL | Historical percentile, 0–1 |
 | `gate_closed` | Boolean NULL | NULL for gateless symbols |
-| `computed_at` | DateTime(tz) NOT NULL | `server_default=func.now()` |
+| `computed_at` | DateTime(tz) NOT NULL | Computation timestamp |
 
-Upsert on recompute: a same-day recomputation overwrites only that owner's
-row (the signal is advice, not fact; the audit trail lives in
-`etf_grid_trades`). No position columns — holdings derive from the same
-owner's ledger on demand.
-
-## 3. Notes
-
-- Single PostgreSQL database (dockerized, `agnohq/pgvector` image), shared
-  by Agno and the extensions under the `<extension>_*` prefix convention.
-  The pgvector extension is pre-installed for future knowledge/RAG use.
-- Table names above are Agno 3.0 defaults; if a custom name is ever passed
-  to `PostgresDb`, update this document in the same change.
+The local Docker PostgreSQL image pre-installs pgvector for future knowledge/RAG
+use; no current table above uses vectors.

@@ -1,201 +1,147 @@
-# Authentication
+# Authentication and Authorization
 
-> How requests to the Runtime are authenticated and authorized: self-hosted
-> Logto (OIDC) issues per-user JWTs with Agno scopes; AgentOS verifies them
-> locally and enforces permissions. Decision rationale:
-> [ADR 0009](../adr/0009-idp-logto-self-hosted.md) and
-> [ADR 0010](../adr/0010-logto-rbac-agno-jwt-scopes.md).
-> Authentication implemented in v0.6.0; Logto RBAC added in v0.6.2; schedule
-> read authorization verified in v0.6.4; Workflow-targeted schedule writes
-> added in v0.6.5.
-
----
+> Current Logto/JWT integration and AgentOS scope enforcement. Decision history:
+> ADR 0009 and ADR 0010. Last updated: 2026-11-06.
 
 ## 1. Request Path
 
-```
-Browser SPA (Web Client)                     Logto (docker, :3001/:3002)
-┌─────────────────────────┐                  ┌───────────────────────────┐
-│ @logto/react SDK        │  auth code+PKCE  │ sign-in page, OIDC issuer │
-│ LogtoProvider           │ ───────────────> │ http://<host>:3001/oidc   │
-│ getAccessToken(resource)│ <─────────────── │ signs ES384 JWT           │
-└──────────┬──────────────┘   JWT access     └─────────────▲─────────────┘
-           │                token (aud = API resource)     │ shares PostgreSQL
-           │ Authorization: Bearer <jwt>                   │ (own database)
-           ▼                                               │
-┌──────────────────────────────────────────────────────────┴────────────┐
-│ Runtime (AgentOS, :7777)                                              │
-│  JWTMiddleware: verify signature (JWT_JWKS_FILE) + iss + aud          │
-│  ScopeAuthorizationProvider: enforce JWT scopes per framework route   │
-│  UserDirectory (user_directory=True): JIT roster, disabled kill switch│
-└───────────────────────────────────────────────────────────────────────┘
+```text
+Web Client ──auth code + PKCE──> Logto (:3001/:3002)
+Web Client <──JWT access token── Logto
+Web Client ──Bearer JWT────────> Runtime / AgentOS (:7777)
 ```
 
-- Every HTTP route requires a verified Bearer JWT except `/health` and the
-  docs endpoints. No token or an invalid token → 401; a valid token from a
-  **disabled** user → 403. Insufficient scopes usually produce 403.
-- Logto owns the `user` and `admin` roles and their assignments. Agno's
-  scope provider enforces the resulting permissions; there is no Runtime
-  role store or `/authz` API.
-- [Per-user data isolation](data-isolation.md) scopes framework data to the
-  JWT subject. `agent_os:admin` is the operational cross-user break-glass.
-- `sub` of the JWT is the AgentOS `user_id`. On a subject's first request
-  the UserDirectory auto-provisions a roster row
-  (`ai.agno_authz_users` in the Runtime database). Disabling a user
-  (Console deletion does **not** do this — use the roster) revokes access
-  even while their token is still valid.
+AgentOS verifies the token signature, issuer, and audience locally, then enforces
+Agno-native scopes. Logto uses its own database in the shared PostgreSQL
+container; Runtime exports Logto's JWKS to a local file.
+
+- Routes require a verified Bearer JWT except `/health` and documentation
+  endpoints. Missing/invalid tokens return 401; disabled users or insufficient
+  permissions return 401/403 depending on the middleware path.
+- JWT `sub` is the Runtime `user_id` and directory `/users.id`.
+- AgentOS just-in-time provisions `ai.agno_authz_users`.
+  `UserProfileSyncMiddleware` refreshes the display name from later tokens.
+  Setting directory `disabled` denies access even while a token remains valid.
+- Logto owns `user`/`admin` roles and assignments. Runtime has no separate role
+  store or custom `/authz` API.
+- [Per-user isolation](data-isolation.md) is separate from authentication and
+  scope authorization. `agent_os:admin` is the cross-user break-glass scope.
 
 ## 2. Token Contract
 
-| Claim | Value | Checked by Runtime |
-|-------|-------|--------------------|
-| `iss` | `$LOGTO_ENDPOINT/oidc` (e.g. `http://localhost:3001/oidc`) | yes (`JWT_ISSUER`) |
-| `aud` | API resource URI, `https://spectres.runtime/api` | yes (`JWT_AUDIENCE`) |
-| `sub` | Logto user id (or M2M app id) | identity and `/users.id` |
-| `name` | Logto user's display name | `/users.name`; refreshed on authenticated requests |
-| `scopes` | Array of Agno-native permissions granted for the API resource | yes (route authorization) |
-| `exp`/`iat` | 1 h lifetime; SDK refreshes via refresh token | yes (signature validation) |
-| signature | ES384, OIDC signing key | yes (`JWT_JWKS_FILE`) |
+| Claim | Runtime use |
+|-------|-------------|
+| `iss` | Must match `JWT_ISSUER`, normally `$LOGTO_ENDPOINT/oidc` |
+| `aud` | Must match `JWT_AUDIENCE`, normally `https://spectres.runtime/api` |
+| `sub` | Authenticated user or machine identity |
+| `name` | User-directory display name, refreshed on authenticated requests |
+| `scopes` | String array of Agno-native permissions |
+| signature | Verified using `JWT_JWKS_FILE` or the local symmetric key |
 
-Logto only mints a **JWT** access token when the client requests the API
-resource indicator; without it the token is opaque and the Runtime rejects
-it. The Web Client requests the resource via `VITE_LOGTO_API_RESOURCE`.
-Logto's custom claims emit `scopes` as a string array; the standard OAuth
-`scope` string is space-delimited and is not split by Agno.
+The Web Client must request the configured API resource; otherwise Logto may
+return an opaque token that Runtime cannot use. Agno reads the custom `scopes`
+array, not the standard space-delimited OAuth `scope` string.
 
-The default `user` role carries `config:read`, `registry:read`,
-`agents:read`, `agents:*:run`, `workflows:read`, `workflows:run`,
-session/memory/schedule/approval read-write-delete scopes, and
-`metrics:read`/`traces:read`. The global Workflow run grant lets ordinary users
-run and schedule every registered Workflow, including `etf_grid_data_sync`.
-The `admin` role carries `agent_os:admin`, which grants all framework routes and
-bypasses framework isolation. Schedule writes combine the native schedule
-scopes with permission to run the target Workflow. Ordinary users still cannot
-schedule arbitrary extension HTTP endpoints, which remain admin-only targets.
-ETF Grid reuses `agent_os:admin` for instrument administration and shared sync,
-while normal portfolio routes self-scope both user and admin identities.
+The current ordinary `user` role includes config/registry/agent reads,
+`agents:*:run`, `workflows:read`, global `workflows:run`, session/memory/
+schedule/approval read-write-delete scopes, and metrics/trace reads. Global
+Workflow permission lets ordinary users run and schedule every registered
+Workflow, including `etf_grid_data_sync`; it does not permit arbitrary extension
+HTTP schedule targets. The `admin` role carries `agent_os:admin`.
+
+ETF Grid custom routes explicitly self-scope normal portfolio operations for
+both users and administrators. Instrument administration and composite
+`/refresh` require `agent_os:admin` or the verified internal caller; `/sync` is
+available to any authenticated user or internal caller.
 
 ## 3. Configuration
 
-Runtime (`.env` with optional `.env.local` overrides, see `.env.example`):
-
 | Variable | Purpose |
 |----------|---------|
-| `LOGTO_DB_DATABASE` / `LOGTO_PORT` / `LOGTO_ADMIN_PORT` / `LOGTO_ENDPOINT` / `LOGTO_ADMIN_ENDPOINT` | Logto compose service wiring |
-| `JWT_JWKS_FILE` | Local JWKS exported from Logto; presence turns authentication **on** |
-| `JWT_AUDIENCE` | API resource URI registered in the Logto Console |
-| `JWT_ISSUER` | `$LOGTO_ENDPOINT/oidc`; pins the accepted issuer |
-| `JWT_ALGORITHM` | `ES384` (default; Logto's signing algorithm) |
-| `JWT_VERIFICATION_KEY` | Symmetric HS256 key for local development **instead of** Logto (see §5) |
+| `LOGTO_DB_DATABASE`, `LOGTO_PORT`, `LOGTO_ADMIN_PORT` | Compose service wiring |
+| `LOGTO_ENDPOINT`, `LOGTO_ADMIN_ENDPOINT` | Public Logto and Console endpoints |
+| `JWT_JWKS_FILE` | Exported Logto JWKS; enables JWT authentication |
+| `JWT_AUDIENCE`, `JWT_ISSUER` | Accepted token audience and issuer |
+| `JWT_ALGORITHM` | `ES384` by default for Logto |
+| `JWT_VERIFICATION_KEY` | Symmetric local-development key instead of JWKS |
 
-With neither `JWT_JWKS_FILE` nor `JWT_VERIFICATION_KEY` set the Runtime
-boots open (no authentication) — that is the pre-v0.6.0 development mode,
-not a deployment configuration. Setting `JWT_AUDIENCE`/`JWT_ISSUER`
-without key material fails fast at startup.
+Without either verification key, Runtime starts in open local-development mode.
+This is not a deployment security configuration. Configuring an audience or
+issuer without key material fails settings validation.
 
-Web Client: `VITE_LOGTO_ENDPOINT`, `VITE_LOGTO_APP_ID`,
-`VITE_LOGTO_API_RESOURCE` (see the client repo's `.env.example`).
+## 4. Logto Setup and Operations
 
-## 4. Logto Operations Runbook
+### Initial setup
 
-### First-time deployment
+1. Start services with both environment layers:
 
-1. `docker compose --env-file .env --env-file .env.local up -d` (the `logto` service shares the `spectres-db`
-   PostgreSQL container and stores its data in `LOGTO_DB_DATABASE`).
-2. First boot against an empty database requires the seed, run once:
-   `docker compose --env-file .env --env-file .env.local run --rm --entrypoint npm logto -w /etc/logto run db seed`
-   (then `... run alteration deploy latest` if the image tag moved since).
-3. If startup fails on a missing-RLS check for `_logto_configs`:
-   `ALTER TABLE _logto_configs ENABLE ROW LEVEL SECURITY;` (ENABLE, not
-   FORCE) on the Logto database.
-4. Console at `http://localhost:3002`: register the admin account (first
-   user becomes Console admin), create the **API resource** (identifier =
-   `JWT_AUDIENCE`), create the **SPA application** (redirect URIs of the
-   Web Client), create end users under User management.
-5. Export the JWKS for the Runtime:
-   `curl -sf $LOGTO_ENDPOINT/oidc/jwks > docker/logto/jwks.json`
-   (gitignored; never committed).
-
-### RBAC and Agno scope claims
-
-1. In Console → API resources → the Runtime resource → Permissions, create
-   the ordinary scopes listed in §2 and `agent_os:admin` using those exact
-   Agno-native names.
-2. In Console → Roles, create a global `user` role with the ordinary scopes
-   and enable it as the default for new users. Assign it to existing
-   ordinary users. Create `admin` with only `agent_os:admin` and assign it
-   only to intended administrators.
-3. In Console → JWT claims, add an access-token `getCustomJwtClaims` script
-   that translates Logto's granted API-resource scopes into Agno's array
-   contract and includes the user's display name:
-
-   ```javascript
-   const getCustomJwtClaims = async ({ context }) => {
-     const scopes = (context.user?.roles ?? [])
-       .flatMap((role) => role.scopes ?? [])
-       .filter((scope) => scope.resource?.indicator === "https://spectres.runtime/api")
-       .map((scope) => scope.name);
-     return { scopes: [...new Set(scopes)], name: context.user?.name };
-   };
+   ```bash
+   docker compose --env-file .env --env-file .env.local up -d
    ```
 
-   The source is Logto's server-side role assignments and user profile, not
-   client-provided role data or the OAuth `scope` request. This works with the
-   SPA's existing `openid profile` request. Custom JWT scripts run with Logto
-   host privileges: only trusted administrators may create, edit, or test them.
-4. Sign in as each role and inspect the access-token payload locally (never
-   log it): `scopes` must be an array; admin includes `agent_os:admin` and
-   user does not; `name` matches the Logto display name. Verify user
-   `/agents` → 200 and `/users` → 403, admin `/users` → 200 with readable
-   `id`/`name` fields, plus ordinary AG-UI and admin cross-user reads.
-5. Role/permission and profile changes affect newly issued tokens. Refresh or sign in
-   again when testing them; Runtime's directory `disabled` flag remains the
-   immediate revocation path. The Web Client's management-only presentation
-   is implemented separately in its v0.3.1 milestone.
+2. Seed an empty Logto database once:
 
-### Key rotation
+   ```bash
+   docker compose --env-file .env --env-file .env.local run --rm --entrypoint npm logto -w /etc/logto run db seed
+   ```
 
-Logto never rotates signing keys automatically, so the exported JWKS file
-stays valid indefinitely. After a **manual** rotation
-(`logto db config rotate oidc.privateKeys`): re-export the JWKS (step 5)
-and restart the Runtime. Until then, tokens signed with the new key fail
-verification.
+3. In Console (`LOGTO_ADMIN_ENDPOINT`), create the API resource using
+   `JWT_AUDIENCE`, create the SPA application and redirect URIs, and create users.
+4. Export the JWKS to the configured gitignored path:
 
-### Upgrades
+   ```bash
+   curl -sf "$LOGTO_ENDPOINT/oidc/jwks" > docker/logto/jwks.json
+   ```
 
-Logto upgrades are two-step by design: bump the image tag, then run
-`docker compose --env-file .env --env-file .env.local run --rm --entrypoint npm logto -w /etc/logto run alteration deploy latest`
-**before** starting the new version — the app refuses to boot on a pending
-alteration.
+If Logto reports a missing RLS check for `_logto_configs`, enable RLS on that
+table in the Logto database. Do not use `FORCE ROW LEVEL SECURITY`.
 
-### Smoke test (M2M token)
+### Roles and custom claims
 
-Create a Machine-to-Machine app in the Console with a role holding a
-permission of the Runtime API resource, then:
+Create the Agno scopes as API-resource permissions. Assign ordinary scopes to a
+default global `user` role and only `agent_os:admin` to `admin`. Add a trusted
+Logto access-token custom-claims script equivalent to:
 
-```bash
-curl -sf -X POST $LOGTO_ENDPOINT/oidc/token \
-  -d grant_type=client_credentials -d client_id=<id> -d client_secret=<secret> \
-  -d resource=https://spectres.runtime/api -d scope=<permission>
-curl -H "Authorization: Bearer <access_token>" http://localhost:7777/agents
+```javascript
+const getCustomJwtClaims = async ({ context }) => {
+  const scopes = (context.user?.roles ?? [])
+    .flatMap((role) => role.scopes ?? [])
+    .filter((scope) => scope.resource?.indicator === "https://spectres.runtime/api")
+    .map((scope) => scope.name);
+  return { scopes: [...new Set(scopes)], name: context.user?.name };
+};
 ```
 
-## 5. Local Development Without Logto (Dev Tokens)
+The resource filter must match `JWT_AUDIENCE` when it differs from the example.
+Role, permission, and profile changes require a refreshed/new token. Verify that
+ordinary users can access `/agents` but not `/users`, while admins can access
+both. Never log real tokens.
 
-For curl-driven development and tests, skip Logto entirely: set
-`JWT_VERIFICATION_KEY` to a symmetric secret (and
-`JWT_ALGORITHM=HS256`/`JWT_AUDIENCE` to match), then mint tokens with
-Agno's helper (see `tests/test_auth.py` for the working pattern):
+### Rotation and upgrades
+
+After manually rotating Logto OIDC signing keys, re-export the JWKS and restart
+Runtime. For a Logto image upgrade, apply pending alterations before starting the
+new version:
+
+```bash
+docker compose --env-file .env --env-file .env.local run --rm --entrypoint npm logto -w /etc/logto run alteration deploy latest
+```
+
+## 5. Local Development Tokens
+
+To exercise the same middleware without Logto, set `JWT_VERIFICATION_KEY`, use
+`JWT_ALGORITHM=HS256`, and configure a matching audience. Tests use Agno's helper:
 
 ```python
 from agno.os.auth import create_dev_token
+
 token = create_dev_token(
     "dev-user",
-    secret=<JWT_VERIFICATION_KEY>, audience=<JWT_AUDIENCE>,
-    scopes=["agent_os:admin"],  # optional: cross-user data break-glass
+    secret=<JWT_VERIFICATION_KEY>,
+    audience=<JWT_AUDIENCE>,
+    scopes=["agent_os:admin"],  # Optional break-glass access
 )
 ```
 
-This exercises the exact same middleware path as a Logto token. The
-scheduled-tasks channel (AgentOS internal service token) is independent of
-JWT configuration and keeps working in both modes.
+Use only a local development key. The scheduler's internal service-token channel
+is independent of Logto and continues to work in JWT mode.

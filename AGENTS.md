@@ -1,237 +1,78 @@
 # AGENTS.md — Spectres Runtime
 
-> This document is for coding agents working on the project. It defines the project background, high-level architecture, module boundaries, and the scope of the current subproject: Runtime.
->
-> Last updated: 2026-11-01
+> Guidance for coding agents. Last updated: 2026-11-06.
 
----
+## 1. Project Context
 
-## 1. Project Background
+Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents, tools, memory, scheduled work, and extension APIs. The Client and Edge are separate projects.
 
-**Spectres** is an AI personal assistant system. Users interact with one or more AI agents through natural language to complete daily tasks, retrieve information, control devices, and automate routines.
+- **Stack**: Python 3.13, Agno AgentOS, FastAPI, PostgreSQL, pydantic-settings, and `uv`.
+- **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, extension loading, Agno Workflows, and native scheduled tasks. The first extension is ETF Grid Trading.
+- **Not implemented**: Team/Slave orchestration, long-term memory, knowledge/RAG, tool ACL, judgment-based automation, notification delivery, and Edge proxying. Do not describe these as existing behavior.
+- **Source of truth**: [`docs/architecture/`](docs/architecture/README.md) describes current behavior; [`docs/adr/`](docs/adr/README.md) records decisions; [`docs/plan/`](docs/plan/) tracks milestones. Update affected documentation when behavior changes.
 
-- **Core concept**: A **Master Agent** serves as the user-facing entry point. It understands user intent, decomposes tasks, delegates to **Slave Agents** (specialists), and returns a unified result to the user.
-- **Long-term user profiles**: A key goal is to build rich, persistent user profiles that evolve over time. Runtime integrates third-party memory systems to capture preferences, habits, and personal context beyond a single session.
-- **Foundation**: Built on the [Agno](https://docs.agno.com/) platform. Agno provides the agent lifecycle, tool invocation, memory, knowledge, multi-agent teams, and monitoring primitives. Runtime is expected to run on **Agno AgentOS**.
-- **Product surface**: Users interact through the **Client** layer (Web / Mobile App). The Runtime delegates physical-device control to the **Edge** layer.
+## 2. Architectural Constraints
 
----
+- Exactly one logical user-facing Master Agent per user. Channels and proactive runs must not create another Master. Proactive behavior uses isolated sessions or Workflows.
+- Future Master/Slave orchestration uses Agno `Team` in `coordinate` mode. Do not add a custom orchestration dispatcher.
+- Prefer Agno primitives over custom equivalents. In particular, use the AgentOS scheduler, native `/schedules` API, and extension Workflows; do not add a custom scheduler, Action abstraction, dispatch registry, or parallel schedule API.
+- Conversation state is isolated by `session_id`; user-level data aggregates by `user_id`.
+- Runtime never controls hardware directly. Device operations must go through the authenticated, encrypted Edge channel. Client UI rendering and model training are out of scope.
+- Keep APIs versioned and preserve existing public contracts unless a breaking change is explicitly requested.
 
-## 2. High-Level Architecture
+## 3. Security and Ownership
 
-> The detailed, continuously updated system design lives in
-> [`docs/architecture/`](docs/architecture/README.md); this section keeps the
-> five-minute boundary overview. Decision rationale is frozen in
-> [`docs/adr/`](docs/adr/README.md).
+- Logto owns users, roles, and role assignments. JWT `sub` is the Runtime `user_id`; Agno-native JWT scopes authorize framework routes. `agent_os:admin` is the cross-user break-glass scope.
+- `AgentOS(user_isolation=True)` does **not** isolate extension tables or custom business logic. Explicitly scope every private read and write.
+- Derive ownership from verified request/run context (`request.state.user_id` or `RunContext.user_id`), never from LLM arguments, request payloads, or query parameters. Missing required identity must fail closed.
+- Unowned schedules are system tasks, not user-shared schedules. Personal schedules are created through native CRUD, never seeded at startup.
+- Sensitive operations require the shared human-confirmation path. Never commit secrets or log credentials/tokens.
 
-The system is split into three layers:
+## 4. Extension Rules
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         Client Layer                        │
-│   User-facing UI: Web App, Mobile App, mini-program, etc.   │
-│   Responsibilities: conversation UI, user input, status     │
-│   display, voice/text interaction.                          │
-└─────────────────────────┬───────────────────────────────────┘
-                          │  AG-UI protocol
-┌─────────────────────────▼───────────────────────────────────┐
-│                        Runtime Layer                        │
-│   Agent core runtime (this repository: Spectres-Runtime)    │
-│   Responsibilities: agent orchestration, tool dispatch,     │
-│   memory management, context handling, security policy.     │
-└─────────────────────────┬───────────────────────────────────┘
-                          │  secure channel to Edge Gateway
-┌─────────────────────────▼───────────────────────────────────┐
-│                          Edge Layer                         │
-│   Home LAN gateway / service connecting to physical devices │
-│   Responsibilities: protocol translation, device discovery, │
-│   command forwarding, state reporting, local execution.     │
-└─────────────────────────────────────────────────────────────┘
-```
+- Keep each capability under `src/spectres/extensions/<name>/`; core code must not import extension code.
+- Implement the contract in `src/spectres/extensions/base.py`: extensions may contribute toolkits, routers, Workflows, and declarative system schedules through an idempotent `register()`.
+- Keep `toolkit.py`, `api.py`, and `workflows.py` as thin adapters. Put business logic in services and pure domain code in `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy.
+- Extensions share the core PostgreSQL connection pool, use table names prefixed with the extension id, and must not access Agno-managed or other extensions' tables.
+- Use snake_case for Python identifiers and UPPER_SNAKE for environment prefixes; use kebab-case under `/api/v1/extensions/`.
+- Extension configuration belongs in the extension's settings fragment, not core `Settings`. Scheduled work must be idempotent. Startup must preserve existing stored schedule configuration.
+- Use `logging.getLogger(__name__)`; do not configure logging sinks in extensions. Log handled failures and sensitive-operation audit events without secrets.
 
-### 2.1 Layer Responsibilities
+## 5. Development Conventions
 
-| Layer | Main Responsibilities | Deployment Target |
-|-------|----------------------|-------------------|
-| **Client** | User interface, front-end authentication, conversation rendering, message display. | Browser / mobile / desktop. |
-| **Runtime** | Agent orchestration, tool invocation, memory persistence, context management, access control. | Cloud or local server / edge host. |
-| **Edge** | LAN device discovery, protocol adaptation for smart-home devices, command delivery, offline caching. | Home gateway / edge device. |
+- Write code, comments, documentation, and commit messages in English. Respond to the project owner in Chinese.
+- Follow existing naming and structural patterns. Add type annotations and use existing dependencies; confirm availability before introducing a library.
+- New required configuration uses explicit environment variables without defaults unless truly necessary. Development loads `.env` then `.env.local`; tests load `.env.test` then `.env.test.local`. Local override files and credentials stay untracked.
+- Do not reference ADRs, plans, or other documents in code comments or docstrings.
+- Add unit tests for new functionality and integration tests for agent-orchestration changes. Preserve authentication, ownership, and schedule-isolation coverage for related changes.
+- Check for nested `AGENTS.md` files before working in subdirectories.
+- Do not run Git mutations without explicit user permission; ask each time. When authorized, use English Conventional Commits with an imperative, lowercase subject.
 
-### 2.2 Master-Slave Agent Model
+## 6. Commands
 
-- **Master Agent**: The entry point for every user session. It interprets intent, decides whether to handle a request itself, and selects Slave Agents when needed.
-- **Slave Agents (Specialists)**: Focused agents for specific domains. Examples:
-  - `home-device-agent`: controls lights, AC, curtains, and other home devices.
-  - `calendar-agent`: schedules and queries events.
-  - `weather-agent`: weather lookup and travel advice.
-  - `knowledge-agent`: answers questions based on the knowledge base.
-- Slave Agents are invoked by the Master Agent through Agno's `Team` abstraction (`coordinate` mode); no custom dispatcher (see [ADR 0001](docs/adr/0001-agno-team-as-multi-agent-foundation.md)).
+Use `uv run` (or `.venv/bin/python` for direct Python invocation), not a global Python interpreter.
 
----
-
-## 3. Runtime Scope
-
-This repository implements the Runtime layer.
-
-### 3.1 Core Capabilities
-
-1. **Agent Runtime**
-   - Create, load, and destroy Agno agent instances.
-   - Manage the lifecycle of the Master Agent and registered Slave Agents.
-   - Support streaming and non-streaming responses.
-   - Remain model-agnostic: switch between online model providers without changing core agent logic.
-
-2. **Task Orchestration**
-   - Route user requests to the Master Agent.
-   - Let the Master Agent decide whether to respond directly, call one Slave Agent, or call multiple agents in parallel.
-   - Leverage Agno's multi-agent team and workflow primitives where they fit; no custom dispatcher (see [ADR 0001](docs/adr/0001-agno-team-as-multi-agent-foundation.md)).
-   - Support synchronous, asynchronous, parallel, and fallback invocation patterns as the project evolves.
-
-3. **Tool Registry**
-   - Maintain a central registry of tools available to agents.
-   - Provide common built-in tools such as HTTP calls, time utilities, and structured data access.
-   - Use Agno's tool integration patterns and standard connection mechanisms where appropriate.
-   - Device-control tools proxy commands to the Edge layer. Runtime never manipulates hardware directly.
-
-4. **Memory and Context**
-   - Short-term memory: current-session context window management.
-   - Long-term memory: user preferences, conversation summaries, and entity memory.
-   - Integrate third-party memory systems such as **Mem0** or **Hindsight** to build complex, long-term user profiles.
-   - Use Agno's Memory / Storage abstractions; allow the backing store to be swapped for pluggable storage backends to avoid vendor lock-in.
-
-5. **Knowledge Base**
-   - Document ingestion, embedding, and retrieval (RAG).
-   - Per-agent knowledge isolation where applicable.
-
-6. **Security and Permissions**
-   - Tool-level permissions: restrict which agents can invoke which tools.
-   - User-level isolation: a user can access only their own memory and data.
-   - Sensitive operations (e.g., unlocking doors) require explicit human-in-the-loop confirmation.
-   - All calls to the Edge layer must be authenticated and use an encrypted channel.
-
-7. **Client API**
-   - Expose endpoints for the Client layer using the **AG-UI protocol**.
-   - Session management: create, continue, list, and archive sessions.
-   - Unified message format supporting text, images, voice, and structured action cards.
-
-8. **Edge Gateway Proxy**
-   - Forward device commands to the Edge Gateway instead of directly accessing LAN devices.
-   - Use a unified device description model to hide brand/protocol differences.
-   - Receive device-state updates from Edge and keep relevant agents in sync.
-
-### 3.2 Explicitly Out of Scope
-
-The following belong to other subprojects or services. Runtime uses them through well-defined interfaces only:
-
-- **Client UI rendering**: handled by the Client layer.
-- **Device protocol translation**: handled by the Edge layer.
-- **Model training / fine-tuning**: Runtime consumes LLM APIs, but does not train models.
-
----
-
-## 4. Development Guidelines
-
-- **Language**: Python; use type annotations wherever practical.
-- **Framework**: Prefer Agno's Agent, Tool, Memory, Storage, Team, and Workflow abstractions rather than rebuilding equivalent primitives.
-- **Virtual environment**: The project uses `uv` and a `.venv` directory. Because each `Bash` invocation runs in a fresh shell, use `.venv/bin/python` or `source .venv/bin/activate && python ...` instead of relying on a globally available `python` command.
-- **Configuration**: Manage configuration through environment variables and a typed configuration library. Commit `.env`, `.env.example`, and `.env.test` with non-sensitive values only. Keep `.env.local` and `.env.test.local` untracked. Development settings load `.env` followed by `.env.local`; test settings load `.env.test` followed by `.env.test.local`. Secrets must not be committed.
-- **Testing**: New functionality requires unit tests; changes to agent orchestration require integration tests.
-- **Monitoring**: Use Agno's monitoring and evaluation hooks where available to track agent performance and quality.
-- **Logging**: Use structured logging. Tool invocations, Edge commands, and permission checks must be auditable.
-- **API Stability**: Expose versioned APIs to the Client and Edge layers.
-
----
-
-## 5. Confirmed Decisions
-
-The following decisions are confirmed by the project owner:
-
-1. **Deployment**: Runtime must support both **local** and **cloud** deployment.
-2. **Multi-tenancy**: The architecture must support **multi-tenant** usage, but the first implementation targets a **single-user** scenario.
-3. **LLM**: Use **online model APIs** rather than local inference or self-hosted models.
-4. **Long-term memory**: Integrate third-party memory systems (e.g., **Mem0**, **Hindsight**) to support complex and persistent user profiles.
-5. **Multi-agent foundation**: Use Agno `Team` (`coordinate` mode) as the Master/Slave carrier; no custom orchestration dispatcher. Framework gaps (per-member state isolation, per-member tool ACL, per-member tenant isolation, remote members) are owned by Runtime code. See [ADR 0001](docs/adr/0001-agno-team-as-multi-agent-foundation.md).
-6. **Single Master**: Exactly one logical Master Agent per user — this is an architectural red line. Proactive behavior is modeled as scheduler/event-triggered runs of the same Master or as Workflows, never as a second user-facing agent. See [ADR 0002](docs/adr/0002-single-master-agent.md).
-7. **Automation**: Triggers are handled in three layers (deterministic rules with zero LLM calls; judgment-needed triggers as Master runs in isolated sessions; high-frequency events filtered at Edge). Session isolation is by `session_id`; the user profile aggregates by `user_id`. See [ADR 0003](docs/adr/0003-automation-trigger-layers-and-session-isolation.md).
-8. **AG-UI visibility**: Phase 1 accepts the framework's flattened single-voice stream with a custom dispatch-card renderer; per-Slave attribution is a later custom-mapping effort; protocol-native Subagent Events are the end state. See [ADR 0004](docs/adr/0004-ag-ui-team-visibility-strategy.md).
-9. **Deployment topology**: Clients reach Runtime only via AG-UI over HTTP(S) against a configurable endpoint (deployment location is a variable). The Runtime runs at home and is never directly publicly exposed; all remote clients enter through a cloud Gateway (Tencent Cloud HK Lighthouse, nginx reverse proxy over a WireGuard point-to-point tunnel to the home host) using plain HTTPS with nothing installed on user devices. Authentication is a Runtime-side responsibility, not the Gateway's. Multi-tenant evolution (Gateway as registry + router) remains future work. See [ADR 0005](docs/adr/0005-deployment-topology-and-client-access.md) (partially superseded) and [ADR 0008](docs/adr/0008-cloud-gateway-public-entry.md).
-10. **Authorization**: Logto owns users, roles, and role assignments; access tokens carry Agno-native `scopes` and Runtime enforces them through Agno's built-in scope provider. `agent_os:admin` retains full API and cross-user break-glass; the Web Client presents a separate management-only console. ETF Grid reuses the same admin scope for instrument selection and explicitly isolates private trades and signals by `user_id`; no extension-specific role store exists. See [ADR 0010](docs/adr/0010-logto-rbac-agno-jwt-scopes.md).
-
----
-
-## 6. Agent Conventions
-
-Behavior expectations for coding agents working on this project:
-
-- **Language for code and docs**: Write all code comments, documentation, and commit messages in **English**.
-- **Language for user conversation**: When interacting with the project owner, respond in **Chinese**.
-- **Configuration items**: When adding configuration items, do **not** assign default values unless truly necessary — declare them as required environment variables. Defaults hide deployment intent and add code complexity; explicit configuration keeps the code simple.
-- **Code comments**: Do not reference ADRs, plans, or other documents in code comments or docstrings; the code should speak for itself.
-- **Version control**: Do **not** run `git commit`, `git push`, `git reset`, `git rebase`, or any other git mutation without explicit user permission. Ask for confirmation each time.
-- **Commit messages**: See Section 7 for detailed conventions.
-
----
-
-## 7. Commit Message Conventions
-
-All commit messages must be written in **English** and follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
-
-### 7.1 Format
-
-```text
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
+```bash
+uv sync --extra dev
+uv run pytest                       # Fast unit tests; integration tests are deselected
+uv run pytest -m integration        # External-service integration tests
+uv run pytest -m db                 # Real-PostgreSQL tests
+uv run pytest -m llm                # Real-LLM tests
+uv run pytest -m ''                 # All tests
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
+uv run mypy src tests scripts
+uv run pre-commit run --all-files
 ```
 
-### 7.2 Common Types
+Before finishing a code change, run the relevant tests and the standard quality checks: Ruff lint, Ruff format check, strict Mypy, and pytest. Exercise the affected API or runtime path when practical; do not claim unverified behavior works.
 
-| Type | Use when |
-|------|----------|
-| `feat` | Adding a new feature |
-| `fix` | Fixing a bug |
-| `docs` | Changing documentation only |
-| `style` | Formatting, semicolons, etc.; no code logic change |
-| `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `perf` | Improving performance |
-| `test` | Adding or correcting tests |
-| `chore` | Build process, tooling, dependency updates, etc. |
-| `ci` | CI/CD configuration changes |
+## 7. Key Files
 
-### 7.3 Description Rules
-
-- Use the imperative mood and present tense (e.g., `add`, `fix`, `update`).
-- Start with a lowercase letter.
-- Do not end with a period.
-- Keep the subject line within 50 characters when possible.
-
-### 7.4 Body and Footer
-
-- **Body** (optional): explain the **why** and **what**, wrapped at 72 characters.
-- **Footer** (optional): reference issues (`Fixes #123`) or describe breaking changes (`BREAKING CHANGE: ...`).
-
-### 7.5 Examples
-
-```text
-feat(ci): add GitHub Actions workflow for lint and test
-
-Run ruff, mypy, and pytest on every push and pull request to main.
-```
-
-```text
-docs(readme): update setup instructions for python 3.13
-```
-
----
-
-## 8. References
-
-- Architecture (living document): [`docs/architecture/`](docs/architecture/README.md)
-- Architecture Decision Records: [`docs/adr/`](docs/adr/README.md)
-- Milestone plans: [`docs/plan/`](docs/plan/)
-- Web client project (Client layer): `../Spectres-Web-Client`
-- Agno documentation: https://docs.agno.com/
-- Agno LLMs reference: https://www.agno.com/llms.txt
-- Repository: current directory `Spectres-Runtime`
+- `src/spectres/main.py` — AgentOS assembly, authentication, AG-UI, extension mounting
+- `src/spectres/config.py` — core typed settings
+- `src/spectres/extensions/base.py` — extension contract
+- `src/spectres/extensions/loader.py` — in-tree extension discovery and loading
+- `src/spectres/scheduler.py` — system-schedule registration
+- `src/spectres/extensions/etf_grid/` — reference vertical-slice extension
+- `tests/` — unit and integration coverage

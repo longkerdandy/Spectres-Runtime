@@ -1,245 +1,136 @@
 # Spectres Runtime — Architecture
 
-> The living description of the system's current design. This document is
-> updated in place as the architecture evolves. Decisions and their rationale
-> are frozen in [`adr/`](../adr/README.md); this document explains *what is*,
-> ADRs explain *why*.
+> Current system design and implementation boundaries. ADRs in
+> [`../adr/`](../adr/README.md) explain decision history; this document describes
+> what is built now and clearly labels future design.
 >
-> For project background, layer responsibilities, and the full Runtime scope,
-> see [`AGENTS.md`](../../AGENTS.md). Last updated: 2026-10-29.
+> Last updated: 2026-11-06.
 
----
+## 1. System Context
 
-## 1. System Overview
+Spectres Runtime is the middle layer of a personal AI assistant. The Client UI
+and Edge Gateway are separate projects.
 
-Spectres is a personal AI assistant. Three physical layers:
-
-```
-┌────────────────────────────────────────────────────────────┐
-│  Clients: Web App · Mobile App · Mini-program (roadmap)    │
-└──────────────────────────┬─────────────────────────────────┘
-                           │  AG-UI over HTTP(S), configurable endpoint
-┌──────────────────────────▼─────────────────────────────────┐
-│  Runtime (this repository)                                 │
-│  Master Agent (Agno Team) → Slave Agents → Tools           │
-│  Extensions: domain capabilities (tools + REST + Workflows)│
-│  PostgreSQL: sessions, history, memory, extension tables   │
-└──────────────────────────┬─────────────────────────────────┘
-                           │  authenticated channel to Edge Gateway
-┌──────────────────────────▼─────────────────────────────────┐
-│  Edge: home-LAN gateway, device protocols, state truth     │
-└────────────────────────────────────────────────────────────┘
+```text
+Client ──AG-UI / versioned REST──> Runtime (AgentOS)
+                                    ├─ Team Leader Agent → built-in/extension tools
+                                    ├─ Extension routers and deterministic Workflows
+                                    ├─ JWT authentication, scopes, user isolation
+                                    └─ PostgreSQL / in-process scheduler
+Logto ──OIDC JWT / JWKS─────────────> Runtime
+Runtime ──authenticated channel─────> Edge (planned)
 ```
 
-Current phase: multiple authenticated users, full stack deployed at home;
-framework and ETF Grid user data are isolated per user, while ETF Grid market
-inputs and strategy configuration remain shared.
+The current deployment is a local/home Runtime. Multiple authenticated users
+are supported; framework data and ETF Grid private data are owner-scoped.
 
-## 2. Agent Architecture
+## 2. Current Runtime
 
-### 2.1 Single Master (red line — ADR 0002)
+`src/spectres/main.py` assembles the application:
 
-Exactly one logical Master Agent per user. It owns the *user relationship*:
-the single conversational persona, the unified long-term profile, and the
-authoritative interpretation of intent. Any proposal for another user-facing
-agent is re-examined as a Slave or Workflow in disguise.
+1. Configure structured logging and create the process-wide `PostgresDb`.
+2. Discover and register in-tree extensions.
+3. Register missing system schedules without reconfiguring existing rows.
+4. Attach extension toolkits to the Team Leader and mount extension Workflows.
+5. Build AgentOS with AG-UI, optional JWT authorization, the scheduler, and
+   `user_isolation=True`; mount extension routers on the FastAPI app.
 
-- "One" is **role uniqueness**, not a process singleton: instances are
-  created/restored per user and scale horizontally.
-- Channels (web, app, voice) are interfaces to the same Master, never
-  separate Masters.
+The Team Leader is a single Agno `Agent`, not a Team. It supports
+OpenAI-compatible or Gemini models, PostgreSQL session history, and the three
+most recent history runs in context. Built-ins are calculator, shell, website,
+and optional Tavily search tools.
 
-### 2.2 Master/Slave on Agno Team (ADR 0001)
+The extension system currently hosts ETF Grid Trading: private trade ledgers
+and signals, shared candles/valuation/instrument selection, REST APIs, agent
+tools, and deterministic sync/recompute Workflows. See
+[Runtime Extensions](runtime-extensions.md).
 
-The Master is the leader of an Agno `Team` in `coordinate` mode; Slave Agents
-are members, each with its own model, tools, knowledge, and memory. Nested
-Teams model sub-domains. Delegation (`delegate_task_to_member`), session
-persistence, streaming member events, and HITL pause propagation are
-framework-provided.
+## 3. Target Agent Design
 
-- **Request classification is a standing concern**: trivial requests get a
-  direct Master answer or `route`-mode forwarding; only genuine multi-step
-  work pays for full coordination.
-- **Master model must be strong** (delegation decisions depend on it); Slaves
-  may use cheaper/specialized models.
+These are constraints for future work, not current behavior:
 
-### 2.3 Runtime-owned gaps (not provided by Agno)
+- Exactly one logical user-facing Master Agent per user. Channels and proactive
+  runs must not introduce another Master.
+- Master/Slave orchestration will use Agno `Team` in `coordinate` mode; no
+  custom orchestration dispatcher.
+- Team members will need explicit state, tool-ACL, and tenant-isolation
+  handling. Top-level AgentOS isolation alone is not sufficient.
+- Device control will use a local agent/tool proxy to Edge; Runtime never
+  accesses hardware directly.
 
-| Gap | Approach |
-|-----|----------|
-| No per-member `session_state` isolation | Namespacing convention for per-slave state |
-| No per-member tool ACL | Policy layer in Toolkit wrappers / `tool_hooks` / guardrails ("which agent may invoke which tool") |
-| No per-member tenant isolation | Top-level `user_isolation` is enabled; future Team members still need `TeamFactory` + db filtering and separate member-memory leakage verification |
-| Remote agents cannot be team members | Device control = local Slave Agent + custom Toolkit proxying to the Edge Gateway; Runtime never touches hardware |
+## 4. Sessions and Automation
 
-## 3. Sessions, Memory, and Automation
+- Conversation history and state are isolated by `session_id`.
+- User profiles and memories aggregate by `user_id` when those features are
+  enabled.
+- Agent objects are shared application components; mutable run data belongs in
+  PostgreSQL, not process-local state.
 
-### 3.1 Isolation model (ADR 0003)
+Automation has three layers:
 
-- Memory and user profile aggregate by **`user_id`** — shared across sessions.
-- Conversation history and state are isolated by **`session_id`**.
-- Team instances are stateless; concurrent runs on different sessions are safe.
+| Layer | Handling | Status |
+|-------|----------|--------|
+| Deterministic rules | AgentOS scheduler → Workflow or authorized HTTP target, without an LLM | Implemented |
+| Judgment-needed events | Master run in an isolated session with the same `user_id` | Planned |
+| High-frequency events | Filter/aggregate at Edge before reaching Runtime | Planned |
 
-### 3.2 Automation triggers — three layers (ADR 0003)
+Only deterministic ETF Grid Workflows currently run on schedules. Notification
+delivery, cross-schedule dependencies, and judgment-based automation are not
+implemented. See [Scheduled Tasks](scheduled-tasks.md).
 
-| Layer | Examples | Handling |
-|-------|----------|----------|
-| Deterministic rules | "Lights off at 23:00" | Scheduler → tools/Workflow directly, zero LLM calls, audit log only |
-| Judgment-needed | "Air quality dropped — ventilate?" | Master run in an **isolated session**, same `user_id` |
-| High-frequency events | Per-second sensor reports | Filtered/aggregated at Edge; only semantic events reach Runtime |
+## 5. Client Interfaces
 
-Automation outcomes enrich the user profile but never pollute the live
-conversation. Proactive results are delivered via a notification channel (a
-separate "updates" stream in the Client), not injected into the chat thread.
-Logical conflicts (automation vs. live intent) are resolved by querying Edge
-device state before acting and by routing sensitive actions through one shared
-HITL approval path.
+- `AGUI(agent=team_leader_agent)` exposes `/agui` as a streaming AG-UI endpoint.
+  The current stream has one assistant voice; Team delegation cards do not
+  exist because Team/Slave orchestration is not implemented.
+- Agent and extension tools have stable names for Client-side tool renderers.
+- Extension REST routers live under `/api/v1/extensions/<kebab-name>/`.
+- Future Team visibility may add member attribution and eventually native
+  AG-UI subagent events; neither is current behavior.
 
-Layer 1 is implemented: the Agno AgentOS scheduler fires cron schedules at
-extension Workflows or admin-managed REST endpoints (ADR 0007 and ADR 0011 —
-see [Scheduled Tasks](scheduled-tasks.md)). Layers 2–3 are deferred design.
+## 6. Deployment
 
-## 4. Client Interface (AG-UI)
+Clients use configurable HTTP(S) endpoints. CORS is only a browser allowlist,
+not a security boundary.
 
-Runtime exposes the Master Team through Agno's AG-UI interface
-(`AGUI(team=master)`); clients are AG-UI/CopilotKit compatible.
+The accepted remote-access design is:
 
-Visibility strategy (ADR 0004):
-
-1. **Phase 1 (current)**: accept the framework's flattened stream — one
-   assistant voice. Custom renderer for the `delegate_task_to_member` tool
-   call surfaces "dispatched to <slave>" cards; HITL confirmation cards work
-   out of the box.
-2. **Phase 2**: custom AG-UI event mapping for per-Slave attribution (message
-   `name`, `{member}:{tool}` prefixes, `CUSTOM` member-boundary events)
-   enabling an expandable subtask UI.
-3. **Phase 3**: migrate to protocol-native Subagent Events when
-   `ag-ui-protocol` ships them and Agno adopts them.
-
-## 5. Deployment Topology (ADR 0005)
-
-**Principle: deployment location is a variable, not an architecture
-decision.** Clients talk to Runtime only via AG-UI over HTTP(S) against a
-configurable endpoint; the Web UI's proxy layer is separable from its static
-frontend.
-
-### MVP — single PC (current milestone)
-
-Runtime (`localhost:7777`) and the independently served Web Client
-(`localhost:3000`) run on the same home PC; the browser is on that PC too.
-Cross-origin calls are handled by the Runtime's `CORS_ALLOWED_ORIGINS`
-allowlist (a browser convenience, not a security boundary). No tunneling,
-no remote access.
-
-### Phase 1 — full home stack (remote access)
-
-```
-Owner devices (laptop, phone — Tailscale installed)
-        │  tailnet (100.x addresses)
-        ▼
-Home Windows host:
-  Web UI · Runtime (AgentOS) · PostgreSQL (Docker) · Edge
+```text
+Client ──HTTPS──> Cloud Gateway (nginx) ──WireGuard──> Home Runtime
 ```
 
-No cloud server, no public exposure, no port mapping. Privacy is maximal and
-cost is zero.
+The Gateway terminates TLS and proxies/rate-limits traffic. Runtime remains
+unexposed directly and owns authentication and authorization. No client VPN or
+agent is required. Gateway deployment tooling is not yet implemented; current
+development uses local/LAN access. A future multi-tenant Gateway may become a
+registry and router for multiple home Runtimes. See ADR 0008.
 
-### Phase 2 — cloud entry (when mini-program / public access / multi-user)
+## 7. Security Boundaries
 
-```
-Any client ──HTTPS──> Cloud VPS: Web UI + auth + AG-UI proxy
-                             │  overlay (Tailscale) or frp tunnel (outbound from home)
-                             ▼
-                      Home Runtime (never publicly exposed)
-```
+- Self-hosted Logto issues JWTs; AgentOS verifies signature, issuer, and
+  audience and enforces Agno-native scopes. `agent_os:admin` grants framework
+  administration and cross-user access. See [Authentication](authentication.md).
+- Framework isolation filters sessions, runs, memories, schedules, and related
+  records by the verified JWT subject. AG-UI rejects cross-user thread writes.
+- Extension tables and custom routes require explicit ownership checks; Agno
+  does not isolate them automatically. See [Data Isolation](data-isolation.md).
+- Sensitive operations should use Agno's shared confirmation/approval flow.
+  Current ETF Grid tools do not request HITL confirmation.
+- Runtime↔Edge authentication and encryption are required when Edge is added.
+- Per-agent tool ACL is not implemented.
 
-### Phase 3 — multi-tenant
+## 8. Not Implemented
 
-Cloud backend becomes a registry + router: each home Runtime registers its
-tunnel address on startup; the proxy routes by `user_id`.
+Team/Slave agents, long-term agent memory, knowledge/RAG, tool ACL,
+judgment-based automation, notifications, Edge proxying, and Gateway deployment
+tooling remain future work.
 
-### Client access paths
+## 9. References
 
-| Client | Phase 1 | Later |
-|--------|---------|-------|
-| Web | Tailscale to home | Cloud entry |
-| Mobile app | Official Tailscale app (one-VPN-slot caveat) → embedded `tsnet` | Cloud entry |
-| Mini-program | Not possible on tailnet | Cloud entry (requires public HTTPS + ICP filing) |
-
-Operational notes (Windows host, Clash/Tailscale coexistence, service
-auto-start, power settings) are recorded in ADR 0005.
-
-## 6. Security Cross-Cutting
-
-- **Client authentication** ([Authentication](authentication.md), ADR 0009):
-  every request carries a per-user JWT from the self-hosted Logto IdP;
-  AgentOS verifies signature/issuer/audience locally against an exported
-  JWKS file and auto-provisions users into its directory.
-- **Authorization** ([Authentication](authentication.md), ADR 0010): Logto
-  owns `user`/`admin` roles and issues Agno-native scopes in the JWT;
-  AgentOS enforces them through its built-in scope provider. Admin retains
-  full API and cross-user break-glass; the Web Client presents a
-  management-only console.
-- **Per-user data isolation** ([Data Isolation](data-isolation.md)):
-  `AgentOS(user_isolation=True)` scopes sessions, runs, memories, traces,
-  metrics, and schedules to the JWT subject; AG-UI rejects cross-user thread
-  writes. ETF Grid explicitly applies the same owner boundary to private
-  trades and signals while reusing public candles, valuation, and strategy
-  configuration.
-- **Sensitive operations** (e.g., door unlock) share one HITL path regardless
-  of trigger (user or automation): member tool marked for confirmation → pause
-  propagates to the team run → AgentOS `/approvals` or AG-UI resume →
-  `continue_run`.
-- **Runtime ↔ Edge** traffic is authenticated and encrypted; Runtime never
-  manipulates hardware directly.
-- **Runtime exposure**: Phase 1 binds to the tailnet only; Phase 2 adds
-  service credentials between the cloud proxy and Runtime (AgentOS RBAC).
-- **Tool-level permissions** ("which agent may invoke which tool") are a
-  Runtime-owned policy layer (see 2.3) — a pending implementation item.
-
-## 7. Current Implementation State
-
-Implemented (through v0.6.1):
-
-- **Per-user data isolation** ([Data Isolation](data-isolation.md)): Agno
-  user scoping on framework routes, AG-UI thread ownership enforcement,
-  admin break-glass, and unowned system schedules; no production-data
-  migration was needed.
-- **User authentication** ([Authentication](authentication.md), ADR 0009):
-  self-hosted Logto IdP (compose service), per-user JWT verification with
-  issuer/audience pinning, JIT user directory with a disabled kill switch;
-  Web Client logs in via `@logto/react` and attaches the access token to
-  AG-UI and extension REST calls.
-- Team Leader agent with `OpenAILike` model configuration (verified against
-  Kimi Code API), AgentOS with AG-UI interface, CORS allowlist for the
-  independent web client.
-- PostgreSQL session/history persistence (dockerized dev database).
-- Built-in tools: `CalculatorTools`, `ShellTools`, `WebsiteTools`, and Tavily
-  web search when `TAVILY_API_KEY` is configured
-  ([ADR 0006](../adr/0006-web-search-tool-tavily.md)).
-- **Extension system** ([Runtime Extensions](runtime-extensions.md)):
-  in-tree loader, contract of toolkits/routers/Workflows/schedules; first
-  extension **ETF Grid Trading** (ledger, candles, valuation gate, daily
-  signals, REST API, agent toolkit).
-- **Structured logging**: JSONL daily files + stdout, `trace_id`-correlated,
-  tool error envelope contract.
-- **Scheduled tasks** ([Scheduled Tasks](scheduled-tasks.md), ADR 0007/0011):
-  Agno AgentOS scheduler and native CRUD; automatic system data sync plus
-  user-managed recompute schedules targeting extension Workflows.
-
-Not yet implemented: Slave Agents (Team coordinate mode), long-term memory
-(Mem0/Hindsight), knowledge base/RAG, tool ACL, judgment-layer automation,
-notification channel, Edge proxy, deployment tooling.
-
-## 8. References
-
-- [`AGENTS.md`](../../AGENTS.md) — project background, scope, conventions
-- [`adr/`](../adr/README.md) — decision records 0001–0009
-- Topic deep-dives and references (this directory):
-  [Authentication](authentication.md),
-  [Data Isolation](data-isolation.md),
-  [Runtime Extensions](runtime-extensions.md),
-  [Scheduled Tasks](scheduled-tasks.md),
-  [Database Schema](database-schema.md)
-- [`plan/`](../plan/) — milestone plans
-- Agno docs: https://docs.agno.com/ · AG-UI: https://docs.ag-ui.com/
+- [Authentication](authentication.md)
+- [Per-User Data Isolation](data-isolation.md)
+- [Runtime Extensions](runtime-extensions.md)
+- [Scheduled Tasks](scheduled-tasks.md)
+- [Database Schema](database-schema.md)
+- [ADRs 0001–0011](../adr/README.md)
+- [Milestone plans](../plan/)
