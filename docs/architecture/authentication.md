@@ -1,7 +1,7 @@
 # Authentication and Authorization
 
 > Current Logto/JWT integration and AgentOS scope enforcement. Decision history:
-> ADR 0009 and ADR 0010. Last updated: 2026-11-06.
+> ADR 0009 and ADR 0010. Last updated: 2026-11-07.
 
 ## 1. Request Path
 
@@ -53,6 +53,11 @@ ETF Grid custom routes explicitly self-scope normal portfolio operations for
 both users and administrators. Instrument administration and composite
 `/refresh` require `agent_os:admin` or the verified internal caller; `/sync` is
 available to any authenticated user or internal caller.
+
+Core `GET /api/v1/extensions` requires an authenticated identity and returns
+global built-in Extension activation state. `PATCH /api/v1/extensions/{id}`
+requires `agent_os:admin`; ordinary users receive 403. Extension disabled guards
+apply to ordinary, administrator, and verified internal callers alike.
 
 ## 3. Configuration
 

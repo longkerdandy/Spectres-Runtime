@@ -1,13 +1,13 @@
 # AGENTS.md — Spectres Runtime
 
-> Guidance for coding agents. Last updated: 2026-11-06.
+> Guidance for coding agents. Last updated: 2026-11-07.
 
 ## 1. Project Context
 
 Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents, tools, memory, scheduled work, and extension APIs. The Client and Edge are separate projects.
 
 - **Stack**: Python 3.13, Agno AgentOS, FastAPI, PostgreSQL, pydantic-settings, and `uv`.
-- **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, extension loading, Agno Workflows, and native scheduled tasks. The first extension is ETF Grid Trading.
+- **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, static extension loading with administrator-controlled global enablement, Agno Workflows, and native scheduled tasks. The first extension is ETF Grid Trading.
 - **Not implemented**: Team/Slave orchestration, long-term memory, knowledge/RAG, tool ACL, judgment-based automation, notification delivery, and Edge proxying. Do not describe these as existing behavior.
 - **Source of truth**: [`docs/architecture/`](docs/architecture/README.md) describes current behavior; [`docs/adr/`](docs/adr/README.md) records decisions; [`docs/plan/`](docs/plan/) tracks milestones. Update affected documentation when behavior changes.
 
@@ -31,7 +31,7 @@ Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents
 ## 4. Extension Rules
 
 - Keep each capability under `src/spectres/extensions/<name>/`; core code must not import extension code.
-- Implement the contract in `src/spectres/extensions/base.py`: extensions may contribute toolkits, routers, Workflows, and declarative system schedules through an idempotent `register()`.
+- Implement the contract in `src/spectres/extensions/base.py`: each manifest has a stable snake_case `id`, a non-empty display `name` and `description`, and an idempotent `register()` that may contribute toolkits, routers, Workflows, and declarative system schedules.
 - Keep `toolkit.py`, `api.py`, and `workflows.py` as thin adapters. Put business logic in services and pure domain code in `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy.
 - Extensions share the core PostgreSQL connection pool, use table names prefixed with the extension id, and must not access Agno-managed or other extensions' tables.
 - Use snake_case for Python identifiers and UPPER_SNAKE for environment prefixes; use kebab-case under `/api/v1/extensions/`.
@@ -73,6 +73,11 @@ Before finishing a code change, run the relevant tests and the standard quality 
 - `src/spectres/config.py` — core typed settings
 - `src/spectres/extensions/base.py` — extension contract
 - `src/spectres/extensions/loader.py` — in-tree extension discovery and loading
+- `src/spectres/extensions/state.py` — persistent global extension activation
+- `src/spectres/extensions/activation.py` — REST, Toolkit, and Workflow activation guards
 - `src/spectres/scheduler.py` — system-schedule registration
 - `src/spectres/extensions/etf_grid/` — reference vertical-slice extension
 - `tests/` — unit and integration coverage
+
+## 8. Reference Projects
+- Spectres Web Client — ..\Spectres-Web-Client

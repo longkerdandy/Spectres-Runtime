@@ -13,15 +13,23 @@ from spectres.api import create_api_router
 from spectres.auth import UserProfileSyncMiddleware
 from spectres.config import settings
 from spectres.db.postgres import get_postgres_db
-from spectres.extensions.base import ExtensionContribution
+from spectres.extensions.activation import guard_extension_toolkit, guard_extension_workflows, include_extension_routers
+from spectres.extensions.base import LoadedExtension
 from spectres.extensions.loader import load_extensions
+from spectres.extensions.state import ExtensionStateService
 from spectres.logging import TraceIdMiddleware, configure_logging
 from spectres.scheduler import register_schedules
 
 logger = logging.getLogger(__name__)
 
 
-def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
+def mount_extension_routers(app: FastAPI, extensions: list[LoadedExtension]) -> None:
+    """Mount built-in Extension routers with database-backed activation guards."""
+    state_service = ExtensionStateService(get_postgres_db(), [extension.id for extension in extensions])
+    include_extension_routers(app, extensions, state_service)
+
+
+def create_agent_os() -> tuple[AgentOS, list[LoadedExtension]]:
     """Create the AgentOS instance and load extensions.
 
     Logging is configured before anything else so startup logs use the
@@ -36,15 +44,20 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     without it the app runs open (local development).
 
     Returns:
-        The configured AgentOS plus the collected extension contributions.
+        The configured AgentOS plus the loaded extensions.
     """
     configure_logging(settings)
     logger.info("Per-user data isolation enabled", extra={"event": "user_isolation_enabled"})
     db = get_postgres_db()
-    contributions = load_extensions(settings, db)
-    register_schedules(contributions, db)
-    toolkits = [toolkit for contribution in contributions for toolkit in contribution.toolkits]
-    workflows: list[Workflow | RemoteWorkflow | WorkflowFactory] = [workflow for contribution in contributions for workflow in contribution.workflows]
+    extensions = load_extensions(settings, db)
+    extension_state = ExtensionStateService(db, [extension.id for extension in extensions])
+    extension_state.initialize()
+    register_schedules(extensions, db)
+    for extension in extensions:
+        guard_extension_toolkit(extension, extension_state)
+        guard_extension_workflows(extension, extension_state)
+    toolkits = [toolkit for extension in extensions for toolkit in extension.contribution.toolkits]
+    workflows: list[Workflow | RemoteWorkflow | WorkflowFactory] = [workflow for extension in extensions for workflow in extension.contribution.workflows]
     team_leader_agent = create_team_leader_agent(db, extra_tools=toolkits)
     authorization = (
         Authorization(
@@ -61,7 +74,7 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
     )
     base_app = FastAPI()
     base_app.add_middleware(UserProfileSyncMiddleware)
-    base_app.include_router(create_api_router(contributions))
+    base_app.include_router(create_api_router(extension_state, extensions))
     return (
         AgentOS(
             name="Spectres Runtime",
@@ -79,15 +92,13 @@ def create_agent_os() -> tuple[AgentOS, list[ExtensionContribution]]:
             user_directory=settings.jwt_auth_enabled,
             user_isolation=True,
         ),
-        contributions,
+        extensions,
     )
 
 
-agent_os, extension_contributions = create_agent_os()
+agent_os, loaded_extensions = create_agent_os()
 app = agent_os.get_app()
-for contribution in extension_contributions:
-    for router in contribution.routers:
-        app.include_router(router)
+mount_extension_routers(app, loaded_extensions)
 # Binds a fresh trace_id to every HTTP request (spectres/logging.py).
 app.add_middleware(TraceIdMiddleware)
 

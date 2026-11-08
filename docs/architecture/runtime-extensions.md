@@ -1,7 +1,7 @@
 # Runtime Extensions
 
 > Current extension contract and the ETF Grid reference implementation.
-> Last updated: 2026-11-06.
+> Last updated: 2026-11-08.
 
 ## 1. Purpose and Boundaries
 
@@ -22,7 +22,7 @@ src/spectres/extensions/
 ├── loader.py                  # In-tree discovery and registration
 └── etf_grid/
     ├── __init__.py            # Re-exports the extension manifest
-    ├── extension.py           # name + register()
+    ├── extension.py           # id + name + description + register()
     ├── config.py              # ETF_GRID_* settings
     ├── core/                  # Pure domain logic
     ├── service/               # Application services and persistence orchestration
@@ -45,10 +45,18 @@ on the same code path.
 - `ExtensionContext`: core `Settings` and the shared `PostgresDb`.
 - `ExtensionContribution`: lists of `toolkits`, `routers`, `workflows`, and
   `schedules`; each defaults to an empty list.
+- `LoadedExtension`: discovered `id`, `name`, and `description` metadata paired
+  with its `contribution`.
 - `ScheduleSpec`: `name`, `cron`, `endpoint`, `method`, `timezone`,
   `timeout_seconds`, `max_retries`, `retry_delay_seconds`, and `enabled` are
-  required; `payload` and `previous_names` are optional.
-- `Extension`: a snake_case `name` plus `register(ctx)`.
+  required; `payload` is optional.
+- `Extension`: a stable snake_case `id`, non-empty human-readable `name` and
+  `description`, plus `register(ctx)`.
+
+`id` keys persisted activation and administration APIs. `name` and `description`
+are display metadata and do not derive routes, table names, or ownership. A
+separate version field is unnecessary because built-in Extension code releases
+with Runtime.
 
 `register()` must be idempotent. Its side effects are limited to table creation
 and idempotent bootstrap; it performs no network calls and starts no threads.
@@ -63,16 +71,31 @@ may be human-readable.
 
 `loader.py` scans direct child packages with `pkgutil.iter_modules`, sorted by
 package name. A package is loaded only when its `__init__.py` exposes an
-`extension` object with a valid name and callable `register()`. Presence in the
-tree is the opt-in; there is no enable list or entry-point discovery. Import,
-manifest, and registration failures abort startup with the extension name.
+`extension` object with a valid id, non-empty display metadata, and callable
+`register()`. Duplicate ids and missing or malformed metadata fail startup.
+Presence selects built-in code; there is no entry-point discovery. Import,
+manifest, and registration failures abort startup with the extension id.
+
+Each result is a `LoadedExtension(id, name, description, contribution)`,
+preserving metadata for the catalog and the owner id for activation guards and
+administration. `runtime_extension_states` stores one global enabled flag per
+discovered Extension. Startup inserts missing ids as enabled and preserves
+existing administrator choices. Disabled code remains registered; shared guards
+reject REST and tool execution, while a prepended Workflow step returns
+`{status: disabled, extension: <id>}` with `stop=True` before business work.
+Disabling does not delete data, cancel in-flight work, or change native Schedule
+configuration. `GET /api/v1/extensions` returns id, display name, description,
+enabled state, and update time to authenticated users;
+`PATCH /api/v1/extensions/{id}` requires `agent_os:admin` and returns the same
+contract.
 
 Startup order in `main.py`:
 
 ```text
-PostgresDb → load_extensions() → register_schedules()
+PostgresDb → load_extensions() → initialize/reconcile Extension state
+           → register_schedules() → guard Toolkits and Workflows
            → Team Leader(extra_tools=...) → AgentOS(workflows=...)
-           → app.include_router(...) for each extension router
+           → mount each extension router with its activation guard
 ```
 
 ## 5. Surface Contracts
@@ -136,8 +159,8 @@ idempotent because leases do not make side effects exactly-once.
 Only automatic system schedules are declared as `ScheduleSpec`s. Personal
 schedules use Agno-native CRUD and are never seeded at startup. Configuration
 supplies initial cron/timezone/retry/enabled values only when a row is created.
-Existing rows are preserved; `previous_names` permits a rename without changing
-identity, stored configuration, or history. See [Scheduled Tasks](scheduled-tasks.md).
+Existing rows are preserved without legacy-name or database-format migration.
+See [Scheduled Tasks](scheduled-tasks.md).
 
 ## 6. ETF Grid Reference Implementation
 
@@ -178,5 +201,5 @@ cost basis. Undefined values are `null`, not zero.
 
 Keep the contract minimal: no extra lifecycle hooks, cross-extension
 dependencies, generic plugin framework, or parallel scheduling API. Out-of-tree
-plugins, migrations, tool ACL, extension-contributed agents, and enable/disable
-gating remain deferred until required.
+plugins, migrations, tool ACL, extension-contributed agents, per-user activation,
+and dynamic installation remain deferred until required.

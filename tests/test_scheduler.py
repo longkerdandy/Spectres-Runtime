@@ -5,8 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from spectres.extensions.base import ExtensionContribution, ScheduleSpec
+from spectres.extensions.base import ExtensionContribution, LoadedExtension, ScheduleSpec
 from spectres.scheduler import register_schedules
+
+
+def _loaded(contribution: ExtensionContribution) -> list[LoadedExtension]:
+    return [LoadedExtension(id="test_extension", name="Test Extension", description="Test extension", contribution=contribution)]
 
 
 @pytest.mark.unit
@@ -35,7 +39,7 @@ class TestRegisterSchedules:
     def test_no_schedules_skips_manager(self) -> None:
         """An empty contribution set never constructs a ScheduleManager."""
         with patch("spectres.scheduler.ScheduleManager") as manager_cls:
-            register_schedules([ExtensionContribution()], db=MagicMock())
+            register_schedules(_loaded(ExtensionContribution()), db=MagicMock())
         manager_cls.assert_not_called()
 
     def test_spec_maps_to_manager_create(self) -> None:
@@ -44,7 +48,7 @@ class TestRegisterSchedules:
         manager.create.return_value = MagicMock(id="sched-1", next_run_at=1760000000)
         with patch("spectres.scheduler.ScheduleManager", return_value=manager):
             register_schedules(
-                [ExtensionContribution(schedules=[self._spec(max_retries=2, retry_delay_seconds=300)])],
+                _loaded(ExtensionContribution(schedules=[self._spec(max_retries=2, retry_delay_seconds=300)])),
                 db=self._missing_db(),
             )
         manager.create.assert_called_once_with(
@@ -75,7 +79,7 @@ class TestRegisterSchedules:
         )
         with patch("spectres.scheduler.ScheduleManager", return_value=manager):
             register_schedules(
-                [ExtensionContribution(schedules=[self._spec(cron="0 9 * * 1,5", enabled=True)])],
+                _loaded(ExtensionContribution(schedules=[self._spec(cron="0 9 * * 1,5", enabled=True)])),
                 db=db,
             )
         db.get_schedule_by_name.assert_called_once_with("ETF Grid Daily Sync", user_id=None)
@@ -85,29 +89,13 @@ class TestRegisterSchedules:
         manager.disable.assert_not_called()
         manager.close.assert_called_once()
 
-    def test_previous_name_is_renamed_without_reconfiguration(self) -> None:
-        """A legacy row keeps its identity and stored settings when its display name changes."""
-        manager = MagicMock()
-        manager.update.return_value = MagicMock(id="sched-1", name="ETF Grid Daily Sync")
-        db = MagicMock()
-        db.get_schedule_by_name.side_effect = [None, {"id": "sched-1", "name": "etf_grid_daily_sync"}]
-        with patch("spectres.scheduler.ScheduleManager", return_value=manager):
-            register_schedules(
-                [ExtensionContribution(schedules=[self._spec(previous_names=("etf_grid_daily_sync",))])],
-                db=db,
-            )
-        manager.update.assert_called_once_with("sched-1", user_id=None, name="ETF Grid Daily Sync")
-        manager.create.assert_not_called()
-        manager.enable.assert_not_called()
-        manager.disable.assert_not_called()
-
     def test_disabled_spec_disables_only_a_new_row(self) -> None:
         """enabled=False sets the initial state without enabling the new row first."""
         manager = MagicMock()
         manager.create.return_value = MagicMock(id="sched-1", next_run_at=1760000000)
         with patch("spectres.scheduler.ScheduleManager", return_value=manager):
             register_schedules(
-                [ExtensionContribution(schedules=[self._spec(enabled=False)])],
+                _loaded(ExtensionContribution(schedules=[self._spec(enabled=False)])),
                 db=self._missing_db(),
             )
         manager.disable.assert_called_once_with("sched-1")
@@ -121,7 +109,7 @@ class TestRegisterSchedules:
             patch("spectres.scheduler.ScheduleManager", return_value=manager),
             pytest.raises(RuntimeError, match="ETF Grid Daily Sync") as exc_info,
         ):
-            register_schedules([ExtensionContribution(schedules=[self._spec()])], db=self._missing_db())
+            register_schedules(_loaded(ExtensionContribution(schedules=[self._spec()])), db=self._missing_db())
         assert isinstance(exc_info.value.__cause__, ValueError)
         assert not caplog.records
         manager.close.assert_called_once()

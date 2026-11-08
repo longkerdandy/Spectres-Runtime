@@ -31,3 +31,4 @@ considered, and the consequences **at the time the decision was made**.
 | [0009](0009-idp-logto-self-hosted.md) | Identity Provider — Logto OSS Self-Hosted | Accepted |
 | [0010](0010-logto-rbac-agno-jwt-scopes.md) | Authorization — Logto RBAC with Agno JWT Scopes | Accepted |
 | [0011](0011-extension-workflows-for-scheduled-tasks.md) | Extension Workflows for Scheduled Tasks | Accepted |
+| [0012](0012-independent-edge-services-and-extension-enablement.md) | Independent Edge Services and Built-in Extension Enablement | Accepted |

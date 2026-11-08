@@ -54,9 +54,7 @@ def schedule_client() -> Iterator[TestClient]:
     try:
         agent_os, contributions = main_module.create_agent_os()
         app = agent_os.get_app()
-        for contribution in contributions:
-            for router in contribution.routers:
-                app.include_router(router)
+        main_module.mount_extension_routers(app, contributions)
         with TestClient(app, raise_server_exceptions=False) as client:
             yield client
     finally:

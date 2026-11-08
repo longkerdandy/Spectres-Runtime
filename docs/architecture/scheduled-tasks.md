@@ -2,7 +2,7 @@
 
 > Current AgentOS scheduler and extension Workflow design, verified against
 > Agno 3.1.2. Decision history: ADR 0007 and ADR 0011.
-> Last updated: 2026-11-06.
+> Last updated: 2026-11-08.
 
 ## 1. Execution Model
 
@@ -82,15 +82,14 @@ Workflows in AgentOS and registers declarative system schedules through
 System registration is intentionally convergent but non-destructive:
 
 - Look up an unowned row by its current name; if found, change nothing.
-- Otherwise rename the first matching `previous_names` row and preserve all
-  other fields.
 - Otherwise create the row from `ScheduleSpec`; apply `enabled=False` only to
   this new row.
 
 Thus cron, target, retry, timing, and enabled-state changes stored in PostgreSQL
-survive restarts. Personal schedules are created only through native REST CRUD
-and are never seeded, reconciled, or recreated at startup. Registration failures
-abort startup with the schedule name.
+survive restarts. Registration does not perform legacy-name or database-format
+migration. Personal schedules are created only through native REST CRUD and are
+never seeded, reconciled, or recreated at startup. Registration failures abort
+startup with the schedule name.
 
 ## 5. ETF Grid Workflows
 
@@ -99,10 +98,15 @@ abort startup with the schedule name.
 | `etf_grid_data_sync` | Synchronize enabled shared candles and valuation; never enumerate private ledger owners | One unowned `ETF Grid Daily Sync` |
 | `etf_grid_recompute` | Recompute signals for required `RunContext.user_id` using latest persisted shared data | None |
 
-The automatic data-sync schedule initially uses `ETF_GRID_SYNC_*` configuration
-and is renamed in place from legacy `etf_grid_daily_sync` when necessary. Total
-source failure returns an unsuccessful Workflow step so retries apply; partial
-failure remains successful with an `errors` field.
+The automatic data-sync schedule initially uses `ETF_GRID_SYNC_*` configuration.
+Total source failure returns an unsuccessful Workflow step so retries apply;
+partial failure remains successful with an `errors` field.
+
+When the owning Extension is disabled, a prepended activation step returns a
+successful `{status: disabled, extension: etf_grid}` result with `stop=True`.
+Business steps do not execute and Scheduler does not retry this deliberate skip.
+Extension state changes do not alter the Schedule's own enabled flag, ownership,
+target, cron, or retry configuration.
 
 Recompute ignores payload-supplied ownership and fails closed without an
 authenticated/schedule owner. Sync and recompute are independent: they may run

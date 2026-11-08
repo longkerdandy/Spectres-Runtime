@@ -26,9 +26,8 @@ class ScheduleSpec:
     A schedule is ``{cron, endpoint, method, payload}``: the AgentOS
     scheduler fires one HTTP call to ``endpoint`` on the cron cadence, and
     for non-run endpoints a 2xx response is success. All fields are required
-    except ``payload`` and ``previous_names``. Startup creates missing rows
-    and preserves existing configuration; previous names allow a system
-    schedule to be renamed without changing its identity or run history.
+    except ``payload``. Startup creates missing rows and preserves existing
+    configuration.
     """
 
     name: str  # unique per owner; system schedules may use a human-readable display name
@@ -40,7 +39,6 @@ class ScheduleSpec:
     max_retries: int
     retry_delay_seconds: int
     enabled: bool  # Applied only when creating the row; later administrator changes survive restarts
-    previous_names: tuple[str, ...] = ()
     payload: dict[str, Any] | None = None
 
 
@@ -54,16 +52,27 @@ class ExtensionContribution:
     schedules: list[ScheduleSpec] = field(default_factory=list)
 
 
+@dataclass
+class LoadedExtension:
+    """A discovered extension's metadata and registered surfaces."""
+
+    id: str
+    name: str
+    description: str
+    contribution: ExtensionContribution
+
+
 class Extension(Protocol):
-    """Extension manifest protocol: a unique id plus a register hook.
+    """Extension manifest protocol: stable metadata plus a register hook.
 
     Any object with this shape qualifies — in practice each package's own
     ``extension.py`` module, exposed as the package-level ``extension``
-    attribute (a module's top-level ``name`` and ``register`` play the
-    attribute/method roles at runtime).
+    attribute.
     """
 
-    name: str  # unique id, snake_case, e.g. "etf_grid"
+    id: str  # unique stable id, snake_case, e.g. "etf_grid"
+    name: str  # human-readable display name
+    description: str  # human-readable capability summary
 
     def register(self, ctx: ExtensionContext) -> ExtensionContribution:
         """Build and return the extension's contributions."""

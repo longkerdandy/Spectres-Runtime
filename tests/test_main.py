@@ -173,12 +173,17 @@ def test_agent_os_receives_extension_workflows_and_telemetry_setting(monkeypatch
     from agno.workflow import Workflow
 
     import spectres.main as main_module
-    from spectres.extensions.base import ExtensionContribution
+    from spectres.extensions.base import ExtensionContribution, LoadedExtension
 
-    workflow = Workflow(id="extension-workflow")
+    workflow = Workflow(id="extension-workflow", steps=[])
     monkeypatch.setattr(main_module, "get_postgres_db", lambda: MagicMock())
-    monkeypatch.setattr(main_module, "load_extensions", lambda *args, **kwargs: [ExtensionContribution(workflows=[workflow])])
+    monkeypatch.setattr(
+        main_module,
+        "load_extensions",
+        lambda *args, **kwargs: [LoadedExtension(id="test_extension", name="Test Extension", description="Test extension", contribution=ExtensionContribution(workflows=[workflow]))],
+    )
     monkeypatch.setattr(main_module, "register_schedules", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main_module, "ExtensionStateService", lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: MagicMock())
     monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
     agent_os_cls = MagicMock()

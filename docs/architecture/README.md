@@ -4,7 +4,7 @@
 > [`../adr/`](../adr/README.md) explain decision history; this document describes
 > what is built now and clearly labels future design.
 >
-> Last updated: 2026-11-06.
+> Last updated: 2026-11-07.
 
 ## 1. System Context
 
@@ -42,7 +42,9 @@ and optional Tavily search tools.
 
 The extension system currently hosts ETF Grid Trading: private trade ledgers
 and signals, shared candles/valuation/instrument selection, REST APIs, agent
-tools, and deterministic sync/recompute Workflows. See
+tools, and deterministic sync/recompute Workflows. Administrators can globally
+enable or disable built-in Extensions; Runtime enforces the state at REST,
+Toolkit, Workflow, and scheduled execution boundaries. See
 [Runtime Extensions](runtime-extensions.md).
 
 ## 3. Target Agent Design
@@ -132,5 +134,5 @@ tooling remain future work.
 - [Runtime Extensions](runtime-extensions.md)
 - [Scheduled Tasks](scheduled-tasks.md)
 - [Database Schema](database-schema.md)
-- [ADRs 0001–0011](../adr/README.md)
+- [ADRs 0001–0012](../adr/README.md)
 - [Milestone plans](../plan/)

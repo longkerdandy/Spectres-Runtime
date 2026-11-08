@@ -60,11 +60,9 @@ def isolated_client() -> Iterator[TestClient]:
     settings.jwt_audience = DEV_AUDIENCE
     settings.jwt_algorithm = "HS256"
     try:
-        agent_os, contributions = main_module.create_agent_os()
+        agent_os, extensions = main_module.create_agent_os()
         app = agent_os.get_app()
-        for contribution in contributions:
-            for router in contribution.routers:
-                app.include_router(router)
+        main_module.mount_extension_routers(app, extensions)
         with TestClient(app, raise_server_exceptions=False) as client:
             yield client
     finally:
@@ -228,7 +226,7 @@ def test_system_schedule_restart_preserves_stored_configuration(isolated_client:
     }
     assert db.update_schedule(row["id"], **administrator_changes) is not None
     try:
-        register_schedules(main_module.extension_contributions, db)
+        register_schedules(main_module.loaded_extensions, db)
         stored = db.get_schedule_by_name("ETF Grid Daily Sync", user_id=None)
         assert stored is not None
         assert {field: stored[field] for field in fields} == administrator_changes

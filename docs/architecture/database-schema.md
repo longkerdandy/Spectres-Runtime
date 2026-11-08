@@ -1,7 +1,7 @@
 # Database Schema
 
-> Runtime table inventory for Agno 3.1.2 and current extensions. Last updated:
-> 2026-11-06.
+> Runtime table inventory for Agno 3.1.2 and current extensions.
+> Last updated: 2026-11-07.
 
 ## 1. Storage Layout
 
@@ -48,7 +48,24 @@ feature is enabled.
 If custom names or a different `db_schema` are passed to `PostgresDb`, update
 this inventory in the same change.
 
-## 3. ETF Grid Tables
+## 3. Runtime Core Tables
+
+### `runtime_extension_states`
+
+Global administrator-controlled activation for currently discovered built-in
+Extensions. Startup inserts missing ids with `enabled=true` and never overwrites
+stored choices. Disabled state preserves all domain data and Schedules.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `name` | String(128) PK | Stable snake_case Extension id |
+| `enabled` | Boolean NOT NULL | Global activation state |
+| `updated_by` | String(128) NULL | Last admin subject; NULL for bootstrap |
+| `created_at`, `updated_at` | DateTime(tz) NOT NULL | Creation and last state change |
+
+The model and service live in `src/spectres/extensions/state.py`.
+
+## 4. ETF Grid Tables
 
 Models live in `src/spectres/extensions/etf_grid/models.py`.
 

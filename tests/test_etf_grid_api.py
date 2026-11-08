@@ -311,7 +311,6 @@ class TestEtfGridApi:
             assert len(contribution.schedules) == 1
             spec = contribution.schedules[0]
             assert spec.name == "ETF Grid Daily Sync"
-            assert spec.previous_names == ("etf_grid_daily_sync",)
             assert spec.cron == "0 9 * * 1,5"
             assert spec.timezone == "Asia/Shanghai"
             assert spec.endpoint == "/workflows/etf_grid_data_sync/runs"

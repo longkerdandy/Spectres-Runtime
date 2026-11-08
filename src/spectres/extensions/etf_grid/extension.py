@@ -7,8 +7,9 @@ from spectres.extensions.etf_grid.models import EtfGridBase
 
 logger = logging.getLogger(__name__)
 
-#: Unique extension id (snake_case; every surface derives from it).
-name = "etf_grid"
+id = "etf_grid"
+name = "ETF Grid"
+description = "ETF grid trading status, trade ledger, signals, and scheduled data workflows."
 
 
 def register(ctx: ExtensionContext) -> ExtensionContribution:
@@ -39,7 +40,6 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
         schedules=[
             ScheduleSpec(
                 name="ETF Grid Daily Sync",
-                previous_names=("etf_grid_daily_sync",),
                 cron=config.sync_cron,
                 endpoint=f"/workflows/{DATA_SYNC_WORKFLOW_ID}/runs",
                 method="POST",

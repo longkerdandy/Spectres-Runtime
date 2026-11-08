@@ -63,9 +63,7 @@ def schedule_write_client() -> Iterator[TestClient]:
     try:
         agent_os, contributions = main_module.create_agent_os()
         app = agent_os.get_app()
-        for contribution in contributions:
-            for router in contribution.routers:
-                app.include_router(router)
+        main_module.mount_extension_routers(app, contributions)
         with TestClient(app, raise_server_exceptions=False) as client:
             yield client
     finally:
@@ -228,3 +226,53 @@ def test_recompute_workflow_executes_for_authenticated_owner(schedule_write_clie
     body = response.json()
     assert body["user_id"] == ALICE
     assert body["status"] == "COMPLETED"
+
+
+def test_disabled_extension_schedule_skips_without_retry_or_reconfiguration(
+    schedule_write_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A disabled result is successful, non-retryable, and non-destructive."""
+    name = f"disabled-extension-{uuid4().hex}"
+    schedule_id: str | None = None
+    try:
+        disabled = schedule_write_client.patch(
+            "/api/v1/extensions/etf_grid",
+            headers=_headers(ADMIN, ADMIN_SCOPES),
+            json={"enabled": False},
+        )
+        assert disabled.status_code == 200
+        created = schedule_write_client.post(
+            "/schedules",
+            headers=_headers(ALICE),
+            json=_schedule_payload(name) | {"max_retries": 3},
+        )
+        assert created.status_code == 201, created.text
+        schedule_id = created.json()["id"]
+        executor = cast(FastAPI, schedule_write_client.app).state.scheduler_executor
+        call_endpoint = AsyncMock(
+            return_value={
+                "status": "success",
+                "status_code": 200,
+                "run_id": f"workflow-run-{uuid4().hex}",
+                "session_id": f"workflow-session-{uuid4().hex}",
+                "output": {"content": {"status": "disabled", "extension": "etf_grid"}},
+            }
+        )
+        monkeypatch.setattr(executor, "_call_endpoint", call_endpoint)
+
+        triggered = schedule_write_client.post(f"/schedules/{schedule_id}/trigger", headers=_headers(ALICE))
+
+        assert triggered.status_code == 200, triggered.text
+        assert triggered.json()["status"] == "success"
+        assert triggered.json()["output"]["content"] == {"status": "disabled", "extension": "etf_grid"}
+        history = schedule_write_client.get(f"/schedules/{schedule_id}/runs", headers=_headers(ALICE))
+        assert len(history.json()["data"]) == 1
+        stored = schedule_write_client.get(f"/schedules/{schedule_id}", headers=_headers(ALICE)).json()
+        assert stored["enabled"] is True
+        assert stored["max_retries"] == 3
+        assert stored["user_id"] == ALICE
+        assert stored["endpoint"] == RECOMPUTE_ENDPOINT
+    finally:
+        if schedule_id is not None:
+            schedule_write_client.delete(f"/schedules/{schedule_id}", headers=_headers(ALICE))
