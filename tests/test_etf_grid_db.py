@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
+from spectres.config import DefaultConfigSpec, initialize_default_configs
 from spectres.db.postgres import get_postgres_db
-from spectres.extensions.base import ExtensionContribution, LoadedExtension
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.core.grid import SignalSnapshot
 from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridInstrument, EtfGridSignal, EtfGridTrade, EtfGridValuation
@@ -31,7 +31,6 @@ from spectres.extensions.etf_grid.types import (
     TradeSortField,
     ValuationInput,
 )
-from spectres.extensions.seeding import ConfigSeedSpec, initialize_config_seeds
 
 pytestmark = [pytest.mark.integration, pytest.mark.db]
 
@@ -492,12 +491,12 @@ class TestInstrumentService:
         with session_factory() as session, session.begin():
             session.execute(delete(EtfGridInstrument).where(EtfGridInstrument.symbol == "513330.XSHG"))
 
-        spec = ConfigSeedSpec(
-            id="etf_grid.instruments",
+        spec = DefaultConfigSpec(
+            name="etf_grid.instruments",
             has_existing_data=services.instruments.has_existing_data,
             initialize=lambda: services.instruments.initialize(EtfGridConfig().portfolio),  # type: ignore[call-arg]
         )
-        initialize_config_seeds([LoadedExtension(id="etf_grid", name="ETF Grid", description="ETF Grid", contribution=ExtensionContribution(config_seeds=[spec]))])
+        initialize_default_configs([spec])
 
         assert "513330.XSHG" not in {row["symbol"] for row in services.instruments.list_instruments()}
 

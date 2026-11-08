@@ -1,17 +1,15 @@
 """Extension contract: context, contribution, and protocol."""
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Protocol
 
 from agno.db.postgres import PostgresDb
 from agno.tools.toolkit import Toolkit
 from agno.workflow import Workflow
 from fastapi import APIRouter
 
-from spectres.config import Settings
-
-if TYPE_CHECKING:
-    from spectres.extensions.seeding import ConfigSeedSpec
+from spectres.config import DefaultConfigSpec, Settings
+from spectres.scheduler import ScheduleSpec
 
 
 @dataclass
@@ -23,37 +21,14 @@ class ExtensionContext:
 
 
 @dataclass
-class ScheduleSpec:
-    """Declarative scheduled-task definition.
-
-    A schedule is ``{cron, endpoint, method, payload}``: the AgentOS
-    scheduler fires one HTTP call to ``endpoint`` on the cron cadence, and
-    for non-run endpoints a 2xx response is success. All fields are required
-    except ``payload``. Startup creates missing rows and preserves existing
-    configuration.
-    """
-
-    name: str  # unique per owner; system schedules may use a human-readable display name
-    cron: str
-    endpoint: str
-    method: str
-    timezone: str
-    timeout_seconds: int
-    max_retries: int
-    retry_delay_seconds: int
-    enabled: bool  # Applied only when creating the row; later administrator changes survive restarts
-    payload: dict[str, Any] | None = None
-
-
-@dataclass
 class ExtensionContribution:
     """What an extension gives back to Runtime."""
 
     toolkits: list[Toolkit] = field(default_factory=list)
     routers: list[APIRouter] = field(default_factory=list)
     workflows: list[Workflow] = field(default_factory=list)
+    default_configs: list[DefaultConfigSpec] = field(default_factory=list)
     schedules: list[ScheduleSpec] = field(default_factory=list)
-    config_seeds: list["ConfigSeedSpec"] = field(default_factory=list)
 
 
 @dataclass

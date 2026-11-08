@@ -1,18 +1,54 @@
-"""Typed configuration for Spectres Runtime."""
+"""Typed settings and default configuration initialization for Spectres Runtime."""
 
 import json
+import logging
 import os
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
+logger = logging.getLogger(__name__)
+
 
 def _environment_files() -> tuple[str, str]:
     env_file = os.getenv("SPECTRES_ENV_FILE", ".env")
     local_file = ".env.test.local" if env_file == ".env.test" else ".env.local"
     return env_file, local_file
+
+
+@dataclass(frozen=True)
+class DefaultConfigSpec:
+    """Default configuration initialized only when its target has no stored data."""
+
+    name: str
+    has_existing_data: Callable[[], bool]
+    initialize: Callable[[], int]
+
+
+def initialize_default_configs(specs: Sequence[DefaultConfigSpec]) -> None:
+    """Initialize default configuration collections without reconciling existing data."""
+    for spec in specs:
+        try:
+            if spec.has_existing_data():
+                logger.info(
+                    "default configuration %r skipped because stored data exists",
+                    spec.name,
+                    extra={"event": "default_config_skipped", "resource_name": spec.name},
+                )
+                continue
+            inserted = spec.initialize()
+            logger.info(
+                "default configuration %r initialized %d records",
+                spec.name,
+                inserted,
+                extra={"event": "default_config_initialized", "resource_name": spec.name, "inserted": inserted},
+            )
+        except Exception as exc:
+            raise RuntimeError(f"default configuration {spec.name!r} failed to initialize: {exc}") from exc
 
 
 class Settings(BaseSettings):

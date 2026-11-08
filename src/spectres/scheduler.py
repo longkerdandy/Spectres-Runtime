@@ -1,29 +1,46 @@
-"""Scheduled-task registration.
+"""System Schedule declarations and initialization.
 
-The AgentOS scheduler polls ``agno_schedules`` and fires each schedule as
-one HTTP call to its endpoint. Extensions declare schedules via
-``ExtensionContribution.schedules``; core creates missing schedules here at
+The AgentOS scheduler polls ``agno_schedules`` and fires each Schedule as
+one HTTP call to its endpoint. Runtime creates missing system Schedules at
 startup and leaves existing rows untouched so administrator changes survive
 restarts.
 """
 
 import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
 
 from agno.db.postgres import PostgresDb
 from agno.scheduler import ScheduleManager
 
-from spectres.extensions.base import LoadedExtension
-
 logger = logging.getLogger(__name__)
 
 
-def register_schedules(extensions: list[LoadedExtension], db: PostgresDb) -> None:
-    """Register all extension-contributed schedules with the Agno scheduler.
+@dataclass(frozen=True)
+class ScheduleSpec:
+    """System Schedule initialized only when no stored Schedule has its name.
 
-    Fail-loud like the extension loader: a failed registration aborts
-    startup naming the schedule — a broken schedule never fails silently.
+    The AgentOS scheduler fires one HTTP call to ``endpoint`` on the cron
+    cadence, and for non-run endpoints a 2xx response is success. All fields
+    are required except ``payload``. ``enabled`` applies only at initialization;
+    later administrator changes survive restarts.
     """
-    specs = [spec for extension in extensions for spec in extension.contribution.schedules]
+
+    name: str
+    cron: str
+    endpoint: str
+    method: str
+    timezone: str
+    timeout_seconds: int
+    max_retries: int
+    retry_delay_seconds: int
+    enabled: bool
+    payload: dict[str, Any] | None = None
+
+
+def register_schedules(specs: Sequence[ScheduleSpec], db: PostgresDb) -> None:
+    """Create missing system Schedules and preserve every existing stored row."""
     if not specs:
         return
     manager = ScheduleManager(db)
@@ -35,7 +52,7 @@ def register_schedules(extensions: list[LoadedExtension], db: PostgresDb) -> Non
                     logger.info(
                         "schedule %r already exists, skipping",
                         spec.name,
-                        extra={"event": "schedule_exists", "schedule": spec.name},
+                        extra={"event": "schedule_exists", "resource_name": spec.name},
                     )
                     continue
 
@@ -59,16 +76,16 @@ def register_schedules(extensions: list[LoadedExtension], db: PostgresDb) -> Non
                     spec.method,
                     spec.endpoint,
                     schedule.next_run_at,
-                    extra={"event": "schedule_registered", "schedule": spec.name},
+                    extra={"event": "schedule_registered", "resource_name": spec.name},
                 )
                 if not spec.enabled:
                     manager.disable(schedule.id)
                     logger.info(
                         "schedule %r registered as disabled",
                         spec.name,
-                        extra={"event": "schedule_registered_disabled", "schedule": spec.name},
+                        extra={"event": "schedule_registered_disabled", "resource_name": spec.name},
                     )
             except Exception as exc:
-                raise RuntimeError(f"schedule {spec.name!r} failed to register: {exc}") from exc
+                raise RuntimeError(f"schedule {spec.name!r} failed to initialize: {exc}") from exc
     finally:
         manager.close()

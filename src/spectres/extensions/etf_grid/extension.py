@@ -2,9 +2,10 @@
 
 import logging
 
-from spectres.extensions.base import ExtensionContext, ExtensionContribution, ScheduleSpec
+from spectres.config import DefaultConfigSpec
+from spectres.extensions.base import ExtensionContext, ExtensionContribution
 from spectres.extensions.etf_grid.models import EtfGridBase
-from spectres.extensions.seeding import ConfigSeedSpec
+from spectres.scheduler import ScheduleSpec
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,13 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
         toolkits=[EtfGridToolkit(config=config, instrument_service=instruments)],
         routers=[create_router(config=config, instrument_service=instruments)],
         workflows=create_workflows(config=config, instrument_service=instruments),
+        default_configs=[
+            DefaultConfigSpec(
+                name="etf_grid.instruments",
+                has_existing_data=instruments.has_existing_data,
+                initialize=lambda: instruments.initialize(config.portfolio),
+            )
+        ],
         schedules=[
             ScheduleSpec(
                 name="ETF Grid Daily Sync",
@@ -50,13 +58,6 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
                 enabled=config.sync_schedule_enabled,
             )
         ],
-        config_seeds=[
-            ConfigSeedSpec(
-                id="etf_grid.instruments",
-                has_existing_data=instruments.has_existing_data,
-                initialize=lambda: instruments.initialize(config.portfolio),
-            )
-        ],
     )
     logger.info(
         "extension registered",
@@ -65,8 +66,8 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
             "toolkits": len(contribution.toolkits),
             "routers": len(contribution.routers),
             "workflows": len(contribution.workflows),
+            "default_configs": len(contribution.default_configs),
             "schedules": len(contribution.schedules),
-            "config_seeds": len(contribution.config_seeds),
         },
     )
     return contribution

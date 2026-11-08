@@ -226,7 +226,7 @@ def test_system_schedule_restart_preserves_stored_configuration(isolated_client:
     }
     assert db.update_schedule(row["id"], **administrator_changes) is not None
     try:
-        register_schedules(main_module.loaded_extensions, db)
+        register_schedules([spec for extension in main_module.loaded_extensions for spec in extension.contribution.schedules], db)
         stored = db.get_schedule_by_name("ETF Grid Daily Sync", user_id=None)
         assert stored is not None
         assert {field: stored[field] for field in fields} == administrator_changes

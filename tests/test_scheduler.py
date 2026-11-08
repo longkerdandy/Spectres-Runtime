@@ -1,16 +1,11 @@
-"""Unit tests for scheduled-task registration (spectres/scheduler.py)."""
+"""Unit tests for system Schedule initialization (spectres/scheduler.py)."""
 
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from spectres.extensions.base import ExtensionContribution, LoadedExtension, ScheduleSpec
-from spectres.scheduler import register_schedules
-
-
-def _loaded(contribution: ExtensionContribution) -> list[LoadedExtension]:
-    return [LoadedExtension(id="test_extension", name="Test Extension", description="Test extension", contribution=contribution)]
+from spectres.scheduler import ScheduleSpec, register_schedules
 
 
 @pytest.mark.unit
@@ -37,9 +32,9 @@ class TestRegisterSchedules:
         return db
 
     def test_no_schedules_skips_manager(self) -> None:
-        """An empty contribution set never constructs a ScheduleManager."""
+        """An empty spec sequence never constructs a ScheduleManager."""
         with patch("spectres.scheduler.ScheduleManager") as manager_cls:
-            register_schedules(_loaded(ExtensionContribution()), db=MagicMock())
+            register_schedules([], db=MagicMock())
         manager_cls.assert_not_called()
 
     def test_spec_maps_to_manager_create(self) -> None:
@@ -47,10 +42,7 @@ class TestRegisterSchedules:
         manager = MagicMock()
         manager.create.return_value = MagicMock(id="sched-1", next_run_at=1760000000)
         with patch("spectres.scheduler.ScheduleManager", return_value=manager):
-            register_schedules(
-                _loaded(ExtensionContribution(schedules=[self._spec(max_retries=2, retry_delay_seconds=300)])),
-                db=self._missing_db(),
-            )
+            register_schedules([self._spec(max_retries=2, retry_delay_seconds=300)], db=self._missing_db())
         manager.create.assert_called_once_with(
             name="ETF Grid Daily Sync",
             cron="0 9 * * 1,5",
@@ -78,10 +70,7 @@ class TestRegisterSchedules:
             next_run_at=1760000000,
         )
         with patch("spectres.scheduler.ScheduleManager", return_value=manager):
-            register_schedules(
-                _loaded(ExtensionContribution(schedules=[self._spec(cron="0 9 * * 1,5", enabled=True)])),
-                db=db,
-            )
+            register_schedules([self._spec(cron="0 9 * * 1,5", enabled=True)], db=db)
         db.get_schedule_by_name.assert_called_once_with("ETF Grid Daily Sync", user_id=None)
         manager.create.assert_not_called()
         manager.update.assert_not_called()
@@ -94,22 +83,19 @@ class TestRegisterSchedules:
         manager = MagicMock()
         manager.create.return_value = MagicMock(id="sched-1", next_run_at=1760000000)
         with patch("spectres.scheduler.ScheduleManager", return_value=manager):
-            register_schedules(
-                _loaded(ExtensionContribution(schedules=[self._spec(enabled=False)])),
-                db=self._missing_db(),
-            )
+            register_schedules([self._spec(enabled=False)], db=self._missing_db())
         manager.disable.assert_called_once_with("sched-1")
         manager.enable.assert_not_called()
 
     def test_failure_aborts_naming_the_schedule(self, caplog: pytest.LogCaptureFixture) -> None:
-        """A failed registration propagates with its cause and is not logged a second time."""
+        """A failed initialization propagates with its cause and is not logged a second time."""
         manager = MagicMock()
         manager.create.side_effect = ValueError("invalid cron")
         with (
             patch("spectres.scheduler.ScheduleManager", return_value=manager),
             pytest.raises(RuntimeError, match="ETF Grid Daily Sync") as exc_info,
         ):
-            register_schedules(_loaded(ExtensionContribution(schedules=[self._spec()])), db=self._missing_db())
+            register_schedules([self._spec()], db=self._missing_db())
         assert isinstance(exc_info.value.__cause__, ValueError)
         assert not caplog.records
         manager.close.assert_called_once()

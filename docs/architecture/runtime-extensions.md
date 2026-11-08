@@ -44,14 +44,19 @@ on the same code path.
 
 - `ExtensionContext`: core `Settings` and the shared `PostgresDb`.
 - `ExtensionContribution`: lists of `toolkits`, `routers`, `workflows`,
-  `schedules`, and `config_seeds`; each defaults to an empty list.
+  `default_configs`, and `schedules`; each defaults to an empty list.
 - `LoadedExtension`: discovered `id`, `name`, and `description` metadata paired
   with its `contribution`.
-- `ScheduleSpec`: `name`, `cron`, `endpoint`, `method`, `timezone`,
-  `timeout_seconds`, `max_retries`, `retry_delay_seconds`, and `enabled` are
-  required; `payload` is optional.
-- `ConfigSeedSpec`: a stable collection `id`, an emptiness check, and an
-  initialization callback that writes the complete collection in one transaction.
+- `ScheduleSpec`: a core `spectres.scheduler` declaration with `name`, `cron`,
+  `endpoint`, `method`, `timezone`, `timeout_seconds`, `max_retries`,
+  `retry_delay_seconds`, and `enabled` required; `payload` is optional.
+- `DefaultConfigSpec`: a core `spectres.config` declaration with a stable
+  collection `name`, an emptiness check, and an initialization callback that
+  writes the complete collection in one transaction.
+
+Both core spec types can be used without an Extension. Their initialization
+functions accept spec sequences directly; Extension contributions are flattened
+by `main.py` before these functions are called.
 - `Extension`: a stable snake_case `id`, non-empty human-readable `name` and
   `description`, plus `register(ctx)`.
 
@@ -94,7 +99,7 @@ contract.
 Startup order in `main.py`:
 
 ```text
-PostgresDb → load_extensions() → initialize_config_seeds()
+PostgresDb → load_extensions() → initialize_default_configs()
            → initialize/reconcile Extension state → register_schedules()
            → guard Toolkits and Workflows → Team Leader(extra_tools=...)
            → AgentOS(workflows=...) → mount guarded extension routers
@@ -109,14 +114,14 @@ contains no extension-specific fields. Required fields use explicit environment
 variables. Optional credentials must not block unrelated startup; the dependent
 operation should fail clearly when called.
 
-A database-backed collection declares a `ConfigSeedSpec`. After extension
-registration, core skips the entire seed when its target contains any row;
-otherwise the extension writes the complete configured collection in one
-transaction. There is no per-item reconciliation: later configuration changes do
-not add, update, or remove stored rows, and deleting one stored row does not
-restore it on restart. Empty means uninitialized, so an interface that permits
-deleting the whole collection must also introduce a persisted initialization
-marker. Seed failures abort startup with the collection id.
+A database-backed collection declares a `DefaultConfigSpec`. During startup,
+core skips the entire default when its target contains any row; otherwise the
+owner writes the complete configured collection in one transaction. There is no
+per-item reconciliation: later configuration changes do not add, update, or
+remove stored rows, and deleting one stored row does not restore it on restart.
+Empty means uninitialized, so an interface that permits deleting the whole
+collection must also introduce a persisted initialization marker.
+Initialization failures abort startup with the collection name.
 
 ### Persistence
 
