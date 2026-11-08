@@ -47,7 +47,7 @@ class TradeCreate(BaseModel):
 
 
 class InstrumentUpdate(BaseModel):
-    """Administrator selection change for a configured symbol."""
+    """Administrator selection change for a stored symbol."""
 
     enabled: bool
 
@@ -68,7 +68,6 @@ def create_router(
     valuation = valuation_service or EtfGridValuationService()
     signals = signal_service or EtfGridSignalService()
     instruments = instrument_service or EtfGridInstrumentService()
-    instruments.bootstrap([item.symbol for item in config.portfolio])
 
     router = APIRouter(prefix="/api/v1/extensions/etf-grid", tags=["etf-grid"])
 
@@ -78,7 +77,6 @@ def create_router(
         return to_jsonable(
             get_portfolio_status(
                 user_id=user_id,
-                config=config,
                 ledger_service=ledger,
                 candle_service=candles,
                 signal_service=signals,
@@ -104,18 +102,18 @@ def create_router(
     @router.get("/instruments")
     def get_instruments(request: Request) -> list[dict[str, Any]]:
         require_user_id(request)
-        return to_jsonable(instruments.list_instruments(config=config, enabled_only=True))
+        return to_jsonable(instruments.list_instruments(enabled_only=True))
 
     @router.get("/admin/instruments")
     def get_admin_instruments(request: Request) -> list[dict[str, Any]]:
         require_admin_or_internal(request)
-        return to_jsonable(instruments.list_instruments(config=config))
+        return to_jsonable(instruments.list_instruments())
 
     @router.patch("/admin/instruments/{symbol}")
     def update_instrument(symbol: str, body: InstrumentUpdate, request: Request) -> dict[str, Any]:
         admin_id = require_admin_or_internal(request)
         try:
-            result = instruments.set_enabled(symbol, enabled=body.enabled, updated_by=admin_id, config=config)
+            result = instruments.set_enabled(symbol, enabled=body.enabled, updated_by=admin_id)
         except ValueError as exc:
             raise RequestValidationError(errors=[{"loc": ("body",), "msg": str(exc), "type": "value_error"}]) from exc
         logger.info("instrument selection updated", extra={"event": "instrument_updated", **result})
@@ -182,7 +180,7 @@ def create_router(
     def create_trade(body: TradeCreate, request: Request) -> dict[str, Any]:
         user_id = require_user_id(request)
         try:
-            symbol = instruments.require_enabled(body.symbol, config=config)
+            symbol = instruments.require_enabled(body.symbol)
             trade = ledger.record_trade(
                 user_id=user_id,
                 trade_date=body.trade_date,

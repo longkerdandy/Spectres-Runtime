@@ -30,9 +30,11 @@ are supported; framework data and ETF Grid private data are owner-scoped.
 
 1. Configure structured logging and create the process-wide `PostgresDb`.
 2. Discover and register in-tree extensions.
-3. Register missing system schedules without reconfiguring existing rows.
-4. Attach extension toolkits to the Team Leader and mount extension Workflows.
-5. Build AgentOS with AG-UI, optional JWT authorization, the scheduler, and
+3. Initialize configuration collections whose target tables are empty; skip every
+   collection that already contains data.
+4. Register missing system schedules without reconfiguring existing rows.
+5. Attach extension toolkits to the Team Leader and mount extension Workflows.
+6. Build AgentOS with AG-UI, optional JWT authorization, the scheduler, and
    `user_isolation=True`; mount extension routers on the FastAPI app.
 
 The Team Leader is a single Agno `Agent`, not a Team. It supports

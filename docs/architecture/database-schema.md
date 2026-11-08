@@ -71,15 +71,23 @@ Models live in `src/spectres/extensions/etf_grid/models.py`.
 
 ### `etf_grid_instruments`
 
-Shared administrator-controlled enablement for symbols already present in
-`ETF_GRID_PORTFOLIO`. Startup inserts missing configured symbols without
-overwriting existing selections.
+Shared database-backed strategy definitions and administrator-controlled
+enablement. Startup initializes the complete collection from
+`ETF_GRID_PORTFOLIO` only when this table is empty. Once any row exists, startup
+skips the whole collection: later configuration additions, changes, and removals
+are not reconciled, and individually deleted rows are not restored. All runtime
+portfolio reads use this table.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `symbol` | String(16) PK | Configured FTShare full code |
+| `symbol` | String(16) PK | FTShare full code |
+| `name` | String(128) NOT NULL | Display name |
+| `per_grid_amount` | Integer NOT NULL | Cash amount per grid |
+| `max_grids` | Integer NOT NULL | Maximum grid levels in either direction |
+| `gate` | JSONB NULL | Optional typed valuation-gate configuration |
+| `sort_order` | Integer NOT NULL | Portfolio display and processing order |
 | `enabled` | Boolean NOT NULL | Included in normal sync/status/compute |
-| `updated_by` | String(128) NULL | Last admin subject; NULL for bootstrap |
+| `updated_by` | String(128) NULL | Last admin subject; NULL for initialization |
 | `created_at`, `updated_at` | DateTime(tz) NOT NULL | Creation and last selection change |
 
 ### `etf_grid_trades`

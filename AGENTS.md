@@ -31,11 +31,11 @@ Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents
 ## 4. Extension Rules
 
 - Keep each capability under `src/spectres/extensions/<name>/`; core code must not import extension code.
-- Implement the contract in `src/spectres/extensions/base.py`: each manifest has a stable snake_case `id`, a non-empty display `name` and `description`, and an idempotent `register()` that may contribute toolkits, routers, Workflows, and declarative system schedules.
+- Implement the contract in `src/spectres/extensions/base.py`: each manifest has a stable snake_case `id`, a non-empty display `name` and `description`, and an idempotent `register()` that may contribute toolkits, routers, Workflows, declarative system schedules, and collection-level configuration seeds.
 - Keep `toolkit.py`, `api.py`, and `workflows.py` as thin adapters. Put business logic in services and pure domain code in `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy.
 - Extensions share the core PostgreSQL connection pool, use table names prefixed with the extension id, and must not access Agno-managed or other extensions' tables.
 - Use snake_case for Python identifiers and UPPER_SNAKE for environment prefixes; use kebab-case under `/api/v1/extensions/`.
-- Extension configuration belongs in the extension's settings fragment, not core `Settings`. Scheduled work must be idempotent. Startup must preserve existing stored schedule configuration.
+- Extension configuration belongs in the extension's settings fragment, not core `Settings`. Database-backed configuration collections use `ConfigSeedSpec`: initialize the whole collection only when its target is empty, and never reconcile individual rows on restart. Scheduled work must be idempotent. Startup must preserve existing stored schedule configuration.
 - Use `logging.getLogger(__name__)`; do not configure logging sinks in extensions. Log handled failures and sensitive-operation audit events without secrets.
 
 ## 5. Development Conventions

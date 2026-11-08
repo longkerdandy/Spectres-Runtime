@@ -81,8 +81,9 @@ must define shared versus private data and scope every private read/write.
 ETF Grid implements this explicitly:
 
 - `etf_grid_candles`, `etf_grid_valuation`, and `etf_grid_instruments` are
-  shared. Strategy parameters come from `ETF_GRID_PORTFOLIO`; only instrument
-  enablement is administrator-managed in PostgreSQL.
+  shared. `ETF_GRID_PORTFOLIO` initializes the complete instrument collection
+  only when its table is empty; subsequent reads and administrator changes use
+  PostgreSQL without configuration filtering.
 - `etf_grid_trades` and `etf_grid_signals` require `user_id`. Ledger reads,
   writes, counts, replay, and signal reads/upserts filter by owner. Signal keys
   are `(user_id, symbol, trade_date)`.

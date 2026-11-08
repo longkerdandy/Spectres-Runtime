@@ -4,6 +4,7 @@ import logging
 
 from spectres.extensions.base import ExtensionContext, ExtensionContribution, ScheduleSpec
 from spectres.extensions.etf_grid.models import EtfGridBase
+from spectres.extensions.seeding import ConfigSeedSpec
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +14,9 @@ description = "ETF grid trading status, trade ledger, signals, and scheduled dat
 
 
 def register(ctx: ExtensionContext) -> ExtensionContribution:
-    """Create tables, bootstrap instrument selection, and build the surfaces.
+    """Create tables and build the extension surfaces without network calls.
 
-    Table creation and selection bootstrap are idempotent; no network calls
-    happen at load time.
+    The instrument collection is initialized by core after extension loading.
     The daily sync schedule is only declared here — core registers it with
     the AgentOS scheduler after loading (spectres/scheduler.py).
     """
@@ -32,7 +32,6 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
 
     config = load_config()
     instruments = EtfGridInstrumentService()
-    instruments.bootstrap([item.symbol for item in config.portfolio])
     contribution = ExtensionContribution(
         toolkits=[EtfGridToolkit(config=config, instrument_service=instruments)],
         routers=[create_router(config=config, instrument_service=instruments)],
@@ -51,16 +50,23 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
                 enabled=config.sync_schedule_enabled,
             )
         ],
+        config_seeds=[
+            ConfigSeedSpec(
+                id="etf_grid.instruments",
+                has_existing_data=instruments.has_existing_data,
+                initialize=lambda: instruments.initialize(config.portfolio),
+            )
+        ],
     )
     logger.info(
         "extension registered",
         extra={
             "event": "extension_registered",
-            "symbols": [item.symbol for item in config.portfolio],
             "toolkits": len(contribution.toolkits),
             "routers": len(contribution.routers),
             "workflows": len(contribution.workflows),
             "schedules": len(contribution.schedules),
+            "config_seeds": len(contribution.config_seeds),
         },
     )
     return contribution

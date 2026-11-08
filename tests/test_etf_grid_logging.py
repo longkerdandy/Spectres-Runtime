@@ -62,18 +62,19 @@ def _records(caplog: pytest.LogCaptureFixture, event: str) -> list[logging.LogRe
     return [record for record in caplog.records if getattr(record, "event", None) == event]
 
 
-def _instruments() -> MagicMock:
+def _instruments(config: EtfGridConfig | None = None) -> MagicMock:
+    config = config or EtfGridConfig()  # type: ignore[call-arg]
     service = MagicMock(spec=EtfGridInstrumentService)
-    service.effective_portfolio.side_effect = lambda *, config: config.portfolio
-    service.require_enabled.side_effect = lambda symbol, *, config: symbol
+    service.effective_portfolio.side_effect = lambda: config.portfolio
+    service.require_enabled.side_effect = lambda symbol: symbol
     return service
 
 
 class TestExtensionRegisterLogging:
     """register() logs one INFO audit record on success."""
 
-    def test_register_logs_symbols_and_contributions(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """The extension_registered record carries symbols and surface counts."""
+    def test_register_logs_seed_and_contributions(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """The extension_registered record carries seed and surface counts."""
         monkeypatch.setattr(EtfGridBase.metadata, "create_all", lambda *args, **kwargs: None)
         monkeypatch.setattr("spectres.extensions.etf_grid.service.base.get_session_factory", MagicMock)
         ctx = ExtensionContext(settings=settings, db=MagicMock())
@@ -83,7 +84,7 @@ class TestExtensionRegisterLogging:
         assert len(records) == 1
         record = records[0]
         assert record.levelname == "INFO"
-        assert record.__dict__["symbols"] == ["513330.XSHG", "513120.XSHG", "513530.XSHG"]  # .env.test portfolio
+        assert record.__dict__["config_seeds"] == len(contribution.config_seeds) == 1
         assert record.__dict__["toolkits"] == len(contribution.toolkits) == 1
         assert record.__dict__["routers"] == len(contribution.routers) == 1
 
@@ -139,7 +140,7 @@ class TestSyncMarketDataLogging:
         valuation = MagicMock(spec=EtfGridValuationService)
         valuation.upsert_valuation.return_value = 1
         with caplog.at_level(logging.INFO, logger="spectres.extensions.etf_grid.marketdata"):
-            result = sync_market_data(config=config, candle_service=MagicMock(spec=EtfGridCandleService), valuation_service=valuation, instrument_service=_instruments(), fetcher=fetcher)
+            result = sync_market_data(config=config, candle_service=MagicMock(spec=EtfGridCandleService), valuation_service=valuation, instrument_service=_instruments(config), fetcher=fetcher)
         assert "ETF_GRID_FTSHARE_API_KEY is required" in result["errors"]["candles"]
         assert result["valuation"] == 1
 
@@ -229,7 +230,7 @@ class TestSignalSkipLogging:
         with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
             result = compute_daily_signals(
                 user_id="alice",
-                instrument_service=_instruments(),
+                instrument_service=_instruments(config),
                 config=config,
                 ledger_service=_FakeLedgerService(),
                 candle_service=_FakeCandleService(candles),
@@ -303,7 +304,7 @@ class TestSignalErrorIsolation:
         with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
             result = compute_daily_signals(
                 user_id="alice",
-                instrument_service=_instruments(),
+                instrument_service=_instruments(_two_symbol_config()),
                 config=_two_symbol_config(),
                 ledger_service=_FakeLedgerService(),
                 candle_service=_FlakyCandleService(candles, "513120.XSHG"),
@@ -324,7 +325,7 @@ class TestSignalErrorIsolation:
         candles = [{"trade_date": date(2026, 1, 1) + timedelta(days=i), "close": Decimal("1.0000")} for i in range(62)]
         result = compute_daily_signals(
             user_id="alice",
-            instrument_service=_instruments(),
+            instrument_service=_instruments(_two_symbol_config()),
             config=_two_symbol_config(),
             ledger_service=_FlakyLedgerService("513330.XSHG"),
             candle_service=_FakeCandleService(candles),
@@ -342,7 +343,7 @@ class TestSignalErrorIsolation:
         with caplog.at_level(logging.DEBUG, logger="spectres.extensions.etf_grid.service"):
             result = compute_daily_signals(
                 user_id="alice",
-                instrument_service=_instruments(),
+                instrument_service=_instruments(_two_symbol_config()),
                 config=_two_symbol_config(),
                 ledger_service=_FakeLedgerService(),
                 candle_service=_FakeCandleService(candles),
@@ -385,7 +386,7 @@ class TestSignalCandleFetch:
         signal_service = MagicMock(spec=EtfGridSignalService)
         result = compute_daily_signals(
             user_id="alice",
-            instrument_service=_instruments(),
+            instrument_service=_instruments(_two_symbol_config()),
             config=_two_symbol_config(),
             ledger_service=_FakeLedgerService(),
             candle_service=candle_service,

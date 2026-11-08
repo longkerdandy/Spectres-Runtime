@@ -43,13 +43,15 @@ on the same code path.
 `base.py` defines:
 
 - `ExtensionContext`: core `Settings` and the shared `PostgresDb`.
-- `ExtensionContribution`: lists of `toolkits`, `routers`, `workflows`, and
-  `schedules`; each defaults to an empty list.
+- `ExtensionContribution`: lists of `toolkits`, `routers`, `workflows`,
+  `schedules`, and `config_seeds`; each defaults to an empty list.
 - `LoadedExtension`: discovered `id`, `name`, and `description` metadata paired
   with its `contribution`.
 - `ScheduleSpec`: `name`, `cron`, `endpoint`, `method`, `timezone`,
   `timeout_seconds`, `max_retries`, `retry_delay_seconds`, and `enabled` are
   required; `payload` is optional.
+- `ConfigSeedSpec`: a stable collection `id`, an emptiness check, and an
+  initialization callback that writes the complete collection in one transaction.
 - `Extension`: a stable snake_case `id`, non-empty human-readable `name` and
   `description`, plus `register(ctx)`.
 
@@ -58,10 +60,10 @@ are display metadata and do not derive routes, table names, or ownership. A
 separate version field is unnecessary because built-in Extension code releases
 with Runtime.
 
-`register()` must be idempotent. Its side effects are limited to table creation
-and idempotent bootstrap; it performs no network calls and starts no threads.
-Extensions are constructed at startup and keep mutable state in PostgreSQL.
-They currently contribute tools, not agents.
+`register()` must be idempotent. Its side effects are limited to table creation;
+it performs no network calls and starts no threads. Extensions are constructed
+at startup and keep mutable state in PostgreSQL. They currently contribute tools,
+not agents.
 
 Names use snake_case for packages, tables, tools, and Workflow ids; UPPER_SNAKE
 for environment prefixes; and kebab-case for URL path segments. Schedule names
@@ -92,10 +94,10 @@ contract.
 Startup order in `main.py`:
 
 ```text
-PostgresDb → load_extensions() → initialize/reconcile Extension state
-           → register_schedules() → guard Toolkits and Workflows
-           → Team Leader(extra_tools=...) → AgentOS(workflows=...)
-           → mount each extension router with its activation guard
+PostgresDb → load_extensions() → initialize_config_seeds()
+           → initialize/reconcile Extension state → register_schedules()
+           → guard Toolkits and Workflows → Team Leader(extra_tools=...)
+           → AgentOS(workflows=...) → mount guarded extension routers
 ```
 
 ## 5. Surface Contracts
@@ -106,6 +108,15 @@ Each extension owns a pydantic-settings fragment in `config.py`; core `Settings`
 contains no extension-specific fields. Required fields use explicit environment
 variables. Optional credentials must not block unrelated startup; the dependent
 operation should fail clearly when called.
+
+A database-backed collection declares a `ConfigSeedSpec`. After extension
+registration, core skips the entire seed when its target contains any row;
+otherwise the extension writes the complete configured collection in one
+transaction. There is no per-item reconciliation: later configuration changes do
+not add, update, or remove stored rows, and deleting one stored row does not
+restore it on restart. Empty means uninitialized, so an interface that permits
+deleting the whole collection must also introduce a persisted initialization
+marker. Seed failures abort startup with the collection id.
 
 ### Persistence
 
@@ -164,8 +175,9 @@ See [Scheduled Tasks](scheduled-tasks.md).
 
 ## 6. ETF Grid Reference Implementation
 
-- **Shared data**: forward-adjusted candles, valuation history, configured
-  strategy parameters, and administrator-controlled instrument enablement.
+- **Shared data**: forward-adjusted candles, valuation history, and
+  database-backed instrument strategy parameters and enablement. The
+  `etf_grid.instruments` seed loads `ETF_GRID_PORTFOLIO` only into an empty table.
 - **Private data**: trades and signals carry `user_id`; positions and P&L derive
   only from that owner's ledger.
 - **Tools**: `get_grid_status`, `refresh_grid_data`, `record_grid_trade`, and

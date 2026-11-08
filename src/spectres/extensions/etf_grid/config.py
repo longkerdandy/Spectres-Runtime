@@ -56,7 +56,7 @@ class EtfGridConfig(BaseSettings):
     # None means "not configured"; candle sync raises a clear error at call time.
     ftshare_api_key: str | None = None
 
-    # Tracked symbols with per-symbol grid sizing, as a JSON array env var.
+    # Initial database-backed instrument collection, as a JSON array env var.
     # NoDecode leaves the raw string for the validator below — without it
     # pydantic-settings JSON-decodes complex fields at the source level and
     # crashes on an empty value.

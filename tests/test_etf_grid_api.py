@@ -74,6 +74,8 @@ def api_client() -> TestClient:
         for table in (EtfGridSignal, EtfGridValuation, EtfGridCandle, EtfGridTrade):
             session.execute(delete(table))
     config = EtfGridConfig()  # type: ignore[call-arg]  # required fields come from .env.test
+    instruments = EtfGridInstrumentService(session_factory=session_factory)
+    instruments.initialize(config.portfolio)
     app = FastAPI()
     _add_test_identity(app)
     app.include_router(
@@ -83,7 +85,7 @@ def api_client() -> TestClient:
             candle_service=EtfGridCandleService(session_factory=session_factory),
             valuation_service=EtfGridValuationService(session_factory=session_factory),
             signal_service=EtfGridSignalService(session_factory=session_factory),
-            instrument_service=EtfGridInstrumentService(session_factory=session_factory),
+            instrument_service=instruments,
         )
     )
     return TestClient(app)
@@ -299,7 +301,7 @@ class TestEtfGridApi:
         assert api_client.get("/api/v1/extensions/etf-grid/admin/instruments", headers=_admin_headers()).status_code == 200
 
     def test_register_creates_tables_idempotently(self) -> None:
-        """register() is idempotent and returns the toolkit + router + schedule contribution."""
+        """register() is idempotent and declares surfaces plus the instrument seed."""
         ctx = ExtensionContext(settings=settings, db=get_postgres_db())
         first = etf_grid_extension.register(ctx)
         second = etf_grid_extension.register(ctx)
@@ -309,6 +311,7 @@ class TestEtfGridApi:
             assert len(contribution.routers) == 1
             assert contribution.routers[0].prefix == "/api/v1/extensions/etf-grid"
             assert len(contribution.schedules) == 1
+            assert [seed.id for seed in contribution.config_seeds] == ["etf_grid.instruments"]
             spec = contribution.schedules[0]
             assert spec.name == "ETF Grid Daily Sync"
             assert spec.cron == "0 9 * * 1,5"

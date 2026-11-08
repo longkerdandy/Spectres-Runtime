@@ -105,7 +105,6 @@ class EtfGridToolkit(Toolkit):
             data = to_jsonable(
                 get_portfolio_status(
                     user_id=_run_user_id(run_context),
-                    config=self._config,
                     ledger_service=self._ledger,
                     candle_service=self._candles,
                     signal_service=self._signals,
@@ -176,7 +175,7 @@ class EtfGridToolkit(Toolkit):
             trade = self._ledger.record_trade(
                 user_id=user_id,
                 trade_date=date.fromisoformat(trade_date),
-                symbol=self._instruments.require_enabled(symbol, config=self._config),
+                symbol=self._instruments.require_enabled(symbol),
                 side=Side(side),
                 price=Decimal(price),
                 quantity=quantity,

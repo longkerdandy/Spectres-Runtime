@@ -94,9 +94,13 @@ class FakeCandleService(EtfGridCandleService):
 class FakeInstrumentService(EtfGridInstrumentService):
     """Configuration-only instrument stand-in (no database)."""
 
-    def effective_portfolio(self, *, config: EtfGridConfig) -> list[Any]:
+    def __init__(self, config: EtfGridConfig) -> None:
+        """Capture the configured portfolio without opening a database session."""
+        self._config = config
+
+    def effective_portfolio(self) -> list[Any]:
         """Return every configured item."""
-        return config.portfolio
+        return self._config.portfolio
 
 
 class TestSyncCandles:
@@ -164,7 +168,7 @@ class TestSyncCandles:
         """symbols=None syncs every symbol in the configured portfolio."""
         client = MockClient([])
         service = FakeCandleService(latest=None)
-        result = sync_candles(client=client, candle_service=service, instrument_service=FakeInstrumentService())
+        result = sync_candles(client=client, candle_service=service, instrument_service=FakeInstrumentService(EtfGridConfig()))  # type: ignore[call-arg]
         assert {call["symbol"] for call in client.calls} == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
         assert set(result) == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
 

@@ -18,13 +18,18 @@ class EtfGridBase(DeclarativeBase):
 
 
 class EtfGridInstrument(EtfGridBase):
-    """Administrator-controlled selection for a configured ETF symbol."""
+    """Database-backed ETF strategy definition and administrator-controlled selection."""
 
     __tablename__ = "etf_grid_instruments"
 
-    symbol: Mapped[str] = mapped_column(String(16), primary_key=True, comment="Configured FTShare-style symbol")
+    symbol: Mapped[str] = mapped_column(String(16), primary_key=True, comment="FTShare-style symbol")
+    name: Mapped[str] = mapped_column(String(128), comment="Display name")
+    per_grid_amount: Mapped[int] = mapped_column(Integer, comment="Cash amount allocated to each grid")
+    max_grids: Mapped[int] = mapped_column(Integer, comment="Maximum grid levels in either direction")
+    gate: Mapped[dict[str, Any] | None] = mapped_column(JSONB, comment="Optional valuation gate configuration")
+    sort_order: Mapped[int] = mapped_column(Integer, comment="Portfolio display and processing order")
     enabled: Mapped[bool] = mapped_column(Boolean, comment="Whether the symbol participates in normal sync, status, and computation")
-    updated_by: Mapped[str | None] = mapped_column(String(128), comment="Administrator who last changed the selection; NULL for bootstrap")
+    updated_by: Mapped[str | None] = mapped_column(String(128), comment="Administrator who last changed the selection; NULL for initialization")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

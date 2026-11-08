@@ -1,7 +1,7 @@
 """Extension contract: context, contribution, and protocol."""
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from agno.db.postgres import PostgresDb
 from agno.tools.toolkit import Toolkit
@@ -9,6 +9,9 @@ from agno.workflow import Workflow
 from fastapi import APIRouter
 
 from spectres.config import Settings
+
+if TYPE_CHECKING:
+    from spectres.extensions.seeding import ConfigSeedSpec
 
 
 @dataclass
@@ -50,6 +53,7 @@ class ExtensionContribution:
     routers: list[APIRouter] = field(default_factory=list)
     workflows: list[Workflow] = field(default_factory=list)
     schedules: list[ScheduleSpec] = field(default_factory=list)
+    config_seeds: list["ConfigSeedSpec"] = field(default_factory=list)
 
 
 @dataclass

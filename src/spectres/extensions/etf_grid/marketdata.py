@@ -88,7 +88,7 @@ def sync_candles(
     candle_service = candle_service or EtfGridCandleService()
     instrument_service = instrument_service or EtfGridInstrumentService()
     if symbols is None:
-        symbols = [item.symbol for item in instrument_service.effective_portfolio(config=config)]
+        symbols = [item.symbol for item in instrument_service.effective_portfolio()]
     if client is None:
         if not config.ftshare_api_key:
             raise ValueError("ETF_GRID_FTSHARE_API_KEY is required for market data sync")

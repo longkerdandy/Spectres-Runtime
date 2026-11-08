@@ -43,7 +43,7 @@ def _context(user_id: str = "alice") -> RunContext:
 
 
 class _FakeInstruments(EtfGridInstrumentService):
-    def require_enabled(self, symbol: str, *, config: EtfGridConfig) -> str:
+    def require_enabled(self, symbol: str) -> str:
         return symbol
 
 
