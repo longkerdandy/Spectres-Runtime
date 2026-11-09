@@ -43,6 +43,5 @@ venv/
 logs/
 
 # Logto OIDC public keys (JWT_JWKS_FILE) exported from the local Logto instance —
-# a per-environment generated artifact, re-created via the runbook in
-# docs/architecture/authentication.md; never committed.
+# a per-environment generated artifact; never committed.
 docker/logto/jwks.json

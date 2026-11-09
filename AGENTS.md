@@ -82,3 +82,4 @@ Before finishing a code change, run the relevant tests and the standard quality 
 
 ## 8. Reference Projects
 - Spectres Web Client — ..\Spectres-Web-Client
+- Spectres Edge XiaoMi Health — ..\Spectres-Edge-Mi-Health

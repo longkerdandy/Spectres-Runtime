@@ -31,7 +31,7 @@ endpoints (`/agents|teams|workflows/<id>/runs`) get background execution +
 status polling + run linkage; any other endpoint gets a plain JSON
 request/response where 2xx is success. `ScheduleManager` (Python),
 `/schedules` REST CRUD, and `SchedulerTools` (agent-facing) all exist.
-Design detail: [docs/architecture/scheduled-tasks.md](../architecture/scheduled-tasks.md).
+Design detail: [docs/architecture/system-architecture.md](../architecture/system-architecture.md).
 
 ## Decision
 

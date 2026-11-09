@@ -1,110 +1,100 @@
 # Runtime Extensions
 
-> Current extension contract and the ETF Grid reference implementation.
-> Last updated: 2026-11-08.
+> Implementation contract for built-in Extensions and the ETF Grid reference.
+> Last updated: 2026-11-09.
 
-## 1. Purpose and Boundaries
+## 1. Boundaries and Layering
 
-An extension is a trusted, in-process domain capability under
-`src/spectres/extensions/<name>/`. It can contribute agent tools, REST routes,
-Agno Workflows, and automatic system schedules through one registration
-contract.
+An Extension is a trusted, in-process domain capability under
+`src/spectres/extensions/<name>/`. It may contribute agent tools, REST routes,
+Agno Workflows, and declarative system Schedules. It is not an independent
+deployment, sandbox, third-party plugin, or Edge.
 
-Extensions are not core agent infrastructure, sandboxes, independent deployment
-units, or third-party plugins. Core code must not import extension code, and
-extensions must not modify AgentOS or agent factories directly.
-
-## 2. Layout and Layering
+Core code must not import Extension code. Extensions must not modify AgentOS or
+agent factories directly.
 
 ```text
 src/spectres/extensions/
-├── base.py                    # Extension, ExtensionContext, contributions
-├── loader.py                  # In-tree discovery and registration
+├── base.py                 # Context, contribution, loaded record, protocol
+├── loader.py               # Static discovery and registration
+├── activation.py           # Shared REST/Toolkit/Workflow guards
+├── state.py                # Persistent global activation
 └── etf_grid/
-    ├── __init__.py            # Re-exports the extension manifest
-    ├── extension.py           # id + name + description + register()
-    ├── config.py              # ETF_GRID_* settings
-    ├── core/                  # Pure domain logic
-    ├── service/               # Application services and persistence orchestration
-    ├── marketdata.py          # External market/valuation sources
-    ├── models.py              # SQLAlchemy tables
-    ├── toolkit.py             # Agno Toolkit adapter
-    ├── workflows.py           # Agno Workflow adapters
-    └── api.py                 # FastAPI router adapter
+    ├── extension.py        # Manifest and register()
+    ├── config.py           # ETF_GRID_* settings
+    ├── core/               # Pure domain logic
+    ├── service/            # Business services and persistence orchestration
+    ├── models.py           # SQLAlchemy models
+    ├── marketdata.py       # External providers
+    ├── toolkit.py          # Agno adapter
+    ├── workflows.py        # Agno adapter
+    └── api.py              # FastAPI adapter
 ```
 
-`toolkit.py`, `api.py`, and `workflows.py` are thin adapters over `service/`.
-Business rules belong in services or `core/`; `core/` must not import Agno,
-FastAPI, or SQLAlchemy. This keeps conversational, HTTP, and scheduled execution
-on the same code path.
+Keep `toolkit.py`, `api.py`, and `workflows.py` thin. Business rules belong in
+`service/` or pure `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy.
+Conversation, HTTP, and scheduled execution must use the same domain services.
 
-## 3. Registration Contract
+## 2. Manifest, Registration, and Discovery
 
 `base.py` defines:
 
-- `ExtensionContext`: core `Settings` and the shared `PostgresDb`.
-- `ExtensionContribution`: lists of `toolkits`, `routers`, `workflows`, and
-  `schedules`; each defaults to an empty list.
-- `LoadedExtension`: discovered `id`, `name`, and `description` metadata paired
-  with its `contribution`.
-- `ScheduleSpec`: a core `spectres.scheduler` declaration with `name`, `cron`,
-  `endpoint`, `method`, `timezone`, `timeout_seconds`, `max_retries`,
-  `retry_delay_seconds`, and `enabled` required; `payload` is optional. Extension
-  schedule contributions are flattened by `main.py` before registration.
-- `Extension`: a stable snake_case `id`, non-empty human-readable `name` and
-  `description`, plus `register(ctx)`.
+- `ExtensionContext`: core `Settings` and shared `PostgresDb`.
+- `ExtensionContribution`: `toolkits`, `routers`, `workflows`, and `schedules`.
+- `LoadedExtension`: stable `id`, display `name`/`description`, and contribution.
+- `Extension`: manifest protocol with `register(ctx)`.
 
-`id` keys persisted activation and administration APIs. `name` and `description`
-are display metadata and do not derive routes, table names, or ownership. A
-separate version field is unnecessary because built-in Extension code releases
-with Runtime.
+`ScheduleSpec` is defined in `src/spectres/scheduler.py`, not in the Extension
+package. It declares initial system-Schedule configuration.
 
-`register()` must be idempotent. Its side effects are limited to table creation;
-it performs no network calls and starts no threads. Extensions are constructed
-at startup and keep mutable state in PostgreSQL. They currently contribute tools,
-not agents.
+`loader.py` scans direct child packages in sorted package-name order. A package
+participates only when its `__init__.py` exposes an `extension` object with:
 
-Names use snake_case for packages, tables, tools, and Workflow ids; UPPER_SNAKE
-for environment prefixes; and kebab-case for URL path segments. Schedule names
-may be human-readable.
+- A unique snake_case `id` and non-empty display metadata.
+- A callable `register(ctx)` returning `ExtensionContribution`.
 
-## 4. Discovery and Startup
+There is no entry-point or out-of-tree discovery. Import errors, invalid or
+duplicate metadata, and registration failures abort startup with the Extension
+identity.
 
-`loader.py` scans direct child packages with `pkgutil.iter_modules`, sorted by
-package name. A package is loaded only when its `__init__.py` exposes an
-`extension` object with a valid id, non-empty display metadata, and callable
-`register()`. Duplicate ids and missing or malformed metadata fail startup.
-Presence selects built-in code; there is no entry-point discovery. Import,
-manifest, and registration failures abort startup with the extension id.
+`register()` must be idempotent. Its side effects are limited to table creation:
+no network calls, threads, or Schedule execution. Keep mutable business state in
+PostgreSQL. Extensions currently contribute tools, not agents.
 
-Each result is a `LoadedExtension(id, name, description, contribution)`,
-preserving metadata for the catalog and the owner id for activation guards and
-administration. `runtime_extension_states` stores one global enabled flag per
-discovered Extension. Startup inserts missing ids as enabled and preserves
-existing administrator choices. Disabled code remains registered; shared guards
-reject REST and tool execution, while a prepended Workflow step returns
-`{status: disabled, extension: <id>}` with `stop=True` before business work.
-Disabling does not delete data, cancel in-flight work, or change native Schedule
-configuration. `GET /api/v1/extensions` returns id, display name, description,
-enabled state, and update time to authenticated users;
-`PATCH /api/v1/extensions/{id}` requires `agent_os:admin` and returns the same
-contract.
+Use snake_case for packages, tables, tools, and Workflow ids; UPPER_SNAKE for
+environment prefixes; kebab-case for URL paths. Display metadata does not derive
+routes, table names, or ownership.
 
-Startup order in `main.py`:
+## 3. Activation and Schedule Semantics
 
-```text
-PostgresDb → load_extensions()
-           → initialize/reconcile Extension state → register_schedules()
-           → guard Toolkits and Workflows → Team Leader(extra_tools=...)
-           → AgentOS(workflows=...) → mount guarded extension routers
-```
+`runtime_extension_states` stores one global enabled flag per discovered
+Extension. Startup adds missing ids as enabled and preserves administrator
+choices. Catalog reads require authentication; changes require
+`agent_os:admin`.
 
-## 5. Surface Contracts
+Disabled code remains registered so re-enablement needs no restart:
+
+- REST guards return 403 `extension_disabled` before route business work.
+- Toolkit guards preserve sync/async entry-point signatures and public schemas,
+  and return the structured `extension_disabled` tool error.
+- Workflow guards prepend a stop step returning
+  `{status: disabled, extension: <id>}` before business work. Workflows must use
+  a static `steps` list; other step containers fail startup.
+- Disabling does not delete data, cancel in-flight work, or rewrite native
+  Schedule configuration.
+
+System Schedules are declared as `ScheduleSpec`s and registered by core. Existing
+rows are preserved; configuration applies only when a row is created. Personal
+Schedules use native CRUD and are never seeded or reconciled. Scheduled work must
+be idempotent because leases do not provide exactly-once side effects. See
+[System Architecture](system-architecture.md) for scheduler contracts.
+
+## 4. Surface Implementation Rules
 
 ### Configuration
 
-Each extension owns a pydantic-settings fragment in `config.py`; core `Settings`
-contains no extension-specific fields. Required fields use explicit environment
+Each Extension owns a pydantic-settings fragment in `config.py`; core `Settings`
+contains no Extension-specific fields. Required values use explicit environment
 variables. Optional credentials must not block unrelated startup; the dependent
 operation should fail clearly when called.
 
@@ -112,94 +102,74 @@ operation should fail clearly when called.
 
 - Use the shared `PostgresDb.db_engine` and connection pool.
 - Prefix tables with `<extension>_`; never access Agno-managed or another
-  extension's tables.
-- Current schema setup uses `metadata.create_all()` during registration. There
-  is no migration tool, and `create_all()` does not alter existing tables.
-- Agno isolation does not cover extension tables. Explicitly distinguish shared
-  data from owner-scoped data and filter every private operation. See
-  [Data Isolation](data-isolation.md).
+  Extension's tables.
+- `metadata.create_all()` runs during registration and does not alter existing
+  tables. No migration tool is configured.
+- Agno isolation does not cover Extension tables. Classify data as shared or
+  private and filter every private operation by verified ownership.
 
-### Agent tools
+### Agent Tools
 
-Return an Agno `Toolkit` from `register()`. Keep tool names stable and return
-structured dictionaries rather than prose. Private tools obtain the owner from
-injected `RunContext.user_id`; ownership is never an LLM argument and missing
-identity fails closed. Current ETF Grid tools do not request HITL confirmation.
+Return Agno `Toolkit`s with stable names and structured results. Private tools
+use injected `RunContext.user_id`, never LLM-supplied ownership, and fail closed
+without identity. Current ETF Grid tools do not request HITL confirmation.
 
-ETF Grid tools use a common envelope:
+ETF Grid's normal tool envelope is:
 
 ```text
 success: {"ok": true, "data": ...}
 failure: {"ok": false, "error": {"type", "message", "trace_id", "hint"}}
 ```
 
-Tool failures are logged and converted to this envelope rather than raised
-across the tool boundary.
+Log handled failures and convert them to this envelope rather than raising across
+the tool boundary. Activation-disabled errors use the shared guard's smaller
+`extension_disabled` envelope.
 
 ### HTTP API
 
 Mount routers under `/api/v1/extensions/<kebab-name>/`. AgentOS supplies global
-authentication middleware and CORS, but custom routes must explicitly implement
-ownership and any administrator-scope checks. HTTP and tool adapters call the
-same services so their behavior remains consistent.
+authentication and CORS, but routes must explicitly enforce ownership and any
+additional scopes. Derive owners from `request.state.user_id`; HTTP and tool
+adapters call the same services.
 
-### Logging
+### Workflows and Logging
 
-Use only `logging.getLogger(__name__)`; core owns handlers and formatting.
-Runtime writes stdout plus daily JSONL files under `LOG_DIR`, correlated by
-`trace_id`. Log handled failures with `exc_info`, emit structured audit events
-for sensitive mutations, and never log secrets. Redaction is defense in depth.
+Return Agno `Workflow` instances directly: no Action wrapper, handler registry,
+or custom dispatcher. Private steps use `RunContext.user_id` and fail closed.
 
-### Workflows and schedules
+Use `logging.getLogger(__name__)`; core owns handlers and formatting. Log handled
+failures with `exc_info` and sensitive mutations as structured audit events,
+without credentials, tokens, or health data.
 
-Extensions return Agno Workflow instances directly; there is no Action wrapper,
-handler registry, or custom dispatcher. Private Workflow steps use
-`RunContext.user_id` and fail closed without it. Scheduled work must be
-idempotent because leases do not make side effects exactly-once.
+## 5. ETF Grid Reference
 
-Only automatic system schedules are declared as `ScheduleSpec`s. Personal
-schedules use Agno-native CRUD and are never seeded at startup. Configuration
-supplies initial cron/timezone/retry/enabled values only when a row is created.
-Existing rows are preserved without legacy-name or database-format migration.
-See [Scheduled Tasks](scheduled-tasks.md).
+- **Shared**: candles, valuation history, and the in-memory portfolio.
+- **Private**: trades and signals carry `user_id`; positions and P&L derive only
+  from that owner's append-only ledger.
+- **Tools**: `get_grid_status`, `refresh_grid_data`, `record_grid_trade`,
+  `list_grid_trades`. Refresh syncs shared data and recomputes only the caller.
+- **Workflows**: `etf_grid_data_sync` never enumerates ledger owners;
+  `etf_grid_recompute` requires an authenticated owner.
+- **Schedule**: unowned `ETF Grid Daily Sync` targets data sync. Personal
+  recompute Schedules have no ordering guarantee relative to sync.
 
-## 6. ETF Grid Reference Implementation
-
-- **Shared data and configuration**: forward-adjusted candles and valuation
-  history are stored in PostgreSQL. `ETF_GRID_PORTFOLIO` supplies the complete
-  in-memory strategy collection, including each symbol's grid step, sizing,
-  maximum grids, and optional valuation gate; changes take effect on restart.
-- **Private data**: trades and signals carry `user_id`; positions and P&L derive
-  only from that owner's ledger.
-- **Tools**: `get_grid_status`, `refresh_grid_data`, `record_grid_trade`, and
-  `list_grid_trades`. Refresh synchronizes shared data, then recomputes only the
-  current owner's signals.
-- **Workflows**: `etf_grid_data_sync` synchronizes shared inputs without
-  enumerating ledger owners; `etf_grid_recompute` requires an authenticated owner.
-- **Automatic schedule**: one unowned `ETF Grid Daily Sync` targets data sync.
-  Personal recompute schedules are user-created and have no ordering guarantee
-  relative to sync.
-
-All routes below are under `/api/v1/extensions/etf-grid`:
+Routes under `/api/v1/extensions/etf-grid`:
 
 | Route | Access and behavior |
 |-------|---------------------|
 | `GET /status` | Current user's positions, P&L, and latest signals |
 | `POST /signals/compute` | Recompute current user's signals |
-| `POST /sync` | Shared-data sync for an authenticated user or internal caller |
+| `POST /sync` | Shared sync for an authenticated user or internal caller |
 | `GET, POST /trades` | Current user's trade list/create |
-| `POST /refresh` | Manual admin/internal sync plus all-ledger-owner recompute; not scheduled |
+| `POST /refresh` | Admin/internal sync plus all-ledger-owner recompute; not scheduled |
 
 `GET /trades` returns `{items, total, limit, offset}`; `limit` is 1–200
-(default 20), and filters apply before `total` is counted. Validation errors and
-trade domain rejections use FastAPI's structured 422 `detail` list.
-Status `unrealized` is
-`close × shares − avg_cost × shares`; `unrealized_percent` divides that by the
-cost basis. Undefined values are `null`, not zero.
+(default 20), and filters apply before `total` is counted. Validation failures
+and trade-domain rejections use FastAPI's structured 422 `detail` list.
 
-## 7. Guardrails and Deferred Work
+## 6. Guardrails
 
-Keep the contract minimal: no extra lifecycle hooks, cross-extension
-dependencies, generic plugin framework, or parallel scheduling API. Out-of-tree
-plugins, migrations, tool ACL, extension-contributed agents, per-user activation,
-and dynamic installation remain deferred until required.
+Do not add lifecycle hooks, cross-Extension dependencies, generic plugin
+frameworks, custom schedulers, or parallel Schedule APIs. Out-of-tree plugins,
+migrations, tool ACL, Extension-contributed agents, per-user activation, and
+dynamic installation remain deferred until explicitly designed.
