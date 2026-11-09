@@ -287,7 +287,6 @@ class TestEtfGridApi:
             assert len(contribution.routers) == 1
             assert contribution.routers[0].prefix == "/api/v1/extensions/etf-grid"
             assert len(contribution.schedules) == 1
-            assert contribution.default_configs == []
             spec = contribution.schedules[0]
             assert spec.name == "ETF Grid Daily Sync"
             assert spec.cron == "0 9 * * 1,5"

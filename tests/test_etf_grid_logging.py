@@ -77,7 +77,6 @@ class TestExtensionRegisterLogging:
         assert len(records) == 1
         record = records[0]
         assert record.levelname == "INFO"
-        assert record.__dict__["default_configs"] == len(contribution.default_configs) == 0
         assert record.__dict__["toolkits"] == len(contribution.toolkits) == 1
         assert record.__dict__["routers"] == len(contribution.routers) == 1
 

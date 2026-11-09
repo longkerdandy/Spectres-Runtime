@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from spectres.agents.team_leader import create_team_leader_agent
 from spectres.api import create_api_router
 from spectres.auth import UserProfileSyncMiddleware
-from spectres.config import initialize_default_configs, settings
+from spectres.config import settings
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.activation import guard_extension_toolkit, guard_extension_workflows, include_extension_routers
 from spectres.extensions.base import LoadedExtension
@@ -50,7 +50,6 @@ def create_agent_os() -> tuple[AgentOS, list[LoadedExtension]]:
     logger.info("Per-user data isolation enabled", extra={"event": "user_isolation_enabled"})
     db = get_postgres_db()
     extensions = load_extensions(settings, db)
-    initialize_default_configs([spec for extension in extensions for spec in extension.contribution.default_configs])
     extension_state = ExtensionStateService(db, [extension.id for extension in extensions])
     extension_state.initialize()
     register_schedules([spec for extension in extensions for spec in extension.contribution.schedules], db)

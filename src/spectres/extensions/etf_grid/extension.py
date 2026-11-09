@@ -55,7 +55,6 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
             "toolkits": len(contribution.toolkits),
             "routers": len(contribution.routers),
             "workflows": len(contribution.workflows),
-            "default_configs": len(contribution.default_configs),
             "schedules": len(contribution.schedules),
         },
     )
