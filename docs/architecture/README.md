@@ -43,7 +43,7 @@ most recent history runs in context. Built-ins are calculator, shell, website,
 and optional Tavily search tools.
 
 The extension system currently hosts ETF Grid Trading: private trade ledgers
-and signals, shared candles/valuation/instrument selection, REST APIs, agent
+and signals, shared candles/valuation, in-memory portfolio configuration, REST APIs, agent
 tools, and deterministic sync/recompute Workflows. Administrators can globally
 enable or disable built-in Extensions; Runtime enforces the state at REST,
 Toolkit, Workflow, and scheduled execution boundaries. See

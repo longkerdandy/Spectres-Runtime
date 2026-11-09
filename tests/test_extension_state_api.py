@@ -101,7 +101,7 @@ def test_disabled_extension_rejects_existing_router_and_restores_without_remount
     """Router guards take effect immediately and recover after re-enablement."""
     admin = _headers("operator", ADMIN_SCOPES)
     user = _headers("alice", USER_SCOPES)
-    path = "/api/v1/extensions/etf-grid/instruments"
+    path = "/api/v1/extensions/etf-grid/status"
     assert client.get(path, headers=user).status_code == 200
 
     assert client.patch("/api/v1/extensions/etf_grid", headers=admin, json={"enabled": False}).status_code == 200

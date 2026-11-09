@@ -28,10 +28,11 @@ class GateConfig(BaseModel):
 
 
 class PortfolioItem(BaseModel):
-    """One tracked symbol and its grid sizing parameters."""
+    """One tracked symbol and its grid strategy parameters."""
 
     symbol: str  # FTShare full code, e.g. '513330.XSHG'
     name: str
+    grid_step: Decimal  # Grid step as a fraction (0.05 = 5%). Consumed by core/grid.py.
     per_grid_amount: int
     max_grids: int
     gate: GateConfig | None = None  # no valuation gate when unset
@@ -56,7 +57,6 @@ class EtfGridConfig(BaseSettings):
     # None means "not configured"; candle sync raises a clear error at call time.
     ftshare_api_key: str | None = None
 
-    # Initial database-backed instrument collection, as a JSON array env var.
     # NoDecode leaves the raw string for the validator below — without it
     # pydantic-settings JSON-decodes complex fields at the source level and
     # crashes on an empty value.
@@ -68,9 +68,6 @@ class EtfGridConfig(BaseSettings):
 
     # Start date for the first full backfill of a symbol with no local data.
     backfill_start_date: date
-
-    # Grid step as a fraction (0.05 = 5%). Consumed by core/grid.py.
-    grid_step: Decimal
 
     # Daily sync schedule: operational knobs live in config so a deployment
     # can retime or pause the task without code changes; the structural
@@ -88,6 +85,14 @@ class EtfGridConfig(BaseSettings):
         if isinstance(value, str):
             return json.loads(value)
         return value
+
+
+def require_portfolio_symbol(config: EtfGridConfig, symbol: str) -> str:
+    """Normalize a symbol and require it to belong to the configured portfolio."""
+    normalized = normalize_symbol(symbol)
+    if all(item.symbol != normalized for item in config.portfolio):
+        raise ValueError(f"symbol is not in configured portfolio: {normalized}")
+    return normalized
 
 
 def load_config() -> EtfGridConfig:

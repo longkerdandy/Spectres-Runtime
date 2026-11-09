@@ -15,7 +15,6 @@ from spectres.extensions.etf_grid.core.ledger import Position
 from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
-    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     get_portfolio_status,
@@ -34,8 +33,6 @@ def services() -> Services:
     with session_factory() as session, session.begin():
         for table in (EtfGridSignal, EtfGridValuation, EtfGridCandle, EtfGridTrade):
             session.execute(delete(table))
-    instruments = EtfGridInstrumentService(session_factory=session_factory)
-    instruments.initialize(EtfGridConfig().portfolio)  # type: ignore[call-arg]
     return (
         EtfGridLedgerService(session_factory=session_factory),
         EtfGridCandleService(session_factory=session_factory),
@@ -174,17 +171,6 @@ class _FakeSignalService(EtfGridSignalService):
         return self._latest
 
 
-class _FakeInstrumentService(EtfGridInstrumentService):
-    """Configuration-only instrument stand-in (no database)."""
-
-    def __init__(self, config: EtfGridConfig) -> None:
-        self._config = config
-
-    def effective_portfolio(self) -> list[Any]:
-        """Return every configured item."""
-        return self._config.portfolio
-
-
 @pytest.mark.unit
 class TestGetPortfolioStatusBulkQueries:
     """get_portfolio_status folds per-symbol latest-row lookups into one bulk query each."""
@@ -194,7 +180,7 @@ class TestGetPortfolioStatusBulkQueries:
         positions = {"513330.XSHG": Position(shares=1000, avg_cost=Decimal("0.5000"), realized=Decimal("2.00"), lots=())}
         candles = _FakeCandleService({"513330.XSHG": {"trade_date": date(2026, 9, 2), "close": Decimal("0.6000")}})
         signals = _FakeSignalService({"513330.XSHG": {"level": -3}})
-        status = get_portfolio_status(user_id="alice", ledger_service=_FakeLedgerService(positions), candle_service=candles, signal_service=signals, instrument_service=_FakeInstrumentService(config))
+        status = get_portfolio_status(user_id="alice", ledger_service=_FakeLedgerService(positions), candle_service=candles, signal_service=signals, config=config)
         assert candles.calls == 1
         assert signals.calls == 1
         row = _status_row(status, "513330.XSHG")
@@ -213,7 +199,7 @@ class TestGetPortfolioStatusBulkQueries:
             ledger_service=_FakeLedgerService({}),
             candle_service=_FakeCandleService({}),
             signal_service=_FakeSignalService({}),
-            instrument_service=_FakeInstrumentService(config),
+            config=config,
         )
         row = _status_row(status, "513330.XSHG")
         assert row["shares"] == 0

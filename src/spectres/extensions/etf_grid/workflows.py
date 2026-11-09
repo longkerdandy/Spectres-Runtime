@@ -10,7 +10,6 @@ from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
 from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
-    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     EtfGridValuationService,
@@ -29,7 +28,6 @@ def create_workflows(
     candle_service: EtfGridCandleService | None = None,
     valuation_service: EtfGridValuationService | None = None,
     signal_service: EtfGridSignalService | None = None,
-    instrument_service: EtfGridInstrumentService | None = None,
 ) -> list[Workflow]:
     """Build the extension's system-sync and owner-scoped recompute Workflows."""
     config = config or load_config()
@@ -37,11 +35,10 @@ def create_workflows(
     candles = candle_service or EtfGridCandleService()
     valuation = valuation_service or EtfGridValuationService()
     signals = signal_service or EtfGridSignalService()
-    instruments = instrument_service or EtfGridInstrumentService()
 
     def data_sync(step_input: StepInput, run_context: RunContext | None = None) -> StepOutput:
         del step_input, run_context
-        result = sync_market_data(config=config, candle_service=candles, valuation_service=valuation, instrument_service=instruments)
+        result = sync_market_data(config=config, candle_service=candles, valuation_service=valuation)
         content = to_jsonable(result)
         if result["candles"] is None and result["valuation"] is None:
             return StepOutput(content=content, success=False, error=f"all data sources failed: {result['errors']}")
@@ -58,7 +55,6 @@ def create_workflows(
             candle_service=candles,
             valuation_service=valuation,
             signal_service=signals,
-            instrument_service=instruments,
         )
         return StepOutput(content=to_jsonable(result))
 

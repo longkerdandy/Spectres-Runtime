@@ -1,6 +1,6 @@
 # AGENTS.md — Spectres Runtime
 
-> Guidance for coding agents. Last updated: 2026-11-07.
+> Guidance for coding agents. Last updated: 2026-11-09.
 
 ## 1. Project Context
 
@@ -43,6 +43,7 @@ Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents
 - Write code, comments, documentation, and commit messages in English. Respond to the project owner in Chinese.
 - Follow existing naming and structural patterns. Add type annotations and use existing dependencies; confirm availability before introducing a library.
 - New required configuration uses explicit environment variables without defaults unless truly necessary. Development loads `.env` then `.env.local`; tests load `.env.test` then `.env.test.local`. Local override files and credentials stay untracked.
+- `.env.example` contains two complete, independent configuration sets with explicit start/end markers: the development set is copied verbatim to `.env`, and the test set to `.env.test`. Whenever configuration changes, update both complete sets rather than supplying only changed keys or partial snippets. Do not edit `.env`, `.env.test`, `.env.local`, or `.env.test.local`; the project owner copies the example sections and manages local overrides.
 - Do not reference ADRs, plans, or other documents in code comments or docstrings.
 - Add unit tests for new functionality and integration tests for agent-orchestration changes. Preserve authentication, ownership, and schedule-isolation coverage for related changes.
 - Check for nested `AGENTS.md` files before working in subdirectories.

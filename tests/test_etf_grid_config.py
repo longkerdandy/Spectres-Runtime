@@ -7,16 +7,15 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from spectres.extensions.etf_grid.config import EtfGridConfig
+from spectres.extensions.etf_grid.config import EtfGridConfig, require_portfolio_symbol
 
 pytestmark = pytest.mark.unit
 
-_PORTFOLIO_JSON = '[{"symbol": "510300.XSHG", "name": "沪深300ETF", "per_grid_amount": 5000, "max_grids": 10}]'
+_PORTFOLIO_JSON = '[{"symbol": "510300.XSHG", "name": "沪深300ETF", "grid_step": 0.05, "per_grid_amount": 5000, "max_grids": 10}]'
 _REQUIRED_ENV = {
     "ETF_GRID_PORTFOLIO": _PORTFOLIO_JSON,
     "ETF_GRID_CANDLE_LOOKBACK_DAYS": "90",
     "ETF_GRID_BACKFILL_START_DATE": "2021-01-01",
-    "ETF_GRID_GRID_STEP": "0.05",
     "ETF_GRID_SYNC_SCHEDULE_ENABLED": "true",
     "ETF_GRID_SYNC_CRON": "0 9 * * 1,5",
     "ETF_GRID_SYNC_TIMEZONE": "Asia/Shanghai",
@@ -47,11 +46,11 @@ class TestRequiredFields:
         """Required env vars become typed settings fields."""
         config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
         assert config.portfolio[0].symbol == "510300.XSHG"
+        assert config.portfolio[0].grid_step == Decimal("0.05")
         assert config.portfolio[0].per_grid_amount == 5000
         assert config.portfolio[0].max_grids == 10
         assert config.candle_lookback_days == 90
         assert config.backfill_start_date == date(2021, 1, 1)
-        assert config.grid_step == Decimal("0.05")
         assert config.sync_schedule_enabled is True
         assert config.sync_cron == "0 9 * * 1,5"
         assert config.sync_timezone == "Asia/Shanghai"
@@ -106,6 +105,15 @@ class TestPortfolioParsing:
         with pytest.raises(ValidationError):
             EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
 
+    def test_grid_step_required_per_symbol(self, required_env: pytest.MonkeyPatch) -> None:
+        """Every portfolio item declares its own grid step."""
+        required_env.setenv(
+            "ETF_GRID_PORTFOLIO",
+            '[{"symbol": "510300.XSHG", "name": "沪深300ETF", "per_grid_amount": 5000, "max_grids": 10}]',
+        )
+        with pytest.raises(ValidationError, match="grid_step"):
+            EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+
 
 class TestPortfolioSymbolNormalization:
     """Portfolio symbols are normalized to the canonical FTShare form at load."""
@@ -114,7 +122,7 @@ class TestPortfolioSymbolNormalization:
         """A lowercase or padded symbol becomes uppercase-canonical on load."""
         required_env.setenv(
             "ETF_GRID_PORTFOLIO",
-            '[{"symbol": " 513330.xshg ", "name": "x", "per_grid_amount": 10000, "max_grids": 7}]',
+            '[{"symbol": " 513330.xshg ", "name": "x", "grid_step": 0.05, "per_grid_amount": 10000, "max_grids": 7}]',
         )
         config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
         assert config.portfolio[0].symbol == "513330.XSHG"
@@ -123,10 +131,17 @@ class TestPortfolioSymbolNormalization:
         """A symbol without the <code>.<exchange> form fails validation."""
         required_env.setenv(
             "ETF_GRID_PORTFOLIO",
-            '[{"symbol": "513330", "name": "x", "per_grid_amount": 10000, "max_grids": 7}]',
+            '[{"symbol": "513330", "name": "x", "grid_step": 0.05, "per_grid_amount": 10000, "max_grids": 7}]',
         )
         with pytest.raises(ValidationError):
             EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+
+    def test_trade_symbol_checked_against_memory_portfolio(self, required_env: pytest.MonkeyPatch) -> None:
+        """Trade validation uses the configured in-memory collection without persistence."""
+        config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
+        assert require_portfolio_symbol(config, " 510300.xshg ") == "510300.XSHG"
+        with pytest.raises(ValueError, match="not in configured portfolio"):
+            require_portfolio_symbol(config, "513330.XSHG")
 
 
 class TestGateConfig:
@@ -136,7 +151,7 @@ class TestGateConfig:
         """A gate object becomes a typed GateConfig."""
         required_env.setenv(
             "ETF_GRID_PORTFOLIO",
-            '[{"symbol": "513530.XSHG", "name": "港股通红利ETF", "per_grid_amount": 10000, "max_grids": 7,'
+            '[{"symbol": "513530.XSHG", "name": "港股通红利ETF", "grid_step": 0.05, "per_grid_amount": 10000, "max_grids": 7,'
             ' "gate": {"index_code": "930914", "metric": "dyr", "threshold": 0.2, "block_when": "below"}}]',
         )
         config = EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
@@ -156,7 +171,8 @@ class TestGateConfig:
         """block_when outside the Literal values fails validation."""
         required_env.setenv(
             "ETF_GRID_PORTFOLIO",
-            '[{"symbol": "513530.XSHG", "name": "x", "per_grid_amount": 10000, "max_grids": 7, "gate": {"index_code": "930914", "metric": "dyr", "threshold": 0.2, "block_when": "near"}}]',
+            '[{"symbol": "513530.XSHG", "name": "x", "grid_step": 0.05, "per_grid_amount": 10000, "max_grids": 7,'
+            ' "gate": {"index_code": "930914", "metric": "dyr", "threshold": 0.2, "block_when": "near"}}]',
         )
         with pytest.raises(ValidationError):
             EtfGridConfig(_env_file=None)  # type: ignore[call-arg]
@@ -165,7 +181,8 @@ class TestGateConfig:
         """Gate metric outside the valuation columns fails validation at config load."""
         required_env.setenv(
             "ETF_GRID_PORTFOLIO",
-            '[{"symbol": "513530.XSHG", "name": "x", "per_grid_amount": 10000, "max_grids": 7, "gate": {"index_code": "930914", "metric": "pe", "threshold": 0.2, "block_when": "above"}}]',
+            '[{"symbol": "513530.XSHG", "name": "x", "grid_step": 0.05, "per_grid_amount": 10000, "max_grids": 7,'
+            ' "gate": {"index_code": "930914", "metric": "pe", "threshold": 0.2, "block_when": "above"}}]',
         )
         with pytest.raises(ValidationError):
             EtfGridConfig(_env_file=None)  # type: ignore[call-arg]

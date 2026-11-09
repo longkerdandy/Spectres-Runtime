@@ -80,10 +80,9 @@ must define shared versus private data and scope every private read/write.
 
 ETF Grid implements this explicitly:
 
-- `etf_grid_candles`, `etf_grid_valuation`, and `etf_grid_instruments` are
-  shared. `ETF_GRID_PORTFOLIO` initializes the complete instrument collection
-  only when its table is empty; subsequent reads and administrator changes use
-  PostgreSQL without configuration filtering.
+- `etf_grid_candles` and `etf_grid_valuation` are shared. The complete strategy
+  collection is loaded from `ETF_GRID_PORTFOLIO` into memory at startup and is
+  shared by all users; no user identity or portfolio data comes from LLM input.
 - `etf_grid_trades` and `etf_grid_signals` require `user_id`. Ledger reads,
   writes, counts, replay, and signal reads/upserts filter by owner. Signal keys
   are `(user_id, symbol, trade_date)`.

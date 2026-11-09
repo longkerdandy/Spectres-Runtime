@@ -21,11 +21,10 @@ from agno.run import RunContext
 from agno.tools.toolkit import Toolkit
 
 from spectres.config import settings
-from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
+from spectres.extensions.etf_grid.config import EtfGridConfig, load_config, require_portfolio_symbol
 from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
-    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     EtfGridValuationService,
@@ -81,7 +80,6 @@ class EtfGridToolkit(Toolkit):
         candle_service: EtfGridCandleService | None = None,
         valuation_service: EtfGridValuationService | None = None,
         signal_service: EtfGridSignalService | None = None,
-        instrument_service: EtfGridInstrumentService | None = None,
     ) -> None:
         """Create the toolkit with shared services injectable for tests."""
         self._config = config or load_config()
@@ -89,7 +87,6 @@ class EtfGridToolkit(Toolkit):
         self._candles = candle_service or EtfGridCandleService()
         self._valuation = valuation_service or EtfGridValuationService()
         self._signals = signal_service or EtfGridSignalService()
-        self._instruments = instrument_service or EtfGridInstrumentService()
         super().__init__(
             name="etf_grid",
             tools=[self.get_grid_status, self.refresh_grid_data, self.record_grid_trade, self.list_grid_trades],
@@ -105,10 +102,10 @@ class EtfGridToolkit(Toolkit):
             data = to_jsonable(
                 get_portfolio_status(
                     user_id=_run_user_id(run_context),
+                    config=self._config,
                     ledger_service=self._ledger,
                     candle_service=self._candles,
                     signal_service=self._signals,
-                    instrument_service=self._instruments,
                 )
             )
         except Exception as exc:
@@ -129,7 +126,6 @@ class EtfGridToolkit(Toolkit):
                 config=self._config,
                 candle_service=self._candles,
                 valuation_service=self._valuation,
-                instrument_service=self._instruments,
             )
             signals = compute_daily_signals(
                 user_id=user_id,
@@ -138,7 +134,6 @@ class EtfGridToolkit(Toolkit):
                 candle_service=self._candles,
                 valuation_service=self._valuation,
                 signal_service=self._signals,
-                instrument_service=self._instruments,
             )
             data = to_jsonable({**refresh, **signals})
         except Exception as exc:
@@ -175,7 +170,7 @@ class EtfGridToolkit(Toolkit):
             trade = self._ledger.record_trade(
                 user_id=user_id,
                 trade_date=date.fromisoformat(trade_date),
-                symbol=self._instruments.require_enabled(symbol),
+                symbol=require_portfolio_symbol(self._config, symbol),
                 side=Side(side),
                 price=Decimal(price),
                 quantity=quantity,

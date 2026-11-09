@@ -17,7 +17,6 @@ from spectres.extensions.etf_grid.types import normalize_symbol
 
 from .base import _require_user_id
 from .candles import EtfGridCandleService
-from .instruments import EtfGridInstrumentService
 from .ledger import EtfGridLedgerService
 from .signals import EtfGridSignalService, _snapshot_to_row
 from .valuation import EtfGridValuationService
@@ -34,14 +33,13 @@ def compute_daily_signals(
     candle_service: EtfGridCandleService | None = None,
     valuation_service: EtfGridValuationService | None = None,
     signal_service: EtfGridSignalService | None = None,
-    instrument_service: EtfGridInstrumentService | None = None,
 ) -> dict[str, Any]:
     """Compute and persist daily grid signals for one user's portfolio.
 
-    For each enabled configured symbol: read the latest 61 candle bars (MA60
-    today plus MA60 yesterday), replay the ledger for the position and
-    lot queue, resolve the valuation gate when configured, compute the
-    signal via ``core.grid``, and upsert the snapshot.
+    For each configured symbol: read the latest 61 candle bars (MA60 today
+    plus MA60 yesterday), replay the ledger for the position and lot queue,
+    resolve the valuation gate when configured, compute the signal via
+    ``core.grid``, and upsert the snapshot.
 
     Symbols with insufficient candle history are skipped (not crashed)
     and recorded under ``skipped``; a symbol with a configured gate but no
@@ -64,10 +62,9 @@ def compute_daily_signals(
     candle_service = candle_service or EtfGridCandleService()
     valuation_service = valuation_service or EtfGridValuationService()
     signal_service = signal_service or EtfGridSignalService()
-    instrument_service = instrument_service or EtfGridInstrumentService()
 
     wanted = None if symbols is None else {normalize_symbol(s) for s in symbols}
-    items = [item for item in instrument_service.effective_portfolio() if wanted is None or item.symbol in wanted]
+    items = [item for item in config.portfolio if wanted is None or item.symbol in wanted]
     valuation_rows: list[dict[str, Any]] | None = None
 
     signals: dict[str, Any] = {}
@@ -116,7 +113,7 @@ def compute_daily_signals(
                     max_grids=item.max_grids,
                     gate=gate,
                 ),
-                config.grid_step,
+                item.grid_step,
             )
             snapshots.append(snapshot)
             signals[item.symbol] = _snapshot_to_row(snapshot, user_id=user_id)
@@ -144,19 +141,19 @@ def compute_daily_signals(
 def get_portfolio_status(
     *,
     user_id: str,
+    config: EtfGridConfig | None = None,
     ledger_service: EtfGridLedgerService | None = None,
     candle_service: EtfGridCandleService | None = None,
     signal_service: EtfGridSignalService | None = None,
-    instrument_service: EtfGridInstrumentService | None = None,
 ) -> list[dict[str, Any]]:
     """Build one user's portfolio summary from shared inputs and private state."""
     user_id = _require_user_id(user_id)
+    config = config or load_config()
     ledger_service = ledger_service or EtfGridLedgerService()
     candle_service = candle_service or EtfGridCandleService()
     signal_service = signal_service or EtfGridSignalService()
-    instrument_service = instrument_service or EtfGridInstrumentService()
 
-    items = instrument_service.effective_portfolio()
+    items = config.portfolio
     positions = ledger_service.get_positions(user_id=user_id)
     portfolio_symbols = [item.symbol for item in items]
     latest_candles = candle_service.latest_candles(portfolio_symbols)

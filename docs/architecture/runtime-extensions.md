@@ -180,9 +180,10 @@ See [Scheduled Tasks](scheduled-tasks.md).
 
 ## 6. ETF Grid Reference Implementation
 
-- **Shared data**: forward-adjusted candles, valuation history, and
-  database-backed instrument strategy parameters and enablement. The
-  `etf_grid.instruments` seed loads `ETF_GRID_PORTFOLIO` only into an empty table.
+- **Shared data and configuration**: forward-adjusted candles and valuation
+  history are stored in PostgreSQL. `ETF_GRID_PORTFOLIO` supplies the complete
+  in-memory strategy collection, including each symbol's grid step, sizing,
+  maximum grids, and optional valuation gate; changes take effect on restart.
 - **Private data**: trades and signals carry `user_id`; positions and P&L derive
   only from that owner's ledger.
 - **Tools**: `get_grid_status`, `refresh_grid_data`, `record_grid_trade`, and
@@ -200,16 +201,13 @@ All routes below are under `/api/v1/extensions/etf-grid`:
 |-------|---------------------|
 | `GET /status` | Current user's positions, P&L, and latest signals |
 | `POST /signals/compute` | Recompute current user's signals |
-| `GET /instruments` | Enabled shared instruments for an authenticated user |
 | `POST /sync` | Shared-data sync for an authenticated user or internal caller |
 | `GET, POST /trades` | Current user's trade list/create |
-| `GET /admin/instruments` | Admin/internal full instrument selection |
-| `PATCH /admin/instruments/{symbol}` | Admin/internal enablement change |
 | `POST /refresh` | Manual admin/internal sync plus all-ledger-owner recompute; not scheduled |
 
 `GET /trades` returns `{items, total, limit, offset}`; `limit` is 1–200
 (default 20), and filters apply before `total` is counted. Validation errors and
-trade/instrument domain rejections use FastAPI's structured 422 `detail` list.
+trade domain rejections use FastAPI's structured 422 `detail` list.
 Status `unrealized` is
 `close × shares − avg_cost × shares`; `unrealized_percent` divides that by the
 cost basis. Undefined values are `null`, not zero.

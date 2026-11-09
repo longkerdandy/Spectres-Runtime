@@ -15,11 +15,10 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 
 from spectres.extensions.etf_grid.auth import require_admin_or_internal, require_user_id, require_user_or_internal
-from spectres.extensions.etf_grid.config import EtfGridConfig, load_config
+from spectres.extensions.etf_grid.config import EtfGridConfig, load_config, require_portfolio_symbol
 from spectres.extensions.etf_grid.marketdata import sync_market_data
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
-    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     EtfGridValuationService,
@@ -46,12 +45,6 @@ class TradeCreate(BaseModel):
     net_amount: Decimal | None = Field(default=None, gt=0)
 
 
-class InstrumentUpdate(BaseModel):
-    """Administrator selection change for a stored symbol."""
-
-    enabled: bool
-
-
 def create_router(
     *,
     config: EtfGridConfig | None = None,
@@ -59,7 +52,6 @@ def create_router(
     candle_service: EtfGridCandleService | None = None,
     valuation_service: EtfGridValuationService | None = None,
     signal_service: EtfGridSignalService | None = None,
-    instrument_service: EtfGridInstrumentService | None = None,
 ) -> APIRouter:
     """Build the etf_grid API router with injectable services."""
     config = config or load_config()
@@ -67,7 +59,6 @@ def create_router(
     candles = candle_service or EtfGridCandleService()
     valuation = valuation_service or EtfGridValuationService()
     signals = signal_service or EtfGridSignalService()
-    instruments = instrument_service or EtfGridInstrumentService()
 
     router = APIRouter(prefix="/api/v1/extensions/etf-grid", tags=["etf-grid"])
 
@@ -77,10 +68,10 @@ def create_router(
         return to_jsonable(
             get_portfolio_status(
                 user_id=user_id,
+                config=config,
                 ledger_service=ledger,
                 candle_service=candles,
                 signal_service=signals,
-                instrument_service=instruments,
             )
         )
 
@@ -95,39 +86,18 @@ def create_router(
                 candle_service=candles,
                 valuation_service=valuation,
                 signal_service=signals,
-                instrument_service=instruments,
             )
         )
-
-    @router.get("/instruments")
-    def get_instruments(request: Request) -> list[dict[str, Any]]:
-        require_user_id(request)
-        return to_jsonable(instruments.list_instruments(enabled_only=True))
-
-    @router.get("/admin/instruments")
-    def get_admin_instruments(request: Request) -> list[dict[str, Any]]:
-        require_admin_or_internal(request)
-        return to_jsonable(instruments.list_instruments())
-
-    @router.patch("/admin/instruments/{symbol}")
-    def update_instrument(symbol: str, body: InstrumentUpdate, request: Request) -> dict[str, Any]:
-        admin_id = require_admin_or_internal(request)
-        try:
-            result = instruments.set_enabled(symbol, enabled=body.enabled, updated_by=admin_id)
-        except ValueError as exc:
-            raise RequestValidationError(errors=[{"loc": ("body",), "msg": str(exc), "type": "value_error"}]) from exc
-        logger.info("instrument selection updated", extra={"event": "instrument_updated", **result})
-        return result
 
     @router.post("/sync")
     def sync(request: Request) -> dict[str, Any]:
         require_user_or_internal(request)
-        return to_jsonable(sync_market_data(config=config, candle_service=candles, valuation_service=valuation, instrument_service=instruments))
+        return to_jsonable(sync_market_data(config=config, candle_service=candles, valuation_service=valuation))
 
     @router.post("/refresh")
     def refresh(request: Request) -> dict[str, Any]:
         require_admin_or_internal(request)
-        sync_result = sync_market_data(config=config, candle_service=candles, valuation_service=valuation, instrument_service=instruments)
+        sync_result = sync_market_data(config=config, candle_service=candles, valuation_service=valuation)
         if sync_result["candles"] is None and sync_result["valuation"] is None:
             logger.error("refresh aborted: all data sources failed", extra={"event": "refresh_failed", "errors": sync_result["errors"]})
             raise HTTPException(status_code=502, detail=f"all data sources failed: {sync_result['errors']}")
@@ -142,7 +112,6 @@ def create_router(
                     candle_service=candles,
                     valuation_service=valuation,
                     signal_service=signals,
-                    instrument_service=instruments,
                 )
                 computed_users += 1
             except Exception as exc:
@@ -180,7 +149,7 @@ def create_router(
     def create_trade(body: TradeCreate, request: Request) -> dict[str, Any]:
         user_id = require_user_id(request)
         try:
-            symbol = instruments.require_enabled(body.symbol)
+            symbol = require_portfolio_symbol(config, body.symbol)
             trade = ledger.record_trade(
                 user_id=user_id,
                 trade_date=body.trade_date,

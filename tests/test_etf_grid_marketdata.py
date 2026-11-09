@@ -9,7 +9,7 @@ import pytest
 
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.marketdata import CST, MAX_WINDOW_DAYS, bar_to_candle, sync_candles
-from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridInstrumentService
+from spectres.extensions.etf_grid.service import EtfGridCandleService
 from spectres.extensions.etf_grid.types import CandleInput
 
 pytestmark = pytest.mark.unit
@@ -91,18 +91,6 @@ class FakeCandleService(EtfGridCandleService):
         return len(candles)
 
 
-class FakeInstrumentService(EtfGridInstrumentService):
-    """Configuration-only instrument stand-in (no database)."""
-
-    def __init__(self, config: EtfGridConfig) -> None:
-        """Capture the configured portfolio without opening a database session."""
-        self._config = config
-
-    def effective_portfolio(self) -> list[Any]:
-        """Return every configured item."""
-        return self._config.portfolio
-
-
 class TestSyncCandles:
     """sync_candles orchestration: window computation, call params, translation."""
 
@@ -112,7 +100,6 @@ class TestSyncCandles:
         monkeypatch.setenv("ETF_GRID_PORTFOLIO", "[]")
         monkeypatch.setenv("ETF_GRID_CANDLE_LOOKBACK_DAYS", "90")
         monkeypatch.setenv("ETF_GRID_BACKFILL_START_DATE", "2021-01-01")
-        monkeypatch.setenv("ETF_GRID_GRID_STEP", "0.05")
         monkeypatch.setenv("ETF_GRID_SYNC_SCHEDULE_ENABLED", "true")
         monkeypatch.setenv("ETF_GRID_SYNC_CRON", "0 9 * * 1,5")
         monkeypatch.setenv("ETF_GRID_SYNC_TIMEZONE", "Asia/Shanghai")
@@ -168,7 +155,7 @@ class TestSyncCandles:
         """symbols=None syncs every symbol in the configured portfolio."""
         client = MockClient([])
         service = FakeCandleService(latest=None)
-        result = sync_candles(client=client, candle_service=service, instrument_service=FakeInstrumentService(EtfGridConfig()))  # type: ignore[call-arg]
+        result = sync_candles(client=client, candle_service=service, config=EtfGridConfig())  # type: ignore[call-arg]
         assert {call["symbol"] for call in client.calls} == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
         assert set(result) == {"513330.XSHG", "513120.XSHG", "513530.XSHG"}
 

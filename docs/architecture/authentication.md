@@ -50,9 +50,9 @@ Workflow, including `etf_grid_data_sync`; it does not permit arbitrary extension
 HTTP schedule targets. The `admin` role carries `agent_os:admin`.
 
 ETF Grid custom routes explicitly self-scope normal portfolio operations for
-both users and administrators. Instrument administration and composite
-`/refresh` require `agent_os:admin` or the verified internal caller; `/sync` is
-available to any authenticated user or internal caller.
+both users and administrators. Composite `/refresh` requires `agent_os:admin`
+or the verified internal caller; `/sync` is available to any authenticated user
+or internal caller.
 
 Core `GET /api/v1/extensions` requires an authenticated identity and returns
 global built-in Extension activation state. `PATCH /api/v1/extensions/{id}`

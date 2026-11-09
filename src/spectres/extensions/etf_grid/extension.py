@@ -2,7 +2,6 @@
 
 import logging
 
-from spectres.config import DefaultConfigSpec
 from spectres.extensions.base import ExtensionContext, ExtensionContribution
 from spectres.extensions.etf_grid.models import EtfGridBase
 from spectres.scheduler import ScheduleSpec
@@ -17,7 +16,6 @@ description = "ETF grid trading status, trade ledger, signals, and scheduled dat
 def register(ctx: ExtensionContext) -> ExtensionContribution:
     """Create tables and build the extension surfaces without network calls.
 
-    The instrument collection is initialized by core after extension loading.
     The daily sync schedule is only declared here — core registers it with
     the AgentOS scheduler after loading (spectres/scheduler.py).
     """
@@ -27,23 +25,14 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     # web/agent frameworks are only pulled in when surfaces are built.
     from spectres.extensions.etf_grid.api import create_router
     from spectres.extensions.etf_grid.config import load_config
-    from spectres.extensions.etf_grid.service import EtfGridInstrumentService
     from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
     from spectres.extensions.etf_grid.workflows import DATA_SYNC_WORKFLOW_ID, create_workflows
 
     config = load_config()
-    instruments = EtfGridInstrumentService()
     contribution = ExtensionContribution(
-        toolkits=[EtfGridToolkit(config=config, instrument_service=instruments)],
-        routers=[create_router(config=config, instrument_service=instruments)],
-        workflows=create_workflows(config=config, instrument_service=instruments),
-        default_configs=[
-            DefaultConfigSpec(
-                name="etf_grid.instruments",
-                has_existing_data=instruments.has_existing_data,
-                initialize=lambda: instruments.initialize(config.portfolio),
-            )
-        ],
+        toolkits=[EtfGridToolkit(config=config)],
+        routers=[create_router(config=config)],
+        workflows=create_workflows(config=config),
         schedules=[
             ScheduleSpec(
                 name="ETF Grid Daily Sync",

@@ -7,14 +7,12 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
-from spectres.config import DefaultConfigSpec, initialize_default_configs
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.core.grid import SignalSnapshot
-from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridInstrument, EtfGridSignal, EtfGridTrade, EtfGridValuation
+from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
-    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     EtfGridValuationService,
@@ -66,8 +64,6 @@ class Services:
         self.candles = EtfGridCandleService(session_factory=session_factory)
         self.valuation = EtfGridValuationService(session_factory=session_factory)
         self.signals = EtfGridSignalService(session_factory=session_factory)
-        self.instruments = EtfGridInstrumentService(session_factory=session_factory)
-        self.instruments.initialize(EtfGridConfig().portfolio)  # type: ignore[call-arg]
 
 
 @pytest.fixture
@@ -454,51 +450,6 @@ class TestValuationService:
         assert len(rows) == 2
         assert rows[1]["close"] == Decimal("5010.00")
         assert rows[1]["dyr"] == Decimal("0.0530")
-
-
-class TestInstrumentService:
-    """Stored strategy definitions and administrator selection."""
-
-    def test_disable_and_reinitialization_preserve_stored_state(self, services: Services) -> None:
-        """Disabling changes the effective portfolio and a nonempty collection is left untouched."""
-        changed = services.instruments.set_enabled("513330.XSHG", enabled=False, updated_by="operator")
-        assert changed == {"symbol": "513330.XSHG", "previous_enabled": True, "enabled": False, "updated_by": "operator"}
-        assert "513330.XSHG" not in {item.symbol for item in services.instruments.effective_portfolio()}
-        with pytest.raises(ValueError, match="not an enabled configured instrument"):
-            services.instruments.require_enabled("513330.XSHG")
-
-        disabled = next(row for row in services.instruments.list_instruments() if row["symbol"] == "513330.XSHG")
-        assert disabled["enabled"] is False
-        assert disabled["updated_by"] == "operator"
-
-    def test_initialization_round_trips_complete_strategy_configuration(self, services: Services) -> None:
-        """The empty-table seed stores every strategy field and preserves configuration order."""
-        expected = EtfGridConfig().portfolio  # type: ignore[call-arg]
-        rows = services.instruments.list_instruments()
-
-        assert [row["symbol"] for row in rows] == [item.symbol for item in expected]
-        for row, item in zip(rows, expected, strict=True):
-            assert row["name"] == item.name
-            assert row["per_grid_amount"] == item.per_grid_amount
-            assert row["max_grids"] == item.max_grids
-            assert row["gate"] == (item.gate.model_dump() if item.gate else None)
-            assert row["enabled"] is True
-
-    def test_deleted_instrument_is_not_restored_while_collection_is_nonempty(self, services: Services) -> None:
-        """A later restart does not resurrect an individually deleted instrument."""
-        engine = get_postgres_db().db_engine
-        session_factory = sessionmaker(bind=engine)
-        with session_factory() as session, session.begin():
-            session.execute(delete(EtfGridInstrument).where(EtfGridInstrument.symbol == "513330.XSHG"))
-
-        spec = DefaultConfigSpec(
-            name="etf_grid.instruments",
-            has_existing_data=services.instruments.has_existing_data,
-            initialize=lambda: services.instruments.initialize(EtfGridConfig().portfolio),  # type: ignore[call-arg]
-        )
-        initialize_default_configs([spec])
-
-        assert "513330.XSHG" not in {row["symbol"] for row in services.instruments.list_instruments()}
 
 
 class TestSignalService:

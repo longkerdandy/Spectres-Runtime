@@ -21,7 +21,6 @@ from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
-    EtfGridInstrumentService,
     EtfGridLedgerService,
     EtfGridSignalService,
     EtfGridValuationService,
@@ -74,8 +73,6 @@ def api_client() -> TestClient:
         for table in (EtfGridSignal, EtfGridValuation, EtfGridCandle, EtfGridTrade):
             session.execute(delete(table))
     config = EtfGridConfig()  # type: ignore[call-arg]  # required fields come from .env.test
-    instruments = EtfGridInstrumentService(session_factory=session_factory)
-    instruments.initialize(config.portfolio)
     app = FastAPI()
     _add_test_identity(app)
     app.include_router(
@@ -85,7 +82,6 @@ def api_client() -> TestClient:
             candle_service=EtfGridCandleService(session_factory=session_factory),
             valuation_service=EtfGridValuationService(session_factory=session_factory),
             signal_service=EtfGridSignalService(session_factory=session_factory),
-            instrument_service=instruments,
         )
     )
     return TestClient(app)
@@ -121,7 +117,7 @@ def seeded(api_client: TestClient) -> TestClient:
 @pytest.mark.integration
 @pytest.mark.db
 class TestEtfGridApi:
-    """All six endpoints via TestClient against real Postgres."""
+    """ETF Grid endpoints via TestClient against real Postgres."""
 
     def test_get_status(self, seeded: TestClient) -> None:
         """GET /status returns the normalized portfolio payload."""
@@ -275,33 +271,13 @@ class TestEtfGridApi:
         assert bob_row["shares"] == 1000
         assert alice_row["shares"] == 24300
 
-    def test_admin_controls_configured_symbol_selection(self, seeded: TestClient) -> None:
-        """Disabled symbols stop normal work without deleting owner history."""
-        path = "/api/v1/extensions/etf-grid/admin/instruments/513330.XSHG"
-        assert seeded.patch(path, json={"enabled": False}).status_code == 403
-        disabled = seeded.patch(path, json={"enabled": False}, headers=_admin_headers())
-        assert disabled.status_code == 200
-        assert disabled.json()["previous_enabled"] is True
-        assert disabled.json()["enabled"] is False
-
-        assert "513330.XSHG" not in {row["symbol"] for row in seeded.get("/api/v1/extensions/etf-grid/instruments").json()}
-        assert "513330.XSHG" not in {row["symbol"] for row in seeded.get("/api/v1/extensions/etf-grid/status").json()}
-        rejected = seeded.post(
-            "/api/v1/extensions/etf-grid/trades",
-            json={"symbol": "513330.XSHG", "trade_date": "2026-09-09", "side": "buy", "price": "0.3590", "quantity": 100, "commission_rate": "0.001"},
-        )
-        assert rejected.status_code == 422
-        assert seeded.get("/api/v1/extensions/etf-grid/trades", params={"symbol": "513330.XSHG"}).json()["total"] == 1
-
-    def test_private_and_admin_authorization_boundaries(self, api_client: TestClient) -> None:
-        """Shared routes require identity; management routes require admin scope."""
+    def test_private_authorization_boundaries(self, api_client: TestClient) -> None:
+        """Private and shared routes require an authenticated identity."""
         assert api_client.get("/api/v1/extensions/etf-grid/status", headers={"x-test-user": ""}).status_code == 403
-        assert api_client.get("/api/v1/extensions/etf-grid/admin/instruments").status_code == 403
         assert api_client.post("/api/v1/extensions/etf-grid/sync", headers={"x-test-user": ""}).status_code == 403
-        assert api_client.get("/api/v1/extensions/etf-grid/admin/instruments", headers=_admin_headers()).status_code == 200
 
     def test_register_creates_tables_idempotently(self) -> None:
-        """register() is idempotent and declares surfaces plus the instrument seed."""
+        """register() is idempotent and declares the extension surfaces."""
         ctx = ExtensionContext(settings=settings, db=get_postgres_db())
         first = etf_grid_extension.register(ctx)
         second = etf_grid_extension.register(ctx)
@@ -311,7 +287,7 @@ class TestEtfGridApi:
             assert len(contribution.routers) == 1
             assert contribution.routers[0].prefix == "/api/v1/extensions/etf-grid"
             assert len(contribution.schedules) == 1
-            assert [config.name for config in contribution.default_configs] == ["etf_grid.instruments"]
+            assert contribution.default_configs == []
             spec = contribution.schedules[0]
             assert spec.name == "ETF Grid Daily Sync"
             assert spec.cron == "0 9 * * 1,5"
@@ -333,7 +309,7 @@ class TestTradesEndpoint:
         ledger.count_trades.return_value = 7
         app = FastAPI()
         _add_test_identity(app)
-        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger, instrument_service=MagicMock(spec=EtfGridInstrumentService)))  # type: ignore[call-arg]  # required fields come from .env.test
+        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger))  # type: ignore[call-arg]  # required fields come from .env.test
         client = TestClient(app)
 
         response = client.get(
@@ -372,7 +348,6 @@ class TestRefreshEndpoint:
             create_router(
                 config=EtfGridConfig(),  # type: ignore[call-arg]  # required fields come from .env.test
                 ledger_service=ledger,
-                instrument_service=MagicMock(spec=EtfGridInstrumentService),
             )
         )
         return TestClient(app, raise_server_exceptions=False)
@@ -399,7 +374,7 @@ class TestRefreshEndpoint:
         _add_test_identity(app)
         ledger = MagicMock(spec=EtfGridLedgerService)
         ledger.list_user_ids.return_value = ["alice", "bob"]
-        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger, instrument_service=MagicMock(spec=EtfGridInstrumentService)))  # type: ignore[call-arg]
+        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger))  # type: ignore[call-arg]
         client = TestClient(app)
         sync = MagicMock(return_value={"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}})
         computed_users: list[str] = []
