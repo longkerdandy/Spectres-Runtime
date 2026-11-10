@@ -40,7 +40,7 @@ Reviewed sources:
   [`a9e5c04f`](https://github.com/AlexxIT/SmartScaleConnect/tree/a9e5c04f1079b65d456c8a5fd296775a1ef29e8f),
   MIT.
 - `A`: official Mi Fitness `com.mi.health` 3.59.2, build 359002, decompiled
-  under `research-local/jadx/3.59.2_20261023185032/`.
+  under `docs/research/mi-health/research-local/jadx/3.59.2_20261023185032/`.
 
 `SmartScaleConnect` is useful for its account login, encrypted transport, weight
 pagination, body-composition fields, and scale attribution clues. It is not a

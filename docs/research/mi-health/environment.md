@@ -29,18 +29,22 @@ export PATH="$HOME/.local/bin:$PATH"
 - Eclipse Temurin OpenJDK: 21.0.13 LTS
 - JADX/JADX-GUI: 1.5.6; release ZIP SHA-256 verified
 - apktool: 3.0.3; release JAR SHA-256 verified
-- Private research directory: `research-local/`, Git-ignored inside the repository
+- Private research directory: `docs/research/mi-health/research-local/`, Git-ignored inside the repository
 
-- APK source: Xiaomi's official `watch.iot.mi.com` download page (`region=cn`)
+- APK landing page: `https://watch.iot.mi.com/download-apps-v3.html?redir=k65&region=cn`
+- Official download resolver: `https://hlth.io.mi.com/download?appId=mifitness`.
+  On 2026-11-10, a fresh download from this resolver matched the retained APK's
+  filename, size, and SHA-256 exactly. The landing page's "Mi Fitness 4.0"
+  marketing label does not identify a different downloadable package version
 - APK filename: `3.59.2_20261023185032_mihealth.apk`
 - Package: `com.mi.health`; version: 3.59.2; build/version code: 359002
 - Minimum SDK: 26; target SDK: 35
 - Native architectures: `arm64-v8a`, `armeabi-v7a`; no x86/x86_64 libraries
 - APK size: 150771625 bytes
 - APK SHA-256: `112e603b8342cb134402a6dcabdf3ec16fd5171ec65a1d5f7cb7efd83cb0995d`
-- Account region: not recorded
+- Account region during static analysis: not recorded; later dynamic experiments used China (`cn`)
 - apktool manifest/resource decode: passed; output is under
-  `research-local/jadx/3.59.2_20261023185032-resources`
+  `docs/research/mi-health/research-local/jadx/3.59.2_20261023185032-resources`
 - JADX decompilation: completed with 397 reported decompilation errors; 49779
   Java files were generated and package/source searches succeeded. The output
   remains under the version-specific local research directory
@@ -65,8 +69,8 @@ export PATH="$HOME/.local/bin:$PATH"
 - On `mi-health-google-apis`, KVM acceleration, headless boot, `adb shell`, and
   `adb root` passed; the original APK installed successfully and cold-launched
   through `SplashActivity` to `WelcomeActivity`
-- The APK was not modified or repackaged. Testing stopped at the region
-  selection page without proceeding to account login
+- The APK was not modified or repackaged. During this initial installation and
+  startup check, testing stopped at the region selection page without account login
 
 The SDK packages were installed with the current Android CLI:
 
@@ -103,8 +107,9 @@ used by this emulator on an x86_64 host.
   program disabled. HTTP/2 requests to `region.hlth.io.mi.com`,
   `sdkconfig.intl.xiaomi.com`, and `tracking.intl.miui.com` returned 200
   responses; no certificate-pinning blocker occurred
-- The test stopped at region selection. No Xiaomi account login has been
-  performed, and no health data was collected
+- This startup-inspection test stopped at region selection and collected no
+  account login or health data. Later official-app password and standalone QR
+  experiments are documented separately in the private working notes
 - The Android proxy was reset to `:0` and mitmweb was stopped after the test
 
 Android 14 and later load the application system trust store from the
@@ -150,7 +155,7 @@ it is listening. Save raw flows only in the Git-ignored research directory:
 ```bash
 mitmweb --listen-host 127.0.0.1 --listen-port 8080 \
   --web-host 127.0.0.1 --web-port 8081 \
-  --save-stream-file "$HOME/projects/Spectres-Edge-Mi-Health/research-local/captures/raw/session.mitm"
+  --save-stream-file "$HOME/projects/Spectres-Runtime/docs/research/mi-health/research-local/captures/raw/session.mitm"
 adb shell settings put global http_proxy 10.0.2.2:8080
 ```
 
@@ -160,12 +165,14 @@ After every research session, clear the Android proxy and stop mitmproxy:
 adb shell settings put global http_proxy :0
 ```
 
-The controlled and startup raw captures remain untracked in `research-local/`.
+Controlled, startup, and later authentication raw captures remain untracked in
+`docs/research/mi-health/research-local/`; they may contain sensitive account,
+session, or health material and must remain local.
 Certificate-pinning bypasses remain out of scope.
 
 ## Artifact handling
 
 Store proprietary and sensitive material only in the Git-ignored
-`research-local/` directory. Raw captures belong under `captures/raw`;
+`docs/research/mi-health/research-local/` directory. Raw captures belong under `captures/raw`;
 decompilation belongs in a version-specific directory under `jadx`. Only
 self-authored notes and synthetic or redacted fixtures may be committed.

@@ -45,3 +45,6 @@ logs/
 # Logto OIDC public keys (JWT_JWKS_FILE) exported from the local Logto instance —
 # a per-environment generated artifact; never committed.
 docker/logto/jwks.json
+
+# Local Mi Health APKs, decompilation, captures, and working artifacts
+/docs/research/mi-health/research-local/
