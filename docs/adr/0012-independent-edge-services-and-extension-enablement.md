@@ -1,8 +1,12 @@
 # ADR 0012: Independent Edge Services and Built-in Extension Enablement
 
-- **Status**: Accepted
+- **Status**: Accepted; amended for Mi Health by ADR 0013
 - **Date**: 2026-11-07
 - **Deciders**: Project owner + architecture discussion
+
+> ADR 0013 reclassifies Mi Health as a built-in Runtime and Web Client Extension
+> using the Runtime API token. This ADR remains in force for built-in Extension
+> enablement and future services that require independent Edge deployment.
 
 ## Context
 

@@ -1,8 +1,8 @@
 # Spectres System Architecture
 
-> Current implementation contracts and the accepted Edge target design for coding
-> agents. Current behavior and future design are labeled separately.
-> Last updated: 2026-11-09.
+> Current implementation contracts and accepted Extension and Edge target designs
+> for coding agents. Current behavior and future design are labeled separately.
+> Last updated: 2026-11-10.
 
 ## 1. System Boundaries
 
@@ -13,11 +13,10 @@
 - **PostgreSQL**: Runtime, Logto, and future Edge persistence under separate
   ownership boundaries.
 - **Edges**: independently deployed vertical services for external clouds,
-  software intermediaries, or devices. Xiaomi Health is the first accepted Edge
-  design, but no Edge service is currently implemented.
+  software intermediaries, or devices. No Edge service is currently implemented.
 
-The **Target** sections below come from ADR 0012 and are not implementation
-claims.
+The **Target** sections below come from ADRs 0012 and 0013 and are not
+implementation claims.
 
 ## 2. Current System Context
 
@@ -235,20 +234,25 @@ Extension imports.
 | Loading | Static startup/build-time discovery | Independently released UI remote |
 | Administration | Runtime global enable/disable | Independent deployment and availability |
 | Data | Runtime-owned custom tables | Edge-owned schemas and tables |
-| Example | ETF Grid and Runtime AI integration | Xiaomi Health service and UI |
+| Example | ETF Grid and planned Mi Health | Future independently deployed services |
+
+Mi Health is a planned built-in Runtime and Web Client Extension, not an
+independent Edge. It will use Runtime authentication, per-user ownership, global
+Extension activation, and native scheduling without a dedicated API resource,
+permission, role, or Module Federation remote.
 
 A Runtime Extension may expose selected Edge operations as tools or event
 handlers. Disabling it affects only Runtime integration, not Edge sync or UI.
 
-## 6. Target: Xiaomi Health Edge
+## 6. Target: Future Independent Edge Services
 
 ### 6.1 Independent Vertical Service
 
-Xiaomi Health Edge owns account binding, credential refresh, device/sync state,
-manual and scheduled synchronization, health schemas/migrations/persistence, and
-configuration/status/query APIs. Runtime neither manages its sync lifecycle nor
-keeps a second canonical health-data copy. A shared PostgreSQL deployment does
-not permit cross-owned table access.
+An independent Edge owns external account binding, credential refresh,
+device/sync state, manual and scheduled synchronization, domain
+schemas/migrations/persistence, and configuration/status/query APIs. Runtime
+neither manages its sync lifecycle nor keeps a second canonical domain-data copy.
+A shared PostgreSQL deployment does not permit cross-owned table access.
 
 Runtime-to-Edge calls are specific operations implemented by a corresponding
 Runtime Extension. Optional Edge-to-Runtime notifications must be authenticated
@@ -293,7 +297,7 @@ Runtime capabilities, and Runtime outage must not inherently stop Edge sync.
 - Team/Slave orchestration or another user-facing Master Agent.
 - Long-term memory, knowledge/RAG, per-agent tool ACL, judgment-based automation,
   notifications, and cross-Schedule dependencies.
-- Xiaomi Health Edge backend, account binding, health persistence, or sync.
+- Mi Health built-in Extension, account binding, health persistence, or sync.
 - Runtime-to-Edge proxying, Edge event handling, or a generic Edge control plane.
 - Module Federation Edge UI remotes and independent Edge UI releases.
 - Cloud Gateway deployment tooling and production public exposure.

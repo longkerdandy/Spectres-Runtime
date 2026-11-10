@@ -1,6 +1,6 @@
 # AGENTS.md — Spectres Runtime
 
-> Guidance for coding agents. Last updated: 2026-11-09.
+> Guidance for coding agents. Last updated: 2026-11-10.
 
 ## 1. Project Context
 
@@ -8,7 +8,7 @@ Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents
 
 - **Stack**: Python 3.13, Agno AgentOS, FastAPI, PostgreSQL, pydantic-settings, and `uv`.
 - **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, static extension loading with administrator-controlled global enablement, Agno Workflows, and native scheduled tasks. The first extension is ETF Grid Trading.
-- **Not implemented**: Team/Slave orchestration, long-term memory, knowledge/RAG, tool ACL, judgment-based automation, notification delivery, and Edge proxying. Do not describe these as existing behavior.
+- **Not implemented**: Team/Slave orchestration, long-term memory, knowledge/RAG, tool ACL, judgment-based automation, notification delivery, Mi Health, and Edge proxying. Do not describe these as existing behavior.
 - **Source of truth**: [`docs/architecture/system-architecture.md`](docs/architecture/system-architecture.md) describes current behavior and target design; [`docs/adr/`](docs/adr/) records decisions; [`docs/plan/`](docs/plan/) tracks milestones. Root `README.md` is a human-facing project guide, not the coding-agent architecture reference. Update affected documentation when behavior changes.
 
 ## 2. Architectural Constraints
@@ -78,8 +78,8 @@ Before finishing a code change, run the relevant tests and the standard quality 
 - `src/spectres/extensions/activation.py` — REST, Toolkit, and Workflow activation guards
 - `src/spectres/scheduler.py` — system-schedule registration
 - `src/spectres/extensions/etf_grid/` — reference vertical-slice extension
+- `docs/research/mi-health/` — migrated Mi Fitness protocol research; not production behavior
 - `tests/` — unit and integration coverage
 
 ## 8. Reference Projects
 - Spectres Web Client — ..\Spectres-Web-Client
-- Spectres Edge XiaoMi Health — ..\Spectres-Edge-Mi-Health

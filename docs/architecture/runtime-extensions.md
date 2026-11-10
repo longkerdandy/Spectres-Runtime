@@ -1,7 +1,7 @@
 # Runtime Extensions
 
 > Implementation contract for built-in Extensions and the ETF Grid reference.
-> Last updated: 2026-11-09.
+> Last updated: 2026-11-10.
 
 ## 1. Boundaries and Layering
 
@@ -9,6 +9,12 @@ An Extension is a trusted, in-process domain capability under
 `src/spectres/extensions/<name>/`. It may contribute agent tools, REST routes,
 Agno Workflows, and declarative system Schedules. It is not an independent
 deployment, sandbox, third-party plugin, or Edge.
+
+Mi Health is a planned built-in Extension under
+`src/spectres/extensions/mi_health/`; its code, routes, tables, and schedules are
+not implemented yet. Its migrated protocol evidence lives in
+[Mi Health research](../research/mi-health/mi-fitness-cloud-api.md) and is not
+production behavior.
 
 Core code must not import Extension code. Extensions must not modify AgentOS or
 agent factories directly.

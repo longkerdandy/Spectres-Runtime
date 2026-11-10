@@ -1,7 +1,7 @@
 # Authentication and Authorization
 
-> Current Runtime authentication/authorization contracts and the accepted Edge
-> identity boundary for coding agents. Last updated: 2026-11-09.
+> Current Runtime authentication/authorization contracts and accepted Extension
+> and Edge identity boundaries for coding agents. Last updated: 2026-11-10.
 
 ## 1. Current Request Path
 
@@ -82,10 +82,28 @@ parameters, and forwarded headers must not establish ownership.
 Preserve this separation when changing scheduler authentication, Workflow
 ownership, or internal Extension routes.
 
-## 6. Target Edge Identity Boundary
+## 6. Target Extension and Edge Identity Boundaries
 
-ADR 0012 accepts the following design; Edge authentication is not currently
+### 6.1 Built-in Mi Health Extension
+
+ADR 0013 accepts Mi Health as a planned built-in Extension; it is not currently
 implemented:
+
+- Mi Health uses the existing Runtime API resource, access token, authentication,
+  and global Extension activation. Every authenticated Runtime user may use it
+  while enabled.
+- No dedicated Mi Health API resource, audience, permission, or role is required.
+  A future role-based entitlement requires a separate reviewed decision.
+- Every private read and write derives ownership from verified
+  `request.state.user_id` or `RunContext.user_id`. Browser input and LLM arguments
+  are never authoritative ownership inputs.
+- Per-user isolation addresses cross-user access but does not replace credential
+  protection, sensitive-log prevention, or other security controls.
+
+### 6.2 Independent Edge Services
+
+ADR 0012 accepts the following design for future services that genuinely require
+independent Edge deployment; Edge authentication is not currently implemented:
 
 - Runtime and each Edge define separate Logto API resources and audiences.
 - The pure SPA obtains the token for the service it intends to call. A second API
