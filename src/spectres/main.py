@@ -23,13 +23,12 @@ from spectres.scheduler import register_schedules
 logger = logging.getLogger(__name__)
 
 
-def mount_extension_routers(app: FastAPI, extensions: list[LoadedExtension]) -> None:
+def mount_extension_routers(app: FastAPI, extensions: list[LoadedExtension], state_service: ExtensionStateService) -> None:
     """Mount built-in Extension routers with database-backed activation guards."""
-    state_service = ExtensionStateService(get_postgres_db(), [extension.id for extension in extensions])
     include_extension_routers(app, extensions, state_service)
 
 
-def create_agent_os() -> tuple[AgentOS, list[LoadedExtension]]:
+def create_agent_os() -> tuple[AgentOS, list[LoadedExtension], ExtensionStateService]:
     """Create the AgentOS instance and load extensions.
 
     Logging is configured before anything else so startup logs use the
@@ -44,7 +43,7 @@ def create_agent_os() -> tuple[AgentOS, list[LoadedExtension]]:
     without it the app runs open (local development).
 
     Returns:
-        The configured AgentOS plus the loaded extensions.
+        The configured AgentOS, loaded extensions, and initialized state service.
     """
     configure_logging(settings)
     logger.info("Per-user data isolation enabled", extra={"event": "user_isolation_enabled"})
@@ -93,12 +92,13 @@ def create_agent_os() -> tuple[AgentOS, list[LoadedExtension]]:
             user_isolation=True,
         ),
         extensions,
+        extension_state,
     )
 
 
-agent_os, loaded_extensions = create_agent_os()
+agent_os, loaded_extensions, extension_state = create_agent_os()
 app = agent_os.get_app()
-mount_extension_routers(app, loaded_extensions)
+mount_extension_routers(app, loaded_extensions, extension_state)
 # Binds a fresh trace_id to every HTTP request (spectres/logging.py).
 app.add_middleware(TraceIdMiddleware)
 

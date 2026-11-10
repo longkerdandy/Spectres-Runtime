@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import delete
@@ -16,9 +16,10 @@ from spectres.config import settings
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.base import ExtensionContext
 from spectres.extensions.etf_grid import extension as etf_grid_extension
-from spectres.extensions.etf_grid.api import TradeCreate, create_router
+from spectres.extensions.etf_grid.api import create_router
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
+from spectres.extensions.etf_grid.schemas import TradeCreate
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
     EtfGridLedgerService,
@@ -59,8 +60,17 @@ def _add_test_identity(app: FastAPI) -> None:
         return await call_next(request)
 
 
-def _admin_headers() -> dict[str, str]:
-    return {"x-test-scopes": "agent_os:admin"}
+def _router(**overrides: Any) -> APIRouter:
+    """Build a router with explicit service doubles for adapter-only tests."""
+    kwargs: dict[str, Any] = {
+        "config": EtfGridConfig(),  # type: ignore[call-arg]  # required fields come from .env.test
+        "ledger_service": MagicMock(spec=EtfGridLedgerService),
+        "candle_service": MagicMock(spec=EtfGridCandleService),
+        "valuation_service": MagicMock(spec=EtfGridValuationService),
+        "signal_service": MagicMock(spec=EtfGridSignalService),
+    }
+    kwargs.update(overrides)
+    return create_router(**kwargs)
 
 
 @pytest.fixture
@@ -296,6 +306,32 @@ class TestEtfGridApi:
             assert spec.enabled is True
             assert [workflow.id for workflow in contribution.workflows] == ["etf_grid_data_sync", "etf_grid_recompute"]
 
+    def test_register_injects_same_services_into_all_adapters(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """REST, Toolkit, and Workflow factories receive one registration-scoped service set."""
+        from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
+        from spectres.extensions.etf_grid.workflows import create_workflows
+
+        calls: dict[str, dict[str, Any]] = {}
+
+        def capture(name: str, factory: Any) -> Any:
+            def wrapped(**kwargs: Any) -> Any:
+                calls[name] = kwargs
+                return factory(**kwargs)
+
+            return wrapped
+
+        monkeypatch.setattr("spectres.extensions.etf_grid.api.create_router", capture("router", create_router))
+        monkeypatch.setattr("spectres.extensions.etf_grid.toolkit.EtfGridToolkit", capture("toolkit", EtfGridToolkit))
+        monkeypatch.setattr("spectres.extensions.etf_grid.workflows.create_workflows", capture("workflows", create_workflows))
+
+        etf_grid_extension.register(ExtensionContext(settings=settings, db=get_postgres_db()))
+
+        assert set(calls) == {"router", "toolkit", "workflows"}
+        service_names = ("ledger_service", "candle_service", "valuation_service", "signal_service")
+        for adapter in ("toolkit", "workflows"):
+            for service_name in service_names:
+                assert calls[adapter][service_name] is calls["router"][service_name]
+
 
 @pytest.mark.unit
 class TestTradesEndpoint:
@@ -304,11 +340,28 @@ class TestTradesEndpoint:
     def test_get_trades_delegates_sql_filters_pagination_and_count(self) -> None:
         """The endpoint returns the service page directly instead of slicing a full result set."""
         ledger = MagicMock()
-        ledger.list_trades.return_value = [{"id": 2, "trade_date": date(2026, 9, 9)}]
+        ledger.list_trades.return_value = [
+            {
+                "id": 2,
+                "user_id": "alice",
+                "trade_date": date(2026, 9, 9),
+                "symbol": "513330.XSHG",
+                "side": "buy",
+                "price": "0.3590",
+                "quantity": 100,
+                "gross_amount": "35.90",
+                "commission_rate": "0.001",
+                "commission": "0.04",
+                "net_amount": "35.94",
+                "source": "manual",
+                "note": None,
+                "created_at": "2026-09-09T10:00:00+00:00",
+            }
+        ]
         ledger.count_trades.return_value = 7
         app = FastAPI()
         _add_test_identity(app)
-        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger))  # type: ignore[call-arg]  # required fields come from .env.test
+        app.include_router(_router(config=EtfGridConfig(), ledger_service=ledger))  # type: ignore[call-arg]  # required fields come from .env.test
         client = TestClient(app)
 
         response = client.get(
@@ -317,7 +370,13 @@ class TestTradesEndpoint:
         )
 
         assert response.status_code == 200
-        assert response.json() == {"items": [{"id": 2, "trade_date": "2026-09-09"}], "total": 7, "limit": 1, "offset": 1}
+        body = response.json()
+        assert body["items"][0]["id"] == 2
+        assert body["items"][0]["trade_date"] == "2026-09-09"
+        assert body["items"][0]["net_amount"] == "35.94"
+        assert body["total"] == 7
+        assert body["limit"] == 1
+        assert body["offset"] == 1
         ledger.list_trades.assert_called_once()
         args, kwargs = ledger.list_trades.call_args
         assert args == ("513330.XSHG",)
@@ -333,101 +392,46 @@ class TestTradesEndpoint:
 
 
 @pytest.mark.unit
-class TestRefreshEndpoint:
-    """POST /refresh error contract: the scheduler treats 2xx as success."""
+class TestRemovedRefreshEndpoint:
+    """The obsolete composite REST operation is absent and has no side effects."""
 
-    @pytest.fixture
-    def refresh_client(self) -> TestClient:
-        """A minimal app mounting only the router; no db is touched while both steps are patched."""
+    def test_refresh_returns_404_without_sync_or_compute(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The removed route cannot reach either domain operation."""
         app = FastAPI()
         _add_test_identity(app)
-        ledger = MagicMock(spec=EtfGridLedgerService)
-        ledger.list_user_ids.return_value = ["alice"]
-        app.include_router(
-            create_router(
-                config=EtfGridConfig(),  # type: ignore[call-arg]  # required fields come from .env.test
-                ledger_service=ledger,
-            )
-        )
-        return TestClient(app, raise_server_exceptions=False)
-
-    def test_happy_path_returns_both_results(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        """200 with the sync and compute sections when both steps succeed."""
-        monkeypatch.setattr(
-            "spectres.extensions.etf_grid.api.sync_market_data",
-            lambda **kwargs: {"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}},
-        )
-        monkeypatch.setattr(
-            "spectres.extensions.etf_grid.api.compute_daily_signals",
-            lambda **kwargs: {"signals": {}, "skipped": {}},
-        )
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
-        assert response.status_code == 200
-        body = response.json()
-        assert body["sync"]["errors"] == {}
-        assert body["signals"] == {"computed_users": 1, "errors": {}}
-
-    def test_refresh_syncs_once_and_computes_each_known_user(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Scheduled fan-out never repeats shared sync per user."""
-        app = FastAPI()
-        _add_test_identity(app)
-        ledger = MagicMock(spec=EtfGridLedgerService)
-        ledger.list_user_ids.return_value = ["alice", "bob"]
-        app.include_router(create_router(config=EtfGridConfig(), ledger_service=ledger))  # type: ignore[call-arg]
-        client = TestClient(app)
-        sync = MagicMock(return_value={"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}})
-        computed_users: list[str] = []
-
-        def compute(**kwargs: Any) -> dict[str, Any]:
-            computed_users.append(kwargs["user_id"])
-            return {"signals": {}, "skipped": {}}
-
+        app.include_router(_router())
+        sync = MagicMock()
+        compute = MagicMock()
         monkeypatch.setattr("spectres.extensions.etf_grid.api.sync_market_data", sync)
         monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
 
-        response = client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
-        assert response.status_code == 200
-        assert response.json()["signals"] == {"computed_users": 2, "errors": {}}
-        sync.assert_called_once()
-        assert computed_users == ["alice", "bob"]
+        response = TestClient(app).post("/api/v1/extensions/etf-grid/refresh", headers={"x-test-scopes": "agent_os:admin"})
 
-    def test_partial_source_failure_is_200_with_errors(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        """One failed source still computes signals over the partial data: 200 + errors."""
-        compute = MagicMock(return_value={"signals": {}, "skipped": {}})
-        monkeypatch.setattr(
-            "spectres.extensions.etf_grid.api.sync_market_data",
-            lambda **kwargs: {"candles": None, "valuation": 1, "errors": {"candles": "boom"}},
-        )
-        monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
-        assert response.status_code == 200
-        assert response.json()["sync"]["errors"] == {"candles": "boom"}
-        compute.assert_called_once()
-
-    def test_total_source_failure_is_502_and_skips_compute(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        """All sources failed -> 502 so the schedule run records failed and retries; compute never runs."""
-        compute = MagicMock()
-        monkeypatch.setattr(
-            "spectres.extensions.etf_grid.api.sync_market_data",
-            lambda **kwargs: {"candles": None, "valuation": None, "errors": {"candles": "boom", "valuation": "boom"}},
-        )
-        monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", compute)
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
-        assert response.status_code == 502
+        assert response.status_code == 404
+        sync.assert_not_called()
         compute.assert_not_called()
 
-    def test_compute_failure_is_a_scoped_partial_error(self, refresh_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A user compute failure is isolated after shared sync succeeds."""
-        monkeypatch.setattr(
-            "spectres.extensions.etf_grid.api.sync_market_data",
-            lambda **kwargs: {"candles": {"513330.XSHG": 1}, "valuation": 1, "errors": {}},
-        )
 
-        def boom(**kwargs: object) -> None:
-            raise RuntimeError("db down")
+@pytest.mark.unit
+class TestResponseContracts:
+    """Every surviving route exposes its typed JSON response through OpenAPI."""
 
-        monkeypatch.setattr("spectres.extensions.etf_grid.api.compute_daily_signals", boom)
-        response = refresh_client.post("/api/v1/extensions/etf-grid/refresh", headers=_admin_headers())
-        assert response.status_code == 200
-        assert response.json()["signals"]["computed_users"] == 0
-        assert response.json()["signals"]["errors"]["alice"] == "RuntimeError: db down"
+    def test_surviving_operations_declare_response_schemas(self) -> None:
+        """OpenAPI contains five typed operations and no composite refresh path."""
+        app = FastAPI()
+        app.include_router(_router())
+        paths = app.openapi()["paths"]
+        expected = {
+            "/api/v1/extensions/etf-grid/status": ("get", "200"),
+            "/api/v1/extensions/etf-grid/signals/compute": ("post", "200"),
+            "/api/v1/extensions/etf-grid/sync": ("post", "200"),
+            "/api/v1/extensions/etf-grid/trades": ("get", "200"),
+        }
+
+        assert set(paths) == set(expected)
+        assert "/api/v1/extensions/etf-grid/refresh" not in paths
+        for path, (method, status_code) in expected.items():
+            response = paths[path][method]["responses"][status_code]
+            assert "schema" in response["content"]["application/json"]
+        create_response = paths["/api/v1/extensions/etf-grid/trades"]["post"]["responses"]["201"]
+        assert "schema" in create_response["content"]["application/json"]

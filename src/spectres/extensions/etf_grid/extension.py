@@ -2,6 +2,8 @@
 
 import logging
 
+from sqlalchemy.orm import sessionmaker
+
 from spectres.extensions.base import ExtensionContext, ExtensionContribution
 from spectres.extensions.etf_grid.models import EtfGridBase
 from spectres.scheduler import ScheduleSpec
@@ -19,20 +21,48 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     The daily sync schedule is only declared here — core registers it with
     the AgentOS scheduler after loading (spectres/scheduler.py).
     """
-    EtfGridBase.metadata.create_all(ctx.db.db_engine)
-
     # Imported lazily so merely importing the package stays cheap and the
     # web/agent frameworks are only pulled in when surfaces are built.
     from spectres.extensions.etf_grid.api import create_router
     from spectres.extensions.etf_grid.config import load_config
+    from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridLedgerService, EtfGridSignalService, EtfGridValuationService
     from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
     from spectres.extensions.etf_grid.workflows import DATA_SYNC_WORKFLOW_ID, create_workflows
 
     config = load_config()
+    session_factory = sessionmaker(bind=ctx.db.db_engine)
+    ledger = EtfGridLedgerService(session_factory=session_factory)
+    candles = EtfGridCandleService(session_factory=session_factory)
+    valuation = EtfGridValuationService(session_factory=session_factory)
+    signals = EtfGridSignalService(session_factory=session_factory)
+    EtfGridBase.metadata.create_all(ctx.db.db_engine)
+
     contribution = ExtensionContribution(
-        toolkits=[EtfGridToolkit(config=config)],
-        routers=[create_router(config=config)],
-        workflows=create_workflows(config=config),
+        toolkits=[
+            EtfGridToolkit(
+                config=config,
+                ledger_service=ledger,
+                candle_service=candles,
+                valuation_service=valuation,
+                signal_service=signals,
+            )
+        ],
+        routers=[
+            create_router(
+                config=config,
+                ledger_service=ledger,
+                candle_service=candles,
+                valuation_service=valuation,
+                signal_service=signals,
+            )
+        ],
+        workflows=create_workflows(
+            config=config,
+            ledger_service=ledger,
+            candle_service=candles,
+            valuation_service=valuation,
+            signal_service=signals,
+        ),
         schedules=[
             ScheduleSpec(
                 name="ETF Grid Daily Sync",

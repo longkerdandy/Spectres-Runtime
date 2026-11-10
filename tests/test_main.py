@@ -51,7 +51,7 @@ def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
     monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
 
-    agent_os, _contributions = main_module.create_agent_os()
+    agent_os, _contributions, _extension_state = main_module.create_agent_os()
     return agent_os.get_app()
 
 
@@ -159,7 +159,7 @@ def test_shutdown_lifespan_closes_postgres_db(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(settings, "scheduler_enabled", False)
 
-    agent_os, _ = main_module.create_agent_os()
+    agent_os, _, _ = main_module.create_agent_os()
     app = agent_os.get_app()
 
     with TestClient(app):
@@ -193,3 +193,17 @@ def test_agent_os_receives_extension_workflows_and_telemetry_setting(monkeypatch
 
     assert agent_os_cls.call_args.kwargs["workflows"] == [workflow]
     assert agent_os_cls.call_args.kwargs["telemetry"] is False
+
+
+def test_mount_extension_routers_reuses_initialized_state_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REST mounting receives the existing state service instead of constructing another."""
+    import spectres.main as main_module
+
+    app = FastAPI()
+    state_service = MagicMock()
+    include = MagicMock()
+    monkeypatch.setattr(main_module, "include_extension_routers", include)
+
+    main_module.mount_extension_routers(app, [], state_service)
+
+    include.assert_called_once_with(app, [], state_service)

@@ -8,9 +8,19 @@ from agno.run import RunContext
 from agno.workflow import Workflow
 from agno.workflow.types import StepInput, StepOutput
 
+from spectres.extensions.etf_grid.service import EtfGridCandleService, EtfGridLedgerService, EtfGridSignalService, EtfGridValuationService
 from spectres.extensions.etf_grid.workflows import create_workflows
 
 pytestmark = pytest.mark.unit
+
+
+def _create_workflows() -> list[Workflow]:
+    return create_workflows(
+        ledger_service=MagicMock(spec=EtfGridLedgerService),
+        candle_service=MagicMock(spec=EtfGridCandleService),
+        valuation_service=MagicMock(spec=EtfGridValuationService),
+        signal_service=MagicMock(spec=EtfGridSignalService),
+    )
 
 
 def _execute(workflow: Workflow, *, user_id: str | None = None, step_input: StepInput | None = None) -> StepOutput:
@@ -26,7 +36,7 @@ def test_sync_workflow_only_synchronizes_shared_data(monkeypatch: pytest.MonkeyP
     recompute = MagicMock()
     monkeypatch.setattr("spectres.extensions.etf_grid.workflows.sync_market_data", sync)
     monkeypatch.setattr("spectres.extensions.etf_grid.workflows.compute_daily_signals", recompute)
-    sync_workflow, _ = create_workflows()
+    sync_workflow, _ = _create_workflows()
 
     result = _execute(sync_workflow)
 
@@ -42,7 +52,7 @@ def test_sync_workflow_accepts_partial_source_failure(monkeypatch: pytest.Monkey
         "spectres.extensions.etf_grid.workflows.sync_market_data",
         lambda **kwargs: {"candles": None, "valuation": 3, "errors": {"candles": "boom"}},
     )
-    sync_workflow, _ = create_workflows()
+    sync_workflow, _ = _create_workflows()
 
     result = _execute(sync_workflow)
 
@@ -56,7 +66,7 @@ def test_sync_workflow_fails_when_all_sources_fail(monkeypatch: pytest.MonkeyPat
         "spectres.extensions.etf_grid.workflows.sync_market_data",
         lambda **kwargs: {"candles": None, "valuation": None, "errors": {"candles": "boom", "valuation": "boom"}},
     )
-    sync_workflow, _ = create_workflows()
+    sync_workflow, _ = _create_workflows()
 
     result = _execute(sync_workflow)
 
@@ -68,7 +78,7 @@ def test_recompute_workflow_requires_owner(monkeypatch: pytest.MonkeyPatch) -> N
     """An unowned run cannot recompute private signals."""
     recompute = MagicMock()
     monkeypatch.setattr("spectres.extensions.etf_grid.workflows.compute_daily_signals", recompute)
-    _, recompute_workflow = create_workflows()
+    _, recompute_workflow = _create_workflows()
 
     result = _execute(recompute_workflow)
 
@@ -81,7 +91,7 @@ def test_recompute_workflow_uses_run_context_owner(monkeypatch: pytest.MonkeyPat
     """Input cannot impersonate another user; only RunContext selects the ledger."""
     recompute = MagicMock(return_value={"signals": {}, "skipped": {}})
     monkeypatch.setattr("spectres.extensions.etf_grid.workflows.compute_daily_signals", recompute)
-    _, recompute_workflow = create_workflows()
+    _, recompute_workflow = _create_workflows()
 
     result = _execute(recompute_workflow, user_id="alice", step_input=StepInput(input={"user_id": "bob"}))
 

@@ -34,9 +34,9 @@ def application() -> Iterator[tuple[TestClient, list[LoadedExtension]]]:
     settings.jwt_audience = DEV_AUDIENCE
     settings.jwt_algorithm = "HS256"
     try:
-        agent_os, extensions = main_module.create_agent_os()
+        agent_os, extensions, extension_state = main_module.create_agent_os()
         app = agent_os.get_app()
-        main_module.mount_extension_routers(app, extensions)
+        main_module.mount_extension_routers(app, extensions, extension_state)
         with TestClient(app, raise_server_exceptions=False) as client:
             yield client, extensions
     finally:
@@ -89,3 +89,28 @@ def test_disabled_workflow_run_returns_stop_result_without_recompute(
     assert response.status_code == 200, response.text
     assert '"status":"disabled"' in response.text
     assert '"extension":"etf_grid"' in response.text
+
+
+async def test_disabled_sync_and_compute_tools_return_before_business_work(
+    application: tuple[TestClient, list[LoadedExtension]],
+) -> None:
+    """Both new tools fail closed while disabled and recover after re-enablement."""
+    client, extensions = application
+    admin = _headers("operator", ADMIN_SCOPES)
+    assert client.patch("/api/v1/extensions/etf_grid", headers=admin, json={"enabled": False}).status_code == 200
+    try:
+        extension = next(extension for extension in extensions if extension.id == "etf_grid")
+        toolkit = extension.contribution.toolkits[0]
+        sync_function = toolkit.async_functions["sync_grid_data"]
+        compute_function = toolkit.functions["compute_grid_signals"]
+        assert sync_function.entrypoint is not None
+        assert compute_function.entrypoint is not None
+        context = RunContext(run_id="run", session_id="session", user_id="alice")
+
+        sync_result = await sync_function.entrypoint(run_context=context)
+        compute_result = compute_function.entrypoint(run_context=context)
+
+        assert sync_result["error"]["type"] == "extension_disabled"
+        assert compute_result["error"]["type"] == "extension_disabled"
+    finally:
+        assert client.patch("/api/v1/extensions/etf_grid", headers=admin, json={"enabled": True}).status_code == 200

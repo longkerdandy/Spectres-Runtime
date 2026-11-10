@@ -16,14 +16,3 @@ def require_user_or_internal(request: Request) -> str:
     if getattr(request.state, "is_internal_service", False) or getattr(request.state, "_agno_verified_internal", False):
         return "internal-scheduler"
     return require_user_id(request)
-
-
-def require_admin_or_internal(request: Request) -> str:
-    """Allow an Agno administrator or the verified internal scheduler caller."""
-    if getattr(request.state, "is_internal_service", False) or getattr(request.state, "_agno_verified_internal", False):
-        return "internal-scheduler"
-    user_id = require_user_id(request)
-    scopes = getattr(request.state, "scopes", [])
-    if not isinstance(scopes, list) or "agent_os:admin" not in scopes:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="agent_os:admin scope required")
-    return user_id

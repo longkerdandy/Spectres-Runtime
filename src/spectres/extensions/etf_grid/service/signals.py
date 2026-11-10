@@ -5,16 +5,21 @@ from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session, sessionmaker
 
 from spectres.extensions.etf_grid.core.grid import SignalSnapshot
 from spectres.extensions.etf_grid.models import EtfGridSignal
 from spectres.extensions.etf_grid.types import OrderAdvice, normalize_symbol
 
-from .base import _require_user_id, _SessionBound
+from .identity import _require_user_id
 
 
-class EtfGridSignalService(_SessionBound):
+class EtfGridSignalService:
     """Stores and reads computed daily signal snapshots."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the service with an explicitly injected session factory."""
+        self._session_factory = session_factory
 
     def upsert_signals(self, snapshots: Sequence[SignalSnapshot], *, user_id: str) -> int:
         """Upsert one owner's signal snapshots in a single transaction."""

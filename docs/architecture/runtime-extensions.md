@@ -31,6 +31,7 @@ src/spectres/extensions/
     ├── core/               # Pure domain logic
     ├── service/            # Business services and persistence orchestration
     ├── models.py           # SQLAlchemy models
+    ├── schemas.py          # FastAPI request/response contracts
     ├── marketdata.py       # External providers
     ├── toolkit.py          # Agno adapter
     ├── workflows.py        # Agno adapter
@@ -40,6 +41,10 @@ src/spectres/extensions/
 Keep `toolkit.py`, `api.py`, and `workflows.py` thin. Business rules belong in
 `service/` or pure `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy.
 Conversation, HTTP, and scheduled execution must use the same domain services.
+Each Extension's `register()` is its composition root: create a session factory
+from `ExtensionContext.db.db_engine`, construct one set of services, and inject
+those instances into every adapter instead of using a process-global database
+helper.
 
 ## 2. Manifest, Registration, and Discovery
 
@@ -136,7 +141,9 @@ the tool boundary. Activation-disabled errors use the shared guard's smaller
 Mount routers under `/api/v1/extensions/<kebab-name>/`. AgentOS supplies global
 authentication and CORS, but routes must explicitly enforce ownership and any
 additional scopes. Derive owners from `request.state.user_id`; HTTP and tool
-adapters call the same services.
+adapters call the same services. Define Pydantic request/response schemas and
+route `response_model`s for the public HTTP contract without changing the pure
+domain core.
 
 ### Workflows and Logging
 
@@ -152,8 +159,9 @@ without credentials, tokens, or health data.
 - **Shared**: candles, valuation history, and the in-memory portfolio.
 - **Private**: trades and signals carry `user_id`; positions and P&L derive only
   from that owner's append-only ledger.
-- **Tools**: `get_grid_status`, `refresh_grid_data`, `record_grid_trade`,
-  `list_grid_trades`. Refresh syncs shared data and recomputes only the caller.
+- **Tools**: `get_grid_status`, `sync_grid_data`, `compute_grid_signals`,
+  `record_grid_trade`, and `list_grid_trades`. Sync changes shared data only;
+  compute uses persisted data and recomputes only the verified run owner.
 - **Workflows**: `etf_grid_data_sync` never enumerates ledger owners;
   `etf_grid_recompute` requires an authenticated owner.
 - **Schedule**: unowned `ETF Grid Daily Sync` targets data sync. Personal
@@ -164,10 +172,9 @@ Routes under `/api/v1/extensions/etf-grid`:
 | Route | Access and behavior |
 |-------|---------------------|
 | `GET /status` | Current user's positions, P&L, and latest signals |
-| `POST /signals/compute` | Recompute current user's signals |
-| `POST /sync` | Shared sync for an authenticated user or internal caller |
+| `POST /signals/compute` | Recompute current user's signals without syncing |
+| `POST /sync` | Shared sync for an authenticated user or internal caller, without signal recomputation |
 | `GET, POST /trades` | Current user's trade list/create |
-| `POST /refresh` | Admin/internal sync plus all-ledger-owner recompute; not scheduled |
 
 `GET /trades` returns `{items, total, limit, offset}`; `limit` is 1–200
 (default 20), and filters apply before `total` is counted. Validation failures

@@ -15,8 +15,8 @@ from spectres.extensions.etf_grid.core.grid import (
 )
 from spectres.extensions.etf_grid.types import normalize_symbol
 
-from .base import _require_user_id
 from .candles import EtfGridCandleService
+from .identity import _require_user_id
 from .ledger import EtfGridLedgerService
 from .signals import EtfGridSignalService, _snapshot_to_row
 from .valuation import EtfGridValuationService
@@ -29,10 +29,10 @@ def compute_daily_signals(
     *,
     user_id: str,
     config: EtfGridConfig | None = None,
-    ledger_service: EtfGridLedgerService | None = None,
-    candle_service: EtfGridCandleService | None = None,
-    valuation_service: EtfGridValuationService | None = None,
-    signal_service: EtfGridSignalService | None = None,
+    ledger_service: EtfGridLedgerService,
+    candle_service: EtfGridCandleService,
+    valuation_service: EtfGridValuationService,
+    signal_service: EtfGridSignalService,
 ) -> dict[str, Any]:
     """Compute and persist daily grid signals for one user's portfolio.
 
@@ -58,10 +58,6 @@ def compute_daily_signals(
     """
     user_id = _require_user_id(user_id)
     config = config or load_config()
-    ledger_service = ledger_service or EtfGridLedgerService()
-    candle_service = candle_service or EtfGridCandleService()
-    valuation_service = valuation_service or EtfGridValuationService()
-    signal_service = signal_service or EtfGridSignalService()
 
     wanted = None if symbols is None else {normalize_symbol(s) for s in symbols}
     items = [item for item in config.portfolio if wanted is None or item.symbol in wanted]
@@ -142,16 +138,13 @@ def get_portfolio_status(
     *,
     user_id: str,
     config: EtfGridConfig | None = None,
-    ledger_service: EtfGridLedgerService | None = None,
-    candle_service: EtfGridCandleService | None = None,
-    signal_service: EtfGridSignalService | None = None,
+    ledger_service: EtfGridLedgerService,
+    candle_service: EtfGridCandleService,
+    signal_service: EtfGridSignalService,
 ) -> list[dict[str, Any]]:
     """Build one user's portfolio summary from shared inputs and private state."""
     user_id = _require_user_id(user_id)
     config = config or load_config()
-    ledger_service = ledger_service or EtfGridLedgerService()
-    candle_service = candle_service or EtfGridCandleService()
-    signal_service = signal_service or EtfGridSignalService()
 
     items = config.portfolio
     positions = ledger_service.get_positions(user_id=user_id)

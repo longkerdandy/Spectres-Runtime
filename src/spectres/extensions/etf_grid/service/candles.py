@@ -5,15 +5,18 @@ from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session, sessionmaker
 
 from spectres.extensions.etf_grid.models import EtfGridCandle
 from spectres.extensions.etf_grid.types import CandleInput, normalize_symbol
 
-from .base import _SessionBound
 
-
-class EtfGridCandleService(_SessionBound):
+class EtfGridCandleService:
     """Stores and reads the local forward-adjusted (qfq) daily candle cache."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the service with an explicitly injected session factory."""
+        self._session_factory = session_factory
 
     def upsert_candles(self, candles: Sequence[CandleInput]) -> int:
         """Upsert a batch of daily candles in a single transaction.

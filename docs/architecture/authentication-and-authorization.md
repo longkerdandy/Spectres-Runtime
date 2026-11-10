@@ -48,8 +48,8 @@ directory user is denied even while the JWT remains valid.
   schedule every registered Workflow, including shared ETF Grid data sync. It
   cannot select arbitrary Extension HTTP Schedule targets.
 - ETF Grid portfolio routes self-scope both ordinary users and administrators.
-  The composite `/refresh` route separately requires `agent_os:admin` or the
-  verified internal caller.
+  Shared `/sync` accepts an authenticated user or the verified internal caller;
+  current-user signal computation never accepts an ownership override.
 - Core Extension catalog reads require an authenticated identity; activation
   changes require `agent_os:admin`. Disabled Extension guards apply equally to
   ordinary, administrator, and verified internal callers.

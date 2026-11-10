@@ -5,15 +5,18 @@ from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session, sessionmaker
 
 from spectres.extensions.etf_grid.models import EtfGridValuation
 from spectres.extensions.etf_grid.types import ValuationInput
 
-from .base import _SessionBound
 
-
-class EtfGridValuationService(_SessionBound):
+class EtfGridValuationService:
     """Stores and reads the 930914 index valuation series (gate input)."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the service with an explicitly injected session factory."""
+        self._session_factory = session_factory
 
     def upsert_valuation(self, rows: Sequence[ValuationInput]) -> int:
         """Upsert valuation rows in a single transaction.

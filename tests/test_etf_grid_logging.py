@@ -69,7 +69,6 @@ class TestExtensionRegisterLogging:
     def test_register_logs_contributions(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         """The extension_registered record carries surface counts."""
         monkeypatch.setattr(EtfGridBase.metadata, "create_all", lambda *args, **kwargs: None)
-        monkeypatch.setattr("spectres.extensions.etf_grid.service.base.get_session_factory", MagicMock)
         ctx = ExtensionContext(settings=settings, db=MagicMock())
         with caplog.at_level(logging.INFO, logger="spectres.extensions.etf_grid.extension"):
             contribution = etf_grid_extension.register(ctx)

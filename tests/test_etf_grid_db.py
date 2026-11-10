@@ -313,7 +313,6 @@ def test_ledger_and_positions_are_owner_scoped(service: EtfGridLedgerService) ->
     assert service.get_position("513120.XSHG", user_id="alice") is not None
     assert service.get_position("513120.XSHG", user_id="alice").shares == 100  # type: ignore[union-attr]
     assert service.get_position("513120.XSHG", user_id="bob").shares == 250  # type: ignore[union-attr]
-    assert service.list_user_ids() == ["alice", "bob"]
 
 
 def test_session_is_usable_after_record(service: EtfGridLedgerService) -> None:

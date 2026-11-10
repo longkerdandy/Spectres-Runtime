@@ -32,7 +32,8 @@ Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents
 
 - Keep each capability under `src/spectres/extensions/<name>/`; core code must not import extension code.
 - Implement the contract in `src/spectres/extensions/base.py`: each manifest has a stable snake_case `id`, a non-empty display `name` and `description`, and an idempotent `register()` that may contribute toolkits, routers, Workflows, and declarative system Schedules.
-- Keep `toolkit.py`, `api.py`, and `workflows.py` as thin adapters. Put business logic in services and pure domain code in `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy.
+- Keep `toolkit.py`, `api.py`, and `workflows.py` as thin adapters. Put business logic in services and pure domain code in `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy. Add typed request/response schemas for Extension HTTP contracts.
+- Each Extension's `register()` is its composition root: create one session factory from `ExtensionContext.db.db_engine`, construct the Extension's services, and inject the same instances into every adapter. Do not use process-global database helpers inside Extensions.
 - Extensions share the core PostgreSQL connection pool, use table names prefixed with the extension id, and must not access Agno-managed or other extensions' tables.
 - Use snake_case for Python identifiers and UPPER_SNAKE for environment prefixes; use kebab-case under `/api/v1/extensions/`.
 - Extension configuration belongs in the extension's settings fragment, not core `Settings`. Scheduled work must be idempotent. Startup must preserve existing stored Schedule configuration.

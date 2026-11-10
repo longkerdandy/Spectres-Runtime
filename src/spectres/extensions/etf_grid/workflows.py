@@ -24,17 +24,17 @@ RECOMPUTE_WORKFLOW_ID = "etf_grid_recompute"
 def create_workflows(
     *,
     config: EtfGridConfig | None = None,
-    ledger_service: EtfGridLedgerService | None = None,
-    candle_service: EtfGridCandleService | None = None,
-    valuation_service: EtfGridValuationService | None = None,
-    signal_service: EtfGridSignalService | None = None,
+    ledger_service: EtfGridLedgerService,
+    candle_service: EtfGridCandleService,
+    valuation_service: EtfGridValuationService,
+    signal_service: EtfGridSignalService,
 ) -> list[Workflow]:
     """Build the extension's system-sync and owner-scoped recompute Workflows."""
     config = config or load_config()
-    ledger = ledger_service or EtfGridLedgerService()
-    candles = candle_service or EtfGridCandleService()
-    valuation = valuation_service or EtfGridValuationService()
-    signals = signal_service or EtfGridSignalService()
+    ledger = ledger_service
+    candles = candle_service
+    valuation = valuation_service
+    signals = signal_service
 
     def data_sync(step_input: StepInput, run_context: RunContext | None = None) -> StepOutput:
         del step_input, run_context

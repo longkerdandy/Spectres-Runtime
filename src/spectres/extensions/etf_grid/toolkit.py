@@ -76,20 +76,20 @@ class EtfGridToolkit(Toolkit):
         self,
         *,
         config: EtfGridConfig | None = None,
-        ledger_service: EtfGridLedgerService | None = None,
-        candle_service: EtfGridCandleService | None = None,
-        valuation_service: EtfGridValuationService | None = None,
-        signal_service: EtfGridSignalService | None = None,
+        ledger_service: EtfGridLedgerService,
+        candle_service: EtfGridCandleService,
+        valuation_service: EtfGridValuationService,
+        signal_service: EtfGridSignalService,
     ) -> None:
         """Create the toolkit with shared services injectable for tests."""
         self._config = config or load_config()
-        self._ledger = ledger_service or EtfGridLedgerService()
-        self._candles = candle_service or EtfGridCandleService()
-        self._valuation = valuation_service or EtfGridValuationService()
-        self._signals = signal_service or EtfGridSignalService()
+        self._ledger = ledger_service
+        self._candles = candle_service
+        self._valuation = valuation_service
+        self._signals = signal_service
         super().__init__(
             name="etf_grid",
-            tools=[self.get_grid_status, self.refresh_grid_data, self.record_grid_trade, self.list_grid_trades],
+            tools=[self.get_grid_status, self.sync_grid_data, self.compute_grid_signals, self.record_grid_trade, self.list_grid_trades],
         )
 
     def get_grid_status(self, run_context: RunContext) -> dict[str, Any]:
@@ -112,32 +112,42 @@ class EtfGridToolkit(Toolkit):
             return _tool_error("get_grid_status", exc)
         return {"ok": True, "data": data}
 
-    async def refresh_grid_data(self, run_context: RunContext) -> dict[str, Any]:
-        """Refresh shared market data and recompute the current user's signals."""
+    async def sync_grid_data(self, run_context: RunContext) -> dict[str, Any]:
+        """Synchronize shared ETF market and valuation data without computing signals."""
         try:
-            user_id = _run_user_id(run_context)
+            _run_user_id(run_context)
         except Exception as exc:
-            return _tool_error("refresh_grid_data", exc)
-        return await asyncio.to_thread(self._refresh_grid_data_sync, user_id)
+            return _tool_error("sync_grid_data", exc)
+        return await asyncio.to_thread(self._sync_grid_data_sync)
 
-    def _refresh_grid_data_sync(self, user_id: str) -> dict[str, Any]:
+    def _sync_grid_data_sync(self) -> dict[str, Any]:
         try:
-            refresh = sync_market_data(
-                config=self._config,
-                candle_service=self._candles,
-                valuation_service=self._valuation,
+            data = to_jsonable(
+                sync_market_data(
+                    config=self._config,
+                    candle_service=self._candles,
+                    valuation_service=self._valuation,
+                )
             )
-            signals = compute_daily_signals(
-                user_id=user_id,
-                config=self._config,
-                ledger_service=self._ledger,
-                candle_service=self._candles,
-                valuation_service=self._valuation,
-                signal_service=self._signals,
-            )
-            data = to_jsonable({**refresh, **signals})
         except Exception as exc:
-            return _tool_error("refresh_grid_data", exc)
+            return _tool_error("sync_grid_data", exc)
+        return {"ok": True, "data": data}
+
+    def compute_grid_signals(self, run_context: RunContext) -> dict[str, Any]:
+        """Recompute signals only for the authenticated run owner using persisted data."""
+        try:
+            data = to_jsonable(
+                compute_daily_signals(
+                    user_id=_run_user_id(run_context),
+                    config=self._config,
+                    ledger_service=self._ledger,
+                    candle_service=self._candles,
+                    valuation_service=self._valuation,
+                    signal_service=self._signals,
+                )
+            )
+        except Exception as exc:
+            return _tool_error("compute_grid_signals", exc)
         return {"ok": True, "data": data}
 
     def record_grid_trade(
@@ -186,12 +196,15 @@ class EtfGridToolkit(Toolkit):
     def list_grid_trades(self, run_context: RunContext, symbol: str | None = None, limit: int = 20) -> dict[str, Any]:
         """List the current user's recent ETF grid trades, newest first."""
         try:
+            if not 1 <= limit <= 200:
+                raise ValueError("limit must be between 1 and 200")
             rows = self._ledger.list_trades(
                 symbol,
                 user_id=_run_user_id(run_context),
+                limit=limit,
                 order_by=[SortSpec(TradeSortField.TRADE_DATE, SortDirection.DESC)],
             )
-            data = to_jsonable(rows[:limit])
+            data = to_jsonable(rows)
         except Exception as exc:
             return _tool_error("list_grid_trades", exc)
         return {"ok": True, "data": data}

@@ -53,7 +53,7 @@ def sync_candles(
     symbols: Sequence[str] | None = None,
     *,
     client: Any | None = None,
-    candle_service: EtfGridCandleService | None = None,
+    candle_service: EtfGridCandleService,
     config: EtfGridConfig | None = None,
 ) -> dict[str, int]:
     """Incrementally sync daily candles from FTShare into the local cache.
@@ -72,7 +72,7 @@ def sync_candles(
             Symbols are normalized and loosely validated.
         client: FTShare client; created via ``ft.market_api`` only when
             None (tests inject a mock).
-        candle_service: Persistence target; defaults to the shared service.
+        candle_service: Persistence target supplied by the Extension.
         config: Extension settings; loaded from the environment when None.
 
     Returns:
@@ -83,7 +83,6 @@ def sync_candles(
             created, or a symbol fails validation.
     """
     config = config or load_config()
-    candle_service = candle_service or EtfGridCandleService()
     if symbols is None:
         symbols = [item.symbol for item in config.portfolio]
     if client is None:
@@ -124,8 +123,8 @@ def sync_candles(
 def sync_market_data(
     *,
     config: EtfGridConfig | None = None,
-    candle_service: EtfGridCandleService | None = None,
-    valuation_service: EtfGridValuationService | None = None,
+    candle_service: EtfGridCandleService,
+    valuation_service: EtfGridValuationService,
     client: Any | None = None,
     fetcher: Any = fetch_index_perf,
 ) -> dict[str, Any]:

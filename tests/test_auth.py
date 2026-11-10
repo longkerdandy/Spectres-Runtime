@@ -66,9 +66,9 @@ def authed_client() -> Iterator[TestClient]:
     settings.jwt_audience = DEV_AUDIENCE
     settings.jwt_algorithm = "HS256"
     try:
-        agent_os, extensions = main_module.create_agent_os()
+        agent_os, extensions, extension_state = main_module.create_agent_os()
         app = agent_os.get_app()
-        main_module.mount_extension_routers(app, extensions)
+        main_module.mount_extension_routers(app, extensions, extension_state)
         with TestClient(app, raise_server_exceptions=False) as client:
             yield client
     finally:

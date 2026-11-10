@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.orm import InstrumentedAttribute, Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
 from spectres.extensions.etf_grid.core.ledger import (
@@ -26,7 +26,7 @@ from spectres.extensions.etf_grid.types import (
     normalize_symbol,
 )
 
-from .base import _require_user_id, _SessionBound
+from .identity import _require_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +79,12 @@ def _trade_filters(user_id: str, symbol: str | None, start: date | None, end: da
     return filters
 
 
-class EtfGridLedgerService(_SessionBound):
+class EtfGridLedgerService:
     """Records trades and derives positions from the append-only ledger."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        """Create the service with an explicitly injected session factory."""
+        self._session_factory = session_factory
 
     def record_trade(
         self,
@@ -197,11 +201,6 @@ class EtfGridLedgerService(_SessionBound):
         stmt = select(func.count()).select_from(EtfGridTrade).where(*_trade_filters(user_id, symbol, start, end))
         with self._session_factory() as session:
             return session.scalar(stmt) or 0
-
-    def list_user_ids(self) -> list[str]:
-        """Return users with ledger rows for scheduled signal recomputation."""
-        with self._session_factory() as session:
-            return list(session.scalars(select(EtfGridTrade.user_id).distinct().order_by(EtfGridTrade.user_id)))
 
     def get_positions(self, *, user_id: str) -> dict[str, Position]:
         """Replay one owner's ledger per symbol and return current positions."""

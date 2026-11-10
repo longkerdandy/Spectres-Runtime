@@ -86,7 +86,7 @@ def fetch_index_perf(code: str) -> list[dict[str, Any]]:
 
 
 def sync_valuation(
-    valuation_service: EtfGridValuationService | None = None,
+    valuation_service: EtfGridValuationService,
     fetcher: Callable[[str], list[dict[str, Any]]] = fetch_index_perf,
 ) -> int:
     """Sync the 930914 valuation series into etf_grid_valuation.
@@ -99,7 +99,7 @@ def sync_valuation(
     quant-advisor. All rows are upserted.
 
     Args:
-        valuation_service: Persistence target; defaults to the shared service.
+        valuation_service: Persistence target supplied by the Extension.
         fetcher: Network layer; injectable for tests.
 
     Returns:
@@ -124,6 +124,5 @@ def sync_valuation(
             )
         )
 
-    service = valuation_service or EtfGridValuationService()
-    service.upsert_valuation(rows)
+    valuation_service.upsert_valuation(rows)
     return len(rows)
