@@ -1530,7 +1530,7 @@ wheels = [
 
 [[package]]
 name = "spectres-runtime"
-version = "0.7.0"
+version = "0.7.1"
 source = { editable = "." }
 dependencies = [
     { name = "agno", extra = ["agui", "os", "scheduler"] },
@@ -1539,6 +1539,7 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "ftshare" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
@@ -1565,6 +1566,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.137.0" },
     { name = "ftshare", git = "https://github.com/ftshare-lab/ftshare-python-sdk?rev=v1.0.8" },
     { name = "google-genai", specifier = ">=2.0" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "httpx2", marker = "extra == 'dev'", specifier = ">=0.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "openai", specifier = ">=2.0" },

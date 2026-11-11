@@ -169,3 +169,15 @@ def test_real_tree_discovers_etf_grid_manifest() -> None:
     assert extension.name == "ETF Grid"
     assert extension.description
     assert callable(extension.register)
+
+
+def test_real_tree_discovers_mi_health_registration_module() -> None:
+    """The real package tree exposes Mi Health metadata and register hook."""
+    import spectres.extensions.mi_health as pkg
+
+    extension = getattr(pkg, "extension", None)
+    assert extension is not None
+    assert extension.id == "mi_health"
+    assert extension.name == "Mi Health"
+    assert extension.description
+    assert callable(extension.register)

@@ -10,11 +10,13 @@ An Extension is a trusted, in-process domain capability under
 Agno Workflows, and declarative system Schedules. It is not an independent
 deployment, sandbox, third-party plugin, or Edge.
 
-Mi Health is a planned built-in Extension under
-`src/spectres/extensions/mi_health/`; its code, routes, tables, and schedules are
-not implemented yet. Its migrated protocol evidence lives in
-[Mi Health research](../research/mi-health/mi-fitness-cloud-api.md) and is not
-production behavior.
+Mi Health is a built-in Extension under `src/spectres/extensions/mi_health/`.
+It implements owner-scoped China-region QR account binding, encrypted credential
+persistence, bounded session renewal, and Profile connectivity verification.
+Health-data persistence, synchronization, Toolkits, Workflows, and Schedules are
+not implemented. Its protocol evidence lives in
+[Mi Health research](../research/mi-health/mi-fitness-cloud-api.md); raw local
+artifacts under `research-local/` are Git-ignored and are not production behavior.
 
 Core code must not import Extension code. Extensions must not modify AgentOS or
 agent factories directly.
@@ -180,7 +182,31 @@ Routes under `/api/v1/extensions/etf-grid`:
 (default 20), and filters apply before `total` is counted. Validation failures
 and trade-domain rejections use FastAPI's structured 422 `detail` list.
 
-## 6. Guardrails
+## 6. Mi Health Reference
+
+Mi Health stores one private binding per Runtime user in `mi_health_bindings` and
+short-lived owner-scoped QR attempts in `mi_health_qr_attempts`. Long-lived and
+service credentials are encrypted with the Extension's configured key; QR `lp`
+material is encrypted only for an active attempt and deleted at terminal state.
+Session rotation uses credential-revision checks so concurrent or stale responses
+cannot overwrite a newer binding. No health or Profile records are persisted.
+
+Routes under `/api/v1/extensions/mi-health`:
+
+| Route | Access and behavior |
+|-------|---------------------|
+| `GET /status` | Current user's safe local binding status without a Xiaomi request |
+| `POST /auth/qr-challenges` | Create and present a China-region QR challenge |
+| `POST /auth/qr-challenges/{id}/poll` | Poll once, complete login, and perform STS |
+| `DELETE /auth/qr-challenges/{id}` | Cancel the current owner's active attempt |
+| `DELETE /binding` | Delete the current owner's binding and attempts |
+| `POST /session/renew` | Proactively renew and atomically rotate the session |
+| `POST /session/verify` | Signed Profile check with at most one renewal and retry |
+
+All routes are self-scoped, including for administrators. Mi Health contributes
+no Toolkit, Workflow, or Schedule.
+
+## 7. Guardrails
 
 Do not add lifecycle hooks, cross-Extension dependencies, generic plugin
 frameworks, custom schedulers, or parallel Schedule APIs. Out-of-tree plugins,

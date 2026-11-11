@@ -17,6 +17,17 @@
             "args": ["tests"],
             "console": "integratedTerminal",
             "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "Python: Spectres Runtime",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "spectres.main",
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env.local",
+            "justMyCode": true
         }
     ]
 }

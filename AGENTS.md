@@ -7,8 +7,8 @@
 Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents, tools, memory, scheduled work, and extension APIs. The Client and Edge are separate projects.
 
 - **Stack**: Python 3.13, Agno AgentOS, FastAPI, PostgreSQL, pydantic-settings, and `uv`.
-- **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, static extension loading with administrator-controlled global enablement, Agno Workflows, and native scheduled tasks. The first extension is ETF Grid Trading.
-- **Not implemented**: Team/Slave orchestration, long-term memory, knowledge/RAG, tool ACL, judgment-based automation, notification delivery, Mi Health, and Edge proxying. Do not describe these as existing behavior.
+- **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, static extension loading with administrator-controlled global enablement, Agno Workflows, and native scheduled tasks. ETF Grid Trading is the reference Extension; Mi Health implements China-region QR account binding, encrypted credential storage, bounded renewal, and Profile verification.
+- **Not implemented**: Team/Slave orchestration, long-term memory, knowledge/RAG, tool ACL, judgment-based automation, notification delivery, Mi Health health-data persistence/synchronization, and Edge proxying. Do not describe these as existing behavior.
 - **Source of truth**: [`docs/architecture/system-architecture.md`](docs/architecture/system-architecture.md) describes current behavior and target design; [`docs/adr/`](docs/adr/) records decisions; [`docs/plan/`](docs/plan/) tracks milestones. Root `README.md` is a human-facing project guide, not the coding-agent architecture reference. Update affected documentation when behavior changes.
 
 ## 2. Architectural Constraints
@@ -31,7 +31,7 @@ Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents
 ## 4. Extension Rules
 
 - Keep each capability under `src/spectres/extensions/<name>/`; core code must not import extension code.
-- Implement the contract in `src/spectres/extensions/base.py`: each manifest has a stable snake_case `id`, a non-empty display `name` and `description`, and an idempotent `register()` that may contribute toolkits, routers, Workflows, and declarative system Schedules.
+- Implement the contract in `src/spectres/extensions/base.py`: each registration module has a stable snake_case `id`, a non-empty display `name` and `description`, and an idempotent `register()` that may contribute toolkits, routers, Workflows, and declarative system Schedules.
 - Keep `toolkit.py`, `api.py`, and `workflows.py` as thin adapters. Put business logic in services and pure domain code in `core/`; `core/` must not import Agno, FastAPI, or SQLAlchemy. Add typed request/response schemas for Extension HTTP contracts.
 - Each Extension's `register()` is its composition root: create one session factory from `ExtensionContext.db.db_engine`, construct the Extension's services, and inject the same instances into every adapter. Do not use process-global database helpers inside Extensions.
 - Extensions share the core PostgreSQL connection pool, use table names prefixed with the extension id, and must not access Agno-managed or other extensions' tables.
@@ -79,7 +79,8 @@ Before finishing a code change, run the relevant tests and the standard quality 
 - `src/spectres/extensions/activation.py` — REST, Toolkit, and Workflow activation guards
 - `src/spectres/scheduler.py` — system-schedule registration
 - `src/spectres/extensions/etf_grid/` — reference vertical-slice extension
-- `docs/research/mi-health/` — migrated Mi Fitness protocol research; not production behavior
+- `src/spectres/extensions/mi_health/` — QR account binding and session lifecycle; no health sync
+- `docs/research/mi-health/` — Mi Fitness protocol research and Git-ignored local artifacts; not production behavior
 - `tests/` — unit and integration coverage
 
 ## 8. Reference Projects

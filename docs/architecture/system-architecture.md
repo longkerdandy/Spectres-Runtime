@@ -24,7 +24,7 @@ implementation claims.
 Web Client ──AG-UI / Bearer JWT / REST──▶ Runtime / AgentOS
 Web Client ◀──authorization code + PKCE── Logto
 Logto ──Runtime API JWT─────────────────▶ Runtime
-Runtime ──LLM / Tavily / FTShare / csindex / web pages
+Runtime ──LLM / Tavily / FTShare / csindex / Xiaomi account and health APIs
 Runtime ──Agno + custom tables──────────▶ PostgreSQL
 Logto ──separate database───────────────▶ PostgreSQL
 ```
@@ -82,7 +82,20 @@ ETF Grid is the reference vertical slice:
   One unowned system Schedule handles sync; personal recompute Schedules use
   native CRUD and are never seeded.
 
-### 3.4 Workflows and Scheduled Tasks
+### 3.4 Mi Health Extension
+
+Mi Health is a built-in Extension with owner-scoped China-region Xiaomi account
+binding. It provides QR challenges and approval polling, encrypted credential and
+transient polling-URL storage, explicit unbinding, bounded `passToken` renewal,
+atomic session rotation, and a signed Profile connectivity check. Profile fields
+are not persisted or returned. Every route derives identity from the verified
+Runtime user and uses the shared global activation guard.
+
+The Extension contributes one REST router and no Agent tools, Workflows, or
+Schedules. Health-data persistence, health synchronization, non-China regions,
+password/SMS login, and unattended background operation remain unimplemented.
+
+### 3.5 Workflows and Scheduled Tasks
 
 AgentOS polls `agno_schedules`, claims due rows with a PostgreSQL lease, and
 fires one HTTP request per Schedule inside the Runtime process.
@@ -131,7 +144,7 @@ recompute have no ordering guarantee.
 Do not add a custom scheduler, Action abstraction, dispatch registry, parallel
 Schedule API, or cross-Schedule dependency layer.
 
-### 3.5 Authentication, Authorization, and Data Isolation
+### 3.6 Authentication, Authorization, and Data Isolation
 
 Logto owns users and `user`/`admin` roles. AgentOS verifies JWT signature,
 issuer, audience, and expiry, enforces Agno-native scopes, and provides the JIT
@@ -172,7 +185,7 @@ relevant Extension isolation tests when changing these boundaries. See
 [Authentication and Authorization](authentication-and-authorization.md) for token
 and scope details.
 
-### 3.6 Persistence and Custom Tables
+### 3.7 Persistence and Custom Tables
 
 - Agno owns `ai.agno_*` tables; access them only through Agno APIs. Logto owns a
   separate database and must not be queried as Runtime application storage.
@@ -190,13 +203,15 @@ and scope details.
 | `etf_grid_candles` | Shared | Forward-adjusted candles keyed by `(symbol, trade_date)`; sync upserts refreshed history |
 | `etf_grid_valuation` | Shared | Index 930914 history keyed by `trade_date`; sync upserts revisions |
 | `etf_grid_signals` | Private | Latest advice keyed by `(user_id, symbol, trade_date)`; recompute upserts only the owner's row |
+| `mi_health_bindings` | Private | One encrypted Xiaomi session per owner; revision-checked atomic rotation and explicit deletion |
+| `mi_health_qr_attempts` | Private | Active QR attempt with encrypted `lp`; terminal/cancelled/superseded attempts are deleted |
 
-Runtime state models live in `src/spectres/extensions/state.py`; ETF Grid models
-live in `src/spectres/extensions/etf_grid/models.py`. Preserve ledger replay
-order and composite upsert keys, and do not create a second canonical position,
-session, or Schedule store.
+Runtime state models live in `src/spectres/extensions/state.py`; domain models
+live in each Extension's `models.py`. Preserve ETF Grid ledger replay order and
+composite upsert keys, and do not create a second canonical position, session, or
+Schedule store.
 
-### 3.7 Configuration and Observability
+### 3.8 Configuration and Observability
 
 Typed pydantic-settings uses explicit environment variables and separate
 development/test base files with untracked local overrides. Structured logs go
@@ -234,12 +249,13 @@ Extension imports.
 | Loading | Static startup/build-time discovery | Independently released UI remote |
 | Administration | Runtime global enable/disable | Independent deployment and availability |
 | Data | Runtime-owned custom tables | Edge-owned schemas and tables |
-| Example | ETF Grid and planned Mi Health | Future independently deployed services |
+| Example | ETF Grid and Mi Health account binding | Future independently deployed services |
 
-Mi Health is a planned built-in Runtime and Web Client Extension, not an
-independent Edge. It will use Runtime authentication, per-user ownership, global
-Extension activation, and native scheduling without a dedicated API resource,
-permission, role, or Module Federation remote.
+Mi Health is a built-in Runtime and Web Client Extension, not an independent
+Edge. Runtime account binding uses existing Runtime authentication, per-user
+ownership, and global Extension activation without a dedicated API resource,
+permission, role, or Module Federation remote. Future health synchronization will
+use native scheduling; no Mi Health Schedule is currently registered.
 
 A Runtime Extension may expose selected Edge operations as tools or event
 handlers. Disabling it affects only Runtime integration, not Edge sync or UI.
@@ -297,7 +313,8 @@ Runtime capabilities, and Runtime outage must not inherently stop Edge sync.
 - Team/Slave orchestration or another user-facing Master Agent.
 - Long-term memory, knowledge/RAG, per-agent tool ACL, judgment-based automation,
   notifications, and cross-Schedule dependencies.
-- Mi Health built-in Extension, account binding, health persistence, or sync.
+- Mi Health health-data persistence, synchronization, Agent tools, Workflows,
+  Schedules, non-China regions, and password/SMS login.
 - Runtime-to-Edge proxying, Edge event handling, or a generic Edge control plane.
 - Module Federation Edge UI remotes and independent Edge UI releases.
 - Cloud Gateway deployment tooling and production public exposure.
