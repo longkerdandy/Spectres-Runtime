@@ -43,6 +43,11 @@ calling Logto per request.
   PostgreSQL stores sessions/runs; the latest three history runs enter context.
 - AG-UI maps `thread_id` to session id, pins the verified owner, and rejects
   cross-user thread writes. `forwarded_props.user_id` is not authoritative.
+- A Runtime compatibility patch maps native model reasoning carried by
+  `RunContentEvent` to AG-UI `REASONING_*` events and closes each reasoning span
+  before a tool call or assistant text begins. Contentless run-content events do
+  not open ordinary text messages; Agno's required empty parent remains only for
+  tool calls that have no text parent.
 - Built-in tools are Calculator, Shell, Website/page reading, and optional
   Tavily search when `TAVILY_API_KEY` is configured.
 - Stable tool names support Client renderers. Extension tools share the same

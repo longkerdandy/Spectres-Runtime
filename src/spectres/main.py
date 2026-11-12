@@ -9,6 +9,7 @@ from agno.workflow import RemoteWorkflow, Workflow, WorkflowFactory
 from fastapi import FastAPI
 
 from spectres.agents.team_leader import create_team_leader_agent
+from spectres.agui import patch_agui_native_reasoning
 from spectres.api import create_api_router
 from spectres.auth import UserProfileSyncMiddleware
 from spectres.config import settings
@@ -45,6 +46,7 @@ def create_agent_os() -> tuple[AgentOS, list[LoadedExtension], ExtensionStateSer
     Returns:
         The configured AgentOS, loaded extensions, and initialized state service.
     """
+    patch_agui_native_reasoning()
     configure_logging(settings)
     logger.info("Per-user data isolation enabled", extra={"event": "user_isolation_enabled"})
     db = get_postgres_db()
