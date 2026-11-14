@@ -16,7 +16,7 @@ services:
       - spectres
 
   logto:
-    image: svhd/logto:1.45.0
+    image: svhd/logto:1.46.0
     container_name: spectres-logto
     restart: unless-stopped
     depends_on:
