@@ -10,6 +10,7 @@ from spectres.extensions.mi_health.service.bindings import (
     QrAttemptChallenge,
 )
 from spectres.extensions.mi_health.service.sessions import MiHealthSessionService
+from spectres.extensions.mi_health.service.sync import MiHealthSyncService, SyncStreamResult
 
 __all__ = [
     "BindingError",
@@ -18,6 +19,8 @@ __all__ = [
     "ChallengeNotFoundError",
     "MiHealthBindingService",
     "MiHealthSessionService",
+    "MiHealthSyncService",
     "NotBoundError",
     "QrAttemptChallenge",
+    "SyncStreamResult",
 ]

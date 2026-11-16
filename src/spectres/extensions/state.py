@@ -52,10 +52,9 @@ class ExtensionStateService:
         self._session_factory = session_factory or sessionmaker(bind=db.db_engine)
 
     def initialize(self) -> None:
-        """Create the state table and add newly discovered extensions."""
+        """Add newly discovered extensions to the migrated Core state table."""
         if not self._extension_names:
             return
-        ExtensionStateBase.metadata.create_all(self._session_factory.kw["bind"])
         stmt = pg_insert(RuntimeExtensionState).values([{"name": name, "enabled": True} for name in self._extension_names])
         stmt = stmt.on_conflict_do_nothing(index_elements=["name"])
         with self._session_factory() as session, session.begin():

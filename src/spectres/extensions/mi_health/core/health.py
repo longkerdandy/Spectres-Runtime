@@ -51,10 +51,18 @@ def build_signature(method: str, path: str, params: dict[str, str], signed_nonce
     return base64.b64encode(hashlib.sha1("&".join(parts).encode("utf-8")).digest()).decode("ascii")
 
 
-def encrypt_query_params(*, path: str, signature_path: str, nonce: str, ssecurity: str) -> dict[str, str]:
-    """Sign and encrypt the parameterless Profile GET request."""
+def encrypt_query_params(
+    *,
+    path: str,
+    signature_path: str,
+    nonce: str,
+    ssecurity: str,
+    params: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Sign and encrypt one GET parameter set with a continuous RC4 stream."""
     signed_nonce_value = signed_nonce(ssecurity, nonce)
-    plain = {"rc4_hash__": build_signature("GET", signature_path, {}, signed_nonce_value)}
+    plain = dict(params or {})
+    plain["rc4_hash__"] = build_signature("GET", signature_path, plain, signed_nonce_value)
     cipher = _Rc4(base64.b64decode(signed_nonce_value))
     encrypted = {key: base64.b64encode(cipher.apply(value.encode("utf-8"))).decode("ascii") for key, value in sorted(plain.items())}
     encrypted["signature"] = build_signature("GET", signature_path, encrypted, signed_nonce_value)

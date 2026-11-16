@@ -1,6 +1,6 @@
 # Mi Fitness Cloud API — Project Research Reference
 
-Status: static and dynamic research through v0.1.2, reviewed 2026-10-31. This
+Status: static and dynamic research through 2026-11-16. This
 document covers only the non-public upstream APIs needed for own-account
 authentication and cloud reads of smartwatch and body-composition scale data.
 It is not an official Xiaomi contract, a stability guarantee, or the built-in
@@ -112,6 +112,17 @@ coexistence but not a token lifetime.
 One deliberately invalid health signature returned HTTP 401 with plaintext
 JSON containing business `code: 0`; no renewal was attempted. Thus HTTP 401 and
 business `code: 0` do not by themselves prove session expiration.
+
+### Dynamic validation summary — owner-approved account, 2026-11-16
+
+A later owner-approved China-account validation returned usable Profile, daily
+activity, heart-rate, sleep, SpO2, weight, and selected body-composition records,
+plus raw sleep sessions. Sport, stress, and abnormal-heart-beat reads succeeded
+but returned no records on that account. This validates the initial persistence
+mapping's selected fields and zero/unavailable handling; it does not validate
+workout activity mappings, stress or abnormal-event persistence, dense time
+series, scale multi-user attribution, or model-specific segmental composition.
+No measurements or account identifiers are retained in this document.
 
 The initial implementation API set is:
 
@@ -522,10 +533,11 @@ For weight and body composition, preserve `body_fat_rate`, `muscle_mass`,
 `muscle_rate`, `body_moisture_mass`, `moisture_rate`, `bone_mass`,
 `protein_mass`, `protein_rate`, `fat_mass`, `basal_metabolism`, `body_age`,
 `body_score`, `visceral_fat`, `skeletal_muscle_mass`, and `bpm` when present.
-`S` and `A WeightItem.java` support these field names, but this project has not
-validated them with a real scale. Do not confuse `muscle_rate` with muscle mass
-as `C` does in one adapter mapping, and do not turn missing measurements into
-zero-valued measurements.
+`S` and `A WeightItem.java` support these field names, and the 2026-11-16
+validation confirmed usable selected weight/body-composition records. This does
+not establish every model-specific or segmental unit. Do not confuse
+`muscle_rate` with muscle mass as `C` does in one adapter mapping, and do not
+turn missing measurements into zero-valued measurements.
 
 **Upstream runtime note**: dense raw keys can lose the bucket at or before
 `start_time`. `M` therefore requests one day earlier and filters outer `time`
@@ -704,10 +716,11 @@ policy:
 - Whether `dids` and `sid` are sufficient for friendly watch-device naming; no
   additional device-list API is justified yet.
 - Deletion/correction propagation and durable deduplication keys.
-- Production client behavior and long-term unattended operation; the validated
-  independent flows used a disposable research harness, not application code.
+- Long-term unattended operation. Runtime now implements owner-triggered sync;
+  earlier independent authentication flows used a disposable research harness,
+  and no automated health Schedule exists.
 
 These items must remain explicit in any later implementation. Static discovery,
-APK 3.59.2 evidence, and the limited standalone experiments do not establish
-watch support, scale support, body-fat accuracy, multi-user attribution, or
+APK 3.59.2 evidence, and limited owner-approved reads do not establish general
+watch/scale model support, body-fat accuracy, multi-user attribution, or
 unattended long-term operation.

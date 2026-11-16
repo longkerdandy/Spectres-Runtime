@@ -162,15 +162,88 @@ class XiaomiClient:
 
     async def verify_profile(self, session: HealthSession) -> None:
         """Perform one signed Profile read without retaining personal fields."""
-        nonce = generate_nonce()
-        params = encrypt_query_params(
+        await self.read_profile(session)
+
+    async def read_profile(self, session: HealthSession) -> dict[str, Any]:
+        """Read the selected Profile object for immediate canonical mapping."""
+        return await self._health_get(
+            session,
             path="/healthapp/user/get_miot_user_profile",
             signature_path="/user/get_miot_user_profile",
-            nonce=nonce,
-            ssecurity=session.ssecurity,
         )
+
+    async def read_daily(
+        self,
+        session: HealthSession,
+        *,
+        key: str,
+        start_time: int,
+        end_time: int,
+        next_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Read one bounded daily-summary provider page."""
+        data: dict[str, Any] = {"tag": "daily_report", "key": key, "start_time": start_time, "end_time": end_time, "reverse": True, "limit": 50}
+        if next_key is not None:
+            data["next_key"] = next_key
+        return await self._health_get(
+            session,
+            path="/app/v1/data/get_aggregated_fitness_data_by_time",
+            signature_path="/app/v1/data/get_aggregated_fitness_data_by_time",
+            data=data,
+        )
+
+    async def read_raw(
+        self,
+        session: HealthSession,
+        *,
+        key: str,
+        start_time: int,
+        end_time: int,
+        next_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Read one bounded raw sleep or weight provider page."""
+        data: dict[str, Any] = {"key": key, "start_time": start_time - 86400, "end_time": end_time, "reverse": True}
+        if next_key is not None:
+            data["next_key"] = next_key
+        return await self._health_get(
+            session,
+            path="/app/v1/data/get_fitness_data_by_time",
+            signature_path="/app/v1/data/get_fitness_data_by_time",
+            data=data,
+        )
+
+    async def read_workouts(
+        self,
+        session: HealthSession,
+        *,
+        start_time: int,
+        end_time: int,
+        next_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Read one bounded workout-summary provider page."""
+        data: dict[str, Any] = {"start_time": start_time - 1, "end_time": end_time, "reverse": True, "limit": 50}
+        if next_key is not None:
+            data["next_key"] = next_key
+        return await self._health_get(
+            session,
+            path="/app/v1/data/get_sport_records_by_time",
+            signature_path="/app/v1/data/get_sport_records_by_time",
+            data=data,
+        )
+
+    async def _health_get(
+        self,
+        session: HealthSession,
+        *,
+        path: str,
+        signature_path: str,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        nonce = generate_nonce()
+        plain = {"data": json.dumps(data, separators=(",", ":"), ensure_ascii=False)} if data is not None else None
+        params = encrypt_query_params(path=path, signature_path=signature_path, nonce=nonce, ssecurity=session.ssecurity, params=plain)
         response = await self._get(
-            f"{_HEALTH_BASE}/healthapp/user/get_miot_user_profile",
+            f"{_HEALTH_BASE}{path}",
             params=params,
             cookies={"serviceToken": session.service_token, "cUserId": session.c_user_id},
             headers={"region_tag": self._config.region},
@@ -178,13 +251,17 @@ class XiaomiClient:
         if response.status_code == 401:
             raise HealthUnauthorizedError("Xiaomi rejected the health session or request signature")
         if response.status_code != 200:
-            raise ProviderUnavailableError(f"Xiaomi Profile returned HTTP {response.status_code}")
+            raise ProviderUnavailableError(f"Xiaomi health read returned HTTP {response.status_code}")
         try:
             payload = decrypt_response(response.text, nonce=nonce, ssecurity=session.ssecurity)
         except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
-            raise ProviderUnavailableError("Xiaomi Profile returned an invalid encrypted response") from None
+            raise ProviderUnavailableError("Xiaomi health read returned an invalid encrypted response") from None
         if payload.get("code") != 0 or not isinstance(payload.get("result"), dict):
-            raise ProviderUnavailableError("Xiaomi Profile returned an unexpected business response")
+            raise ProviderUnavailableError("Xiaomi health read returned an unexpected business response")
+        result: Any = payload["result"]
+        if not isinstance(result, dict):
+            raise ProviderUnavailableError("Xiaomi health read returned an invalid result")
+        return result
 
     async def _get(
         self,

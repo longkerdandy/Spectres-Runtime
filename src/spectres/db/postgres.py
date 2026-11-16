@@ -3,6 +3,7 @@
 from agno.db.postgres import PostgresDb
 
 from spectres.config import settings
+from spectres.db.migration import migrate_core_schema
 
 _db: PostgresDb | None = None
 
@@ -20,4 +21,5 @@ def get_postgres_db() -> PostgresDb:
     global _db
     if _db is None:
         _db = PostgresDb(db_url=settings.database_url)
+        migrate_core_schema(_db.db_engine)
     return _db

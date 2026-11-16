@@ -19,7 +19,6 @@ from spectres.extensions.etf_grid.core.grid import compute_signal as core_comput
 from spectres.extensions.etf_grid.core.ledger import Position
 from spectres.extensions.etf_grid.csindex import MAX_ATTEMPTS, fetch_index_perf
 from spectres.extensions.etf_grid.marketdata import sync_market_data
-from spectres.extensions.etf_grid.models import EtfGridBase
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
     EtfGridLedgerService,
@@ -68,7 +67,7 @@ class TestExtensionRegisterLogging:
 
     def test_register_logs_contributions(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         """The extension_registered record carries surface counts."""
-        monkeypatch.setattr(EtfGridBase.metadata, "create_all", lambda *args, **kwargs: None)
+        monkeypatch.setattr(etf_grid_extension, "migrate_schema", lambda *args, **kwargs: None)
         ctx = ExtensionContext(settings=settings, db=MagicMock())
         with caplog.at_level(logging.INFO, logger="spectres.extensions.etf_grid.extension"):
             contribution = etf_grid_extension.register(ctx)

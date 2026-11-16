@@ -90,17 +90,30 @@ ETF Grid is the reference vertical slice:
   One unowned system Schedule handles sync; personal recompute Schedules use
   native CRUD and are never seeded.
 
-### 3.4 Mi Health Extension
+### 3.4 Mi Health Extension and Core Personal Health
 
 Mi Health is a built-in Extension with owner-scoped China-region Xiaomi account
 binding. It provides QR challenges and approval polling, encrypted credential and
-transient polling-URL storage, explicit unbinding, bounded `passToken` renewal,
-atomic session rotation, and a signed Profile connectivity check. Profile fields
-are not persisted or returned. Every route derives identity from the verified
-Runtime user and uses the shared global activation guard.
+transient polling-URL storage, bounded `passToken` renewal, atomic session
+rotation, and a signed Profile connectivity check. Every route derives identity
+from the verified Runtime user and uses the shared global activation guard.
+
+Core owns provider-neutral personal health contracts, models, ingestion, and
+queries under `src/spectres/health/`. Six `health_*` tables store current provider
+profiles, daily history, raw sleep sessions, body measurements, workout summaries,
+and ingestion checkpoints. Mi Fitness is the first adapter and supplies the
+server-assigned `mi_fitness` provider id; Core never imports Xiaomi code. History
+upserts use deterministic source identities, daily streams merge partial metrics,
+and ordinary queries exclude provider tombstones without merging providers.
+
+`POST /api/v1/extensions/mi-health/sync` performs owner-triggered bounded backfill
+or overlapping incremental synchronization. Pages complete in memory before each
+window and checkpoint commit atomically. Explicit unbinding atomically deletes
+only that owner's Mi Fitness health contribution and binding; disablement preserves
+all data. Sync responses expose counts and safe state, never raw health payloads.
 
 The Extension contributes one REST router and no Agent tools, Workflows, or
-Schedules. Health-data persistence, health synchronization, non-China regions,
+Schedules. Health recommendations, dense time series, non-China regions,
 password/SMS login, and unattended background operation remain unimplemented.
 
 ### 3.5 Workflows and Scheduled Tasks
@@ -198,11 +211,17 @@ and scope details.
 - Agno owns `ai.agno_*` tables; access them only through Agno APIs. Logto owns a
   separate database and must not be queried as Runtime application storage.
 - Runtime/Extension tables use `public`; Extension names use `<extension>_` and
-  must not access another Extension's tables.
-- `get_postgres_db()` shares one engine/connection pool, not table ownership.
-- Custom tables use `metadata.create_all()` with no migration tool. It does not
-  alter existing tables, so schema changes require an explicit migration design.
-- SQLAlchemy models are authoritative for columns, types, checks, and indexes.
+  must not access another Extension's tables. Core health tables are provider-
+  neutral and have no channel-table foreign keys.
+- `get_postgres_db()` shares one engine/connection pool, not table ownership. It
+  runs Core Alembic migrations before any Extension loads. Registration runs each
+  Extension's local migrations through the schema-agnostic shared utility.
+- `runtime_schema_version`, `etf_grid_schema_version`, and
+  `mi_health_schema_version` are independent histories protected by distinct
+  PostgreSQL advisory locks. Startup never autogenerates, downgrades, or repairs
+  data; Agno and Logto schemas stay outside Runtime migrations.
+- SQLAlchemy models describe current ORM shape. Reviewed module-local Alembic
+  revisions are the authoritative schema history and preserve existing rows.
 
 | Table | Ownership | Purpose and write contract |
 |-------|-----------|----------------------------|
@@ -213,11 +232,18 @@ and scope details.
 | `etf_grid_signals` | Private | Latest advice keyed by `(user_id, symbol, trade_date)`; recompute upserts only the owner's row |
 | `mi_health_bindings` | Private | One encrypted Xiaomi session per owner; revision-checked atomic rotation and explicit deletion |
 | `mi_health_qr_attempts` | Private | Active QR attempt with encrypted `lp`; terminal/cancelled/superseded attempts are deleted |
+| `health_profiles` | Private Core | Latest snapshot per `(user_id, provider)` with selected context and goals |
+| `health_daily_summaries` | Private Core | Correctable history per `(user_id, provider, day)` with partial metric merges |
+| `health_sleep_sessions` | Private Core | Raw sleep events keyed by deterministic provider identity; tombstoned history |
+| `health_body_measurements` | Private Core | Weight/composition history with explicit availability and Numeric values |
+| `health_workouts` | Private Core | Workout summaries without tracks or unverified canonical activity mappings |
+| `health_ingestion_states` | Private Core | Safe per-stream checkpoints with revisions and no provider page cursors |
 
-Runtime state models live in `src/spectres/extensions/state.py`; domain models
-live in each Extension's `models.py`. Preserve ETF Grid ledger replay order and
-composite upsert keys, and do not create a second canonical position, session, or
-Schedule store.
+Runtime state models live in `src/spectres/extensions/state.py`; Core health
+models live in `src/spectres/health/models.py`; Extension domain models live in
+each Extension's `models.py`. Preserve ETF Grid ledger replay order and composite
+upsert keys, and do not create a second canonical position, session, health
+metric, or Schedule store.
 
 ### 3.8 Configuration and Observability
 
@@ -230,7 +256,8 @@ sensitive-operation audits without credentials, tokens, or health data.
 
 ```text
 PostgreSQL adapter
-→ static Extension discovery/registration
+→ Core Runtime-state and health migrations
+→ static Extension discovery/registration with Extension-local migrations
 → Extension-state reconciliation
 → system-Schedule registration
 → Toolkit and Workflow activation guards
@@ -262,8 +289,9 @@ Extension imports.
 Mi Health is a built-in Runtime and Web Client Extension, not an independent
 Edge. Runtime account binding uses existing Runtime authentication, per-user
 ownership, and global Extension activation without a dedicated API resource,
-permission, role, or Module Federation remote. Future health synchronization will
-use native scheduling; no Mi Health Schedule is currently registered.
+permission, role, or Module Federation remote. Current health synchronization is
+owner-triggered through the built-in Extension; any future automated form would
+use native scheduling, and no Mi Health Schedule is currently registered.
 
 A Runtime Extension may expose selected Edge operations as tools or event
 handlers. Disabling it affects only Runtime integration, not Edge sync or UI.
@@ -321,8 +349,9 @@ Runtime capabilities, and Runtime outage must not inherently stop Edge sync.
 - Team/Slave orchestration or another user-facing Master Agent.
 - Long-term memory, knowledge/RAG, per-agent tool ACL, judgment-based automation,
   notifications, and cross-Schedule dependencies.
-- Mi Health health-data persistence, synchronization, Agent tools, Workflows,
-  Schedules, non-China regions, and password/SMS login.
+- Health recommendations, dense health time series, automated health sync, Mi
+  Health Agent tools, Workflows, Schedules, non-China regions, and password/SMS
+  login.
 - Runtime-to-Edge proxying, Edge event handling, or a generic Edge control plane.
 - Module Federation Edge UI remotes and independent Edge UI releases.
 - Cloud Gateway deployment tooling and production public exposure.

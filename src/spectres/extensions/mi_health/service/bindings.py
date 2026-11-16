@@ -19,6 +19,7 @@ from spectres.extensions.mi_health.xiaomi import (
     QrChallenge,
     XiaomiClient,
 )
+from spectres.health.ingestion import HealthIngestionService
 
 
 class BindingError(Exception):
@@ -68,12 +69,14 @@ class MiHealthBindingService:
         session_factory: sessionmaker[Session],
         cipher: CredentialCipher,
         xiaomi: XiaomiClient,
+        ingestion: HealthIngestionService,
     ) -> None:
         """Inject the Extension-local configuration, database, cipher, and transport."""
         self._config = config
         self._session_factory = session_factory
         self._cipher = cipher
         self._xiaomi = xiaomi
+        self._ingestion = ingestion
 
     @property
     def session_factory(self) -> sessionmaker[Session]:
@@ -164,11 +167,12 @@ class MiHealthBindingService:
             session.delete(attempt)
 
     def unbind(self, user_id: str) -> None:
-        """Delete only the current owner's binding and active QR attempts."""
+        """Atomically delete this owner's Mi Fitness data, binding, and attempts."""
         with self._session_factory() as session, session.begin():
             binding = session.get(MiHealthBinding, user_id, with_for_update=True)
             if binding is None:
                 raise NotBoundError("Mi Health is not bound")
+            self._ingestion.delete_provider_data(user_id, "mi_fitness", session=session)
             session.execute(delete(MiHealthQrAttempt).where(MiHealthQrAttempt.user_id == user_id))
             session.delete(binding)
 

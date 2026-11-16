@@ -1,11 +1,12 @@
 """ETF grid extension manifest: id, table creation, and surface construction."""
 
 import logging
+from pathlib import Path
 
 from sqlalchemy.orm import sessionmaker
 
+from spectres.db.migration import migrate_schema
 from spectres.extensions.base import ExtensionContext, ExtensionContribution
-from spectres.extensions.etf_grid.models import EtfGridBase
 from spectres.scheduler import ScheduleSpec
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ description = "ETF grid trading status, trade ledger, signals, and scheduled dat
 
 
 def register(ctx: ExtensionContext) -> ExtensionContribution:
-    """Create tables and build the extension surfaces without network calls.
+    """Run local migrations and build extension surfaces without network calls.
 
     The daily sync schedule is only declared here — core registers it with
     the AgentOS scheduler after loading (spectres/scheduler.py).
@@ -29,13 +30,18 @@ def register(ctx: ExtensionContext) -> ExtensionContribution:
     from spectres.extensions.etf_grid.toolkit import EtfGridToolkit
     from spectres.extensions.etf_grid.workflows import DATA_SYNC_WORKFLOW_ID, create_workflows
 
+    migrate_schema(
+        ctx.db.db_engine,
+        script_location=Path(__file__).parent / "migrations",
+        version_table="etf_grid_schema_version",
+        lock_namespace="spectres.runtime.extension.etf_grid",
+    )
     config = load_config()
     session_factory = sessionmaker(bind=ctx.db.db_engine)
     ledger = EtfGridLedgerService(session_factory=session_factory)
     candles = EtfGridCandleService(session_factory=session_factory)
     valuation = EtfGridValuationService(session_factory=session_factory)
     signals = EtfGridSignalService(session_factory=session_factory)
-    EtfGridBase.metadata.create_all(ctx.db.db_engine)
 
     contribution = ExtensionContribution(
         toolkits=[

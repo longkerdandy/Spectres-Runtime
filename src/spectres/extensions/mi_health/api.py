@@ -7,12 +7,13 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from spectres.extensions.mi_health.auth import require_user_id
 from spectres.extensions.mi_health.credentials import CredentialProtectionError
-from spectres.extensions.mi_health.schemas import BindingStatusResponse, QRChallengePollResponse, QRChallengeResponse
+from spectres.extensions.mi_health.schemas import BindingStatusResponse, QRChallengePollResponse, QRChallengeResponse, SyncResponse
 from spectres.extensions.mi_health.service import (
     BindingExistsError,
     ChallengeNotFoundError,
     MiHealthBindingService,
     MiHealthSessionService,
+    MiHealthSyncService,
     NotBoundError,
 )
 from spectres.extensions.mi_health.xiaomi import AuthenticationRequiredError, ChallengeExpiredError, OwnerActionRequiredError, XiaomiError
@@ -20,7 +21,7 @@ from spectres.extensions.mi_health.xiaomi import AuthenticationRequiredError, Ch
 logger = logging.getLogger(__name__)
 
 
-def create_router(*, bindings: MiHealthBindingService, sessions: MiHealthSessionService) -> APIRouter:
+def create_router(*, bindings: MiHealthBindingService, sessions: MiHealthSessionService, sync: MiHealthSyncService) -> APIRouter:
     """Build the self-scoped Mi Health REST router."""
     router = APIRouter(prefix="/api/v1/extensions/mi-health", tags=["mi-health"])
 
@@ -59,7 +60,11 @@ def create_router(*, bindings: MiHealthBindingService, sessions: MiHealthSession
         logger.info("Mi Health QR challenge cancelled", extra={"event": "mi_health_qr_cancelled", "user_id": user_id})
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @router.delete("/binding", status_code=status.HTTP_204_NO_CONTENT)
+    @router.delete(
+        "/binding",
+        status_code=status.HTTP_204_NO_CONTENT,
+        description="Delete the current owner's binding and all Mi Fitness health data; the caller must confirm this destructive operation.",
+    )
     def unbind(request: Request) -> Response:
         user_id = require_user_id(request)
         try:
@@ -88,6 +93,20 @@ def create_router(*, bindings: MiHealthBindingService, sessions: MiHealthSession
             _raise_safe(exc)
         logger.info("Mi Health connection verified", extra={"event": "mi_health_session_verified", "user_id": user_id})
         return result
+
+    @router.post("/sync", response_model=SyncResponse)
+    async def synchronize(request: Request) -> SyncResponse:
+        """Synchronize the current owner's confirmed Mi Fitness contribution."""
+        user_id = require_user_id(request)
+        try:
+            results = await sync.sync(user_id)
+        except (XiaomiError, CredentialProtectionError, NotBoundError) as exc:
+            _raise_safe(exc)
+        logger.info(
+            "Mi Health synchronization completed",
+            extra={"event": "mi_health_sync_completed", "user_id": user_id, "provider": "mi_fitness", "streams": len(results)},
+        )
+        return SyncResponse.model_validate({"streams": [result.__dict__ for result in results]})
 
     return router
 

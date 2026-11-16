@@ -1,7 +1,7 @@
 # Runtime Extensions
 
 > Implementation contract for built-in Extensions and the ETF Grid reference.
-> Last updated: 2026-11-10.
+> Last updated: 2026-11-16.
 
 ## 1. Boundaries and Layering
 
@@ -12,14 +12,18 @@ deployment, sandbox, third-party plugin, or Edge.
 
 Mi Health is a built-in Extension under `src/spectres/extensions/mi_health/`.
 It implements owner-scoped China-region QR account binding, encrypted credential
-persistence, bounded session renewal, and Profile connectivity verification.
-Health-data persistence, synchronization, Toolkits, Workflows, and Schedules are
-not implemented. Its protocol evidence lives in
+persistence, bounded session renewal, Profile connectivity verification, and
+owner-triggered Mi Fitness synchronization. Toolkits, Workflows, and Schedules
+remain unimplemented. Its protocol evidence lives in
 [Mi Health research](../research/mi-health/mi-fitness-cloud-api.md); raw local
 artifacts under `research-local/` are Git-ignored and are not production behavior.
 
 Core code must not import Extension code. Extensions must not modify AgentOS or
-agent factories directly.
+agent factories directly. Canonical personal health contracts, persistence, and
+queries live under `src/spectres/health/` and use Core-owned `health_*` tables.
+Mi Health is a mapping and transport adapter with the server-assigned provider id
+`mi_fitness`; it does not own health metric tables or issue arbitrary SQL against
+Core health tables.
 
 ```text
 src/spectres/extensions/
@@ -70,9 +74,10 @@ There is no entry-point or out-of-tree discovery. Import errors, invalid or
 duplicate metadata, and registration failures abort startup with the Extension
 identity.
 
-`register()` must be idempotent. Its side effects are limited to table creation:
-no network calls, threads, or Schedule execution. Keep mutable business state in
-PostgreSQL. Extensions currently contribute tools, not agents.
+`register()` must be idempotent. Its database side effects are limited to
+reviewed local migrations: no network calls, threads, or Schedule execution.
+Keep mutable business state in PostgreSQL. Extensions currently contribute
+tools, not agents.
 
 Use snake_case for packages, tables, tools, and Workflow ids; UPPER_SNAKE for
 environment prefixes; kebab-case for URL paths. Display metadata does not derive
@@ -114,12 +119,18 @@ operation should fail clearly when called.
 ### Persistence
 
 - Use the shared `PostgresDb.db_engine` and connection pool.
-- Prefix tables with `<extension>_`; never access Agno-managed or another
-  Extension's tables.
-- `metadata.create_all()` runs during registration and does not alter existing
-  tables. No migration tool is configured.
-- Agno isolation does not cover Extension tables. Classify data as shared or
-  private and filter every private operation by verified ownership.
+- Prefix Extension-owned tables with `<extension>_`; never access Agno-managed or
+  another Extension's tables. Health providers instead use Core health services.
+- Core migrates `runtime_extension_states` and `health_*` before Extension
+  discovery. Each Extension keeps Alembic revisions under its own `migrations/`
+  and invokes `spectres.db.migration` during registration. The utility uses a
+  distinct PostgreSQL advisory lock and version table per namespace; startup
+  never autogenerates, downgrades, or destructively repairs schema.
+- Baselines adopt existing tables without altering their rows. Later changes add
+  explicit revisions in the owning module. `metadata.create_all()` is not a
+  Runtime initialization path.
+- Agno isolation does not cover Extension or Core health tables. Classify data as
+  shared or private and filter every private operation by verified ownership.
 
 ### Agent Tools
 
@@ -189,7 +200,16 @@ short-lived owner-scoped QR attempts in `mi_health_qr_attempts`. Long-lived and
 service credentials are encrypted with the Extension's configured key; QR `lp`
 material is encrypted only for an active attempt and deleted at terminal state.
 Session rotation uses credential-revision checks so concurrent or stale responses
-cannot overwrite a newer binding. No health or Profile records are persisted.
+cannot overwrite a newer binding.
+
+Canonical health rows use `provider="mi_fitness"` and live in Core
+`health_profiles`, `health_daily_summaries`, `health_sleep_sessions`,
+`health_body_measurements`, `health_workouts`, and `health_ingestion_states`.
+Profile is a current provider snapshot; the other metric tables retain correctable
+history. Daily streams merge only supplied fields, deterministic source keys make
+replays idempotent, and tombstones remain outside ordinary query results.
+Opaque page cursors stay in memory. A complete bounded window and its checkpoint
+commit atomically; initial backfill is bounded and incremental reads overlap.
 
 Routes under `/api/v1/extensions/mi-health`:
 
@@ -199,16 +219,18 @@ Routes under `/api/v1/extensions/mi-health`:
 | `POST /auth/qr-challenges` | Create and present a China-region QR challenge |
 | `POST /auth/qr-challenges/{id}/poll` | Poll once, complete login, and perform STS |
 | `DELETE /auth/qr-challenges/{id}` | Cancel the current owner's active attempt |
-| `DELETE /binding` | Delete the current owner's binding and attempts |
+| `DELETE /binding` | After confirmation, atomically delete the current owner's Mi Fitness health rows, binding, and attempts |
 | `POST /session/renew` | Proactively renew and atomically rotate the session |
 | `POST /session/verify` | Signed Profile check with at most one renewal and retry |
+| `POST /sync` | Run owner-triggered bounded sync and return per-stream counts and safe state |
 
-All routes are self-scoped, including for administrators. Mi Health contributes
-no Toolkit, Workflow, or Schedule.
+All routes are self-scoped, including for administrators. Disabling preserves
+credentials and health history. Mi Health contributes no Toolkit, Workflow, or
+Schedule; health recommendations and unattended synchronization are not present.
 
 ## 7. Guardrails
 
 Do not add lifecycle hooks, cross-Extension dependencies, generic plugin
 frameworks, custom schedulers, or parallel Schedule APIs. Out-of-tree plugins,
-migrations, tool ACL, Extension-contributed agents, per-user activation, and
-dynamic installation remain deferred until explicitly designed.
+tool ACL, Extension-contributed agents, per-user activation, and dynamic
+installation remain deferred until explicitly designed.

@@ -1,6 +1,7 @@
 """Real-PostgreSQL tests for Mi Health binding, rotation, and ownership."""
 
 import base64
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -30,6 +31,9 @@ from spectres.extensions.mi_health.xiaomi import (
     QrChallenge,
     XiaomiClient,
 )
+from spectres.health.contracts import ProfileSnapshot
+from spectres.health.ingestion import HealthIngestionService
+from spectres.health.models import HealthProfile
 
 pytestmark = [pytest.mark.integration, pytest.mark.db]
 _KEY = base64.urlsafe_b64encode(bytes(range(32))).decode("ascii")
@@ -82,7 +86,8 @@ def services() -> tuple[MiHealthBindingService, MiHealthSessionService, XiaomiCl
     xiaomi.exchange_sts = AsyncMock(side_effect=lambda result, *, device_id: _health_session(result.user_id, device_id))
     xiaomi.renew = AsyncMock(side_effect=lambda session: _login("two"))
     xiaomi.verify_profile = AsyncMock(return_value=None)
-    bindings = MiHealthBindingService(config=_config(), session_factory=session_factory, cipher=CredentialCipher(_KEY), xiaomi=xiaomi)
+    ingestion = HealthIngestionService(session_factory)
+    bindings = MiHealthBindingService(config=_config(), session_factory=session_factory, cipher=CredentialCipher(_KEY), xiaomi=xiaomi, ingestion=ingestion)
     sessions = MiHealthSessionService(bindings=bindings, xiaomi=xiaomi)
     return bindings, sessions, xiaomi, session_factory
 
@@ -169,6 +174,44 @@ async def test_unbind_deletes_only_the_current_owner(services: tuple[Any, ...]) 
     with session_factory() as session:
         assert session.scalar(select(func.count()).select_from(MiHealthBinding)) == 1
         assert session.scalar(select(func.count()).select_from(MiHealthQrAttempt)) == 0
+
+
+async def test_unbind_deletes_only_current_owner_mi_fitness_health_data(services: tuple[Any, ...]) -> None:
+    """Provider cleanup preserves another provider and another owner's history."""
+    bindings, _, _, session_factory = services
+    ingestion = HealthIngestionService(session_factory)
+    await _bind(bindings, "alice")
+    await _bind(bindings, "bob")
+    for user_id, provider in (("alice", "mi_fitness"), ("alice", "other"), ("bob", "mi_fitness")):
+        ingestion.upsert(user_id, provider, ProfileSnapshot(height_cm=Decimal("170")))
+
+    bindings.unbind("alice")
+
+    with session_factory() as session:
+        assert session.get(HealthProfile, ("alice", "mi_fitness")) is None
+        assert session.get(HealthProfile, ("alice", "other")) is not None
+        assert session.get(HealthProfile, ("bob", "mi_fitness")) is not None
+
+
+async def test_unbind_rolls_back_health_and_binding_on_composite_failure(services: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failure after provider deletion rolls back the entire explicit unbind."""
+    bindings, _, _, session_factory = services
+    ingestion = HealthIngestionService(session_factory)
+    await _bind(bindings, "alice")
+    ingestion.upsert("alice", "mi_fitness", ProfileSnapshot(height_cm=Decimal("170")))
+    original = bindings._ingestion.delete_provider_data
+
+    def fail_after_cleanup(user_id: str, provider: str, *, session: Session) -> None:
+        original(user_id, provider, session=session)
+        raise RuntimeError("synthetic composite failure")
+
+    monkeypatch.setattr(bindings._ingestion, "delete_provider_data", fail_after_cleanup)
+    with pytest.raises(RuntimeError, match="synthetic composite failure"):
+        bindings.unbind("alice")
+
+    assert bindings.status("alice").status == "authenticated"
+    with session_factory() as session:
+        assert session.get(HealthProfile, ("alice", "mi_fitness")) is not None
 
 
 async def test_renewal_rotates_atomically_and_failure_preserves_old_session(services: tuple[Any, ...]) -> None:

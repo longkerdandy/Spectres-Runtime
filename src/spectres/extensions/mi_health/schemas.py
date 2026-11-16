@@ -31,3 +31,20 @@ class QRChallengePollResponse(BaseModel):
     state: Literal["waiting", "authenticated", "owner_action_required", "failed"]
     failure_code: str | None = None
     binding: BindingStatusResponse | None = None
+
+
+class SyncStreamResponse(BaseModel):
+    """Safe stream outcome without health values or provider payloads."""
+
+    stream: str
+    status: Literal["succeeded", "failed"]
+    record_count: int
+    backfill_completed: bool
+    last_successful_window_end: int | None
+    error_code: str | None
+
+
+class SyncResponse(BaseModel):
+    """Independent outcomes for one owner-triggered synchronization."""
+
+    streams: list[SyncStreamResponse]

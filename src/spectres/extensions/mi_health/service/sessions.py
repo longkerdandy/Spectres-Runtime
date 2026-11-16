@@ -94,6 +94,17 @@ class MiHealthSessionService:
                 binding.status = "reauth_required"
                 binding.updated_at = datetime.now(UTC)
 
+    def mark_authenticated(self, user_id: str) -> None:
+        """Record a successful signed provider read for the current owner."""
+        now = datetime.now(UTC)
+        with self._bindings.session_factory() as session, session.begin():
+            binding = session.get(MiHealthBinding, user_id, with_for_update=True)
+            if binding is None:
+                raise NotBoundError("Mi Health is not bound")
+            binding.status = "authenticated"
+            binding.last_verified_at = now
+            binding.updated_at = now
+
     @staticmethod
     def _status(binding: MiHealthBinding) -> BindingStatus:
         return BindingStatus(
