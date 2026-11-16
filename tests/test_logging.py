@@ -159,13 +159,24 @@ class TestSecretRedaction:
 
     def test_configured_secrets_stay_out_of_logs(self, tmp_path: Path, restore_root_logger: None) -> None:
         """End-to-end: settings secrets (DB url, keys) never reach the JSONL file."""
-        test_settings = settings.model_copy(update={"log_dir": str(tmp_path)})
+        test_settings = settings.model_copy(update={"log_dir": str(tmp_path), "kimi_web_search_api_key": "kimi-test-secret"})
         configure_logging(test_settings)
-        logging.getLogger("spectres.test.redaction.e2e").warning("db=%s key=%s", test_settings.database_url, test_settings.team_leader_llm_api_key)
+        logging.getLogger("spectres.test.redaction.e2e").warning(
+            "db=%s key=%s kimi=%s",
+            test_settings.database_url,
+            test_settings.team_leader_llm_api_key,
+            test_settings.kimi_web_search_api_key,
+        )
         for handler in logging.getLogger().handlers:
             handler.flush()
         content = log_file_for_today(tmp_path).read_text()
-        for secret in (test_settings.db_pass, test_settings.database_url, test_settings.team_leader_llm_api_key, test_settings.tavily_api_key):
+        for secret in (
+            test_settings.db_pass,
+            test_settings.database_url,
+            test_settings.team_leader_llm_api_key,
+            test_settings.kimi_web_search_api_key,
+            test_settings.tavily_api_key,
+        ):
             if secret and len(secret) >= 8:
                 assert secret not in content
 

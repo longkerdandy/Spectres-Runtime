@@ -205,7 +205,15 @@ def configure_logging(settings: "Settings") -> logging.handlers.TimedRotatingFil
     log_dir.mkdir(parents=True, exist_ok=True)
 
     trace_filter = TraceContextFilter()
-    redaction = SecretRedactionFilter([settings.db_pass, settings.database_url, settings.team_leader_llm_api_key or "", settings.tavily_api_key or ""])
+    redaction = SecretRedactionFilter(
+        [
+            settings.db_pass,
+            settings.database_url,
+            settings.team_leader_llm_api_key or "",
+            settings.kimi_web_search_api_key or "",
+            settings.tavily_api_key or "",
+        ]
+    )
 
     stdout_handler = logging.StreamHandler()
     stdout_handler.setFormatter(JsonFormatter() if settings.log_format == "json" else TextFormatter())

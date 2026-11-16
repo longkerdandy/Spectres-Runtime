@@ -2,7 +2,7 @@
 
 > Current implementation contracts and accepted Extension and Edge target designs
 > for coding agents. Current behavior and future design are labeled separately.
-> Last updated: 2026-11-10.
+> Last updated: 2026-11-16.
 
 ## 1. System Boundaries
 
@@ -24,7 +24,7 @@ implementation claims.
 Web Client ──AG-UI / Bearer JWT / REST──▶ Runtime / AgentOS
 Web Client ◀──authorization code + PKCE── Logto
 Logto ──Runtime API JWT─────────────────▶ Runtime
-Runtime ──LLM / Tavily / FTShare / csindex / Xiaomi account and health APIs
+Runtime ──LLM / Kimi Web Search or Tavily / FTShare / csindex / Xiaomi APIs
 Runtime ──Agno + custom tables──────────▶ PostgreSQL
 Logto ──separate database───────────────▶ PostgreSQL
 ```
@@ -48,8 +48,11 @@ calling Logto per request.
   before a tool call or assistant text begins. Contentless run-content events do
   not open ordinary text messages; Agno's required empty parent remains only for
   tool calls that have no text parent.
-- Built-in tools are Calculator, Shell, Website/page reading, and optional
-  Tavily search when `TAVILY_API_KEY` is configured.
+- Built-in tools are Calculator, Shell, Website/page reading, and at most one
+  optional web-search Toolkit. `WEB_SEARCH_BACKEND` explicitly selects `kimi`
+  (the default) or `tavily`. The selected backend requires its own credential;
+  an unselected backend is never registered or used as an automatic fallback.
+  Tavily retains `basic` search depth.
 - Stable tool names support Client renderers. Extension tools share the same
   Team Leader and return structured success/error envelopes.
 

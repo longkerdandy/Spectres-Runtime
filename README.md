@@ -216,7 +216,7 @@ Open the project in VSCode. The repository includes recommended extensions and w
 
 ## Current Status
 
-`v0.3.1` adds web search and page fetching to the Team Leader Agent: official Tavily Search API (registered when `TAVILY_API_KEY` is configured) plus `read_url` full-page reads — replacing a ddgs meta-search prototype that proved unreliable in testing (see `docs/adr/0006-web-search-tool-tavily.md`).
+`v0.7.3` adds the Kimi Web Search Toolkit and explicit backend selection through `WEB_SEARCH_BACKEND`: `kimi` is the default and `tavily` is the alternative. The selected backend registers only when its corresponding credential is configured; credentials for an unselected backend do not activate it or provide automatic fallback. `KIMI_WEB_SEARCH_BASE_URL` defaults to `https://api.kimi.com/coding/v1/search` and supports compatible endpoint overrides, while Tavily retains `basic` search depth. `WebsiteTools.read_url` remains available for full-page reads (see `docs/adr/0014-kimi-web-search.md` and `docs/adr/0006-web-search-tool-tavily.md`).
 
 `v0.3.0` completes the single-user MVP: CORS support lets the independently served [Spectres-Web-Client](../Spectres-Web-Client) call the AG-UI endpoint cross-origin, verified end-to-end in a browser on one PC against the real LLM (streaming chat, visible tool calls, thread continuity across reloads). Team/Slave agents, long-term memory, and the knowledge base are planned for later milestones.
 

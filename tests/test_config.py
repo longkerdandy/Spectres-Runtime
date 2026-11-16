@@ -93,6 +93,70 @@ class TestSettingsEnvironment:
         assert settings.team_leader_llm_model == "test-model"
 
 
+class TestWebSearchSettings:
+    """Explicit backend selection and provider credentials."""
+
+    def test_backend_defaults_to_kimi(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """Kimi is the default search backend when no selector is provided."""
+        monkeypatch.delenv("WEB_SEARCH_BACKEND", raising=False)
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert settings.web_search_backend == "kimi"
+
+    def test_backend_can_select_tavily(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """The selector accepts the Tavily backend."""
+        monkeypatch.setenv("WEB_SEARCH_BACKEND", "tavily")
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert settings.web_search_backend == "tavily"
+
+    def test_unknown_backend_is_rejected(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """Unsupported backend names fail configuration validation."""
+        monkeypatch.setenv("WEB_SEARCH_BACKEND", "unknown")
+
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None)  # type: ignore[call-arg]
+
+    def test_kimi_defaults(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """Kimi is disabled by default and uses the managed search endpoint."""
+        monkeypatch.delenv("KIMI_WEB_SEARCH_API_KEY", raising=False)
+        monkeypatch.delenv("KIMI_WEB_SEARCH_BASE_URL", raising=False)
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert settings.kimi_web_search_api_key is None
+        assert settings.kimi_web_search_base_url == "https://api.kimi.com/coding/v1/search"
+
+    def test_kimi_overrides(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """Kimi credentials and compatible endpoint overrides are loaded."""
+        monkeypatch.setenv("KIMI_WEB_SEARCH_API_KEY", "kimi-key")
+        monkeypatch.setenv("KIMI_WEB_SEARCH_BASE_URL", "https://kimi.example.com/search")
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert settings.kimi_web_search_api_key == "kimi-key"
+        assert settings.kimi_web_search_base_url == "https://kimi.example.com/search"
+
+    def test_blank_kimi_key_is_disabled(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """A blank Kimi credential remains falsy for backend selection."""
+        monkeypatch.setenv("KIMI_WEB_SEARCH_API_KEY", "")
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert not settings.kimi_web_search_api_key
+
+    def test_tavily_setting_is_unchanged(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """Tavily configuration remains available independently of Kimi."""
+        monkeypatch.setenv("KIMI_WEB_SEARCH_API_KEY", "")
+        monkeypatch.setenv("TAVILY_API_KEY", "tavily-key")
+
+        settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert settings.tavily_api_key == "tavily-key"
+
+
 class TestOptionalLlmParams:
     """TEAM_LEADER_LLM_TEMPERATURE / MAX_COMPLETION_TOKENS are truly optional."""
 

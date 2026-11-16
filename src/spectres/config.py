@@ -49,7 +49,10 @@ class Settings(BaseSettings):
     # CORS
     cors_allowed_origins: list[str] | None = Field(alias="CORS_ALLOWED_ORIGINS", default=None)
 
-    # Web search (Tavily API)
+    # Web search
+    web_search_backend: Literal["kimi", "tavily"] = Field(alias="WEB_SEARCH_BACKEND", default="kimi")
+    kimi_web_search_api_key: str | None = Field(alias="KIMI_WEB_SEARCH_API_KEY", default=None)
+    kimi_web_search_base_url: str = Field(alias="KIMI_WEB_SEARCH_BASE_URL", default="https://api.kimi.com/coding/v1/search")
     tavily_api_key: str | None = Field(alias="TAVILY_API_KEY", default=None)
 
     # Logging (see spectres/logging.py)
