@@ -1,4 +1,4 @@
-"""Mi Health account-binding and session services."""
+"""Mi Health account-binding, session, synchronization, and run services."""
 
 from spectres.extensions.mi_health.service.bindings import (
     BindingError,
@@ -9,8 +9,21 @@ from spectres.extensions.mi_health.service.bindings import (
     NotBoundError,
     QrAttemptChallenge,
 )
+from spectres.extensions.mi_health.service.runs import (
+    SyncFailureStage,
+    SyncInProgressError,
+    SyncRun,
+    SyncRunStatus,
+    SyncRunStream,
+    SyncRunStreamStatus,
+)
 from spectres.extensions.mi_health.service.sessions import MiHealthSessionService
-from spectres.extensions.mi_health.service.sync import MiHealthSyncService, SyncStreamResult
+from spectres.extensions.mi_health.service.sync import (
+    MiHealthSyncService,
+    SyncStatus,
+    SyncStreamHealth,
+    SyncStreamResult,
+)
 
 __all__ = [
     "BindingError",
@@ -22,5 +35,13 @@ __all__ = [
     "MiHealthSyncService",
     "NotBoundError",
     "QrAttemptChallenge",
+    "SyncFailureStage",
+    "SyncInProgressError",
+    "SyncRun",
+    "SyncRunStatus",
+    "SyncRunStream",
+    "SyncRunStreamStatus",
+    "SyncStatus",
+    "SyncStreamHealth",
     "SyncStreamResult",
 ]

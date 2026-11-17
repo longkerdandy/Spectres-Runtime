@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from spectres.extensions.mi_health.config import MiHealthConfig
 from spectres.extensions.mi_health.credentials import CredentialCipher
-from spectres.extensions.mi_health.models import MiHealthBinding, MiHealthQrAttempt
+from spectres.extensions.mi_health.models import MiHealthBinding, MiHealthQrAttempt, MiHealthSyncRun
 from spectres.extensions.mi_health.xiaomi import (
     AuthenticationRequiredError,
     ChallengeExpiredError,
@@ -71,7 +71,7 @@ class MiHealthBindingService:
         xiaomi: XiaomiClient,
         ingestion: HealthIngestionService,
     ) -> None:
-        """Inject the Extension-local configuration, database, cipher, and transport."""
+        """Inject Extension-local configuration, persistence, cipher, and transport."""
         self._config = config
         self._session_factory = session_factory
         self._cipher = cipher
@@ -167,13 +167,14 @@ class MiHealthBindingService:
             session.delete(attempt)
 
     def unbind(self, user_id: str) -> None:
-        """Atomically delete this owner's Mi Fitness data, binding, and attempts."""
+        """Atomically delete this owner's Mi Fitness data and legacy run history."""
         with self._session_factory() as session, session.begin():
             binding = session.get(MiHealthBinding, user_id, with_for_update=True)
             if binding is None:
                 raise NotBoundError("Mi Health is not bound")
             self._ingestion.delete_provider_data(user_id, "mi_fitness", session=session)
             session.execute(delete(MiHealthQrAttempt).where(MiHealthQrAttempt.user_id == user_id))
+            session.execute(delete(MiHealthSyncRun).where(MiHealthSyncRun.user_id == user_id))
             session.delete(binding)
 
     def health_session(self, binding: MiHealthBinding) -> HealthSession:

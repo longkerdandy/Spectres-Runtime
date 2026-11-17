@@ -106,15 +106,31 @@ server-assigned `mi_fitness` provider id; Core never imports Xiaomi code. Histor
 upserts use deterministic source identities, daily streams merge partial metrics,
 and ordinary queries exclude provider tombstones without merging providers.
 
-`POST /api/v1/extensions/mi-health/sync` performs owner-triggered bounded backfill
-or overlapping incremental synchronization. Pages complete in memory before each
-window and checkpoint commit atomically. Explicit unbinding atomically deletes
-only that owner's Mi Fitness health contribution and binding; disablement preserves
-all data. Sync responses expose counts and safe state, never raw health payloads.
+`POST /api/v1/extensions/mi-health/sync` creates a current-process owner-scoped
+run snapshot and returns `202` before bounded backfill or overlapping incremental
+synchronization continues in a Runtime background task. One per-owner
+`asyncio.Lock` is held for the complete execution; a duplicate start or active
+unbind returns `409` without queuing, while different owners remain independent.
+This coordination explicitly supports exactly one Runtime process and event loop,
+not multiple workers or instances. `GET /sync/status` reads the volatile active
+and latest terminal snapshots plus durable current stream checkpoints without
+contacting Xiaomi. Each stream-health item exposes `last_successful_window_end` as
+the authoritative end of its last committed data-coverage window, separately from
+operation timestamps. Pages complete in memory before each window and Core
+checkpoint commit atomically. Runtime restart clears active/latest snapshots
+without fabricating an `interrupted` or terminal run; committed checkpoints and
+health records remain authoritative, and only an explicit new request starts
+another synchronization.
+
+Explicit unbinding is rejected while a run is active. Otherwise it atomically
+deletes only that owner's Mi Fitness health contribution, binding, QR attempts,
+and legacy Mi Health run rows, then clears that owner's volatile snapshots;
+disablement preserves all data. Run and sync responses expose counts and safe
+state, never raw health payloads or owner identifiers.
 
 The Extension contributes one REST router and no Agent tools, Workflows, or
 Schedules. Health recommendations, dense time series, non-China regions,
-password/SMS login, and unattended background operation remain unimplemented.
+password/SMS login, and automated scheduled synchronization remain unimplemented.
 
 ### 3.5 Workflows and Scheduled Tasks
 
@@ -232,6 +248,7 @@ and scope details.
 | `etf_grid_signals` | Private | Latest advice keyed by `(user_id, symbol, trade_date)`; recompute upserts only the owner's row |
 | `mi_health_bindings` | Private | One encrypted Xiaomi session per owner; revision-checked atomic rotation and explicit deletion |
 | `mi_health_qr_attempts` | Private | Active QR attempt with encrypted `lp`; terminal/cancelled/superseded attempts are deleted |
+| `mi_health_sync_runs` | Private legacy | Retained v0.7.5 history for upgrade compatibility; no execution/status access, deleted only for the confirmed unbind owner |
 | `health_profiles` | Private Core | Latest snapshot per `(user_id, provider)` with selected context and goals |
 | `health_daily_summaries` | Private Core | Correctable history per `(user_id, provider, day)` with partial metric merges |
 | `health_sleep_sessions` | Private Core | Raw sleep events keyed by deterministic provider identity; tombstoned history |

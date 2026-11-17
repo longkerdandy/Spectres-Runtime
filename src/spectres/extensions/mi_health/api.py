@@ -1,13 +1,19 @@
-"""Thin FastAPI adapter for Mi Health account binding and sessions."""
+"""Thin FastAPI adapter for Mi Health account binding, sessions, and sync runs."""
 
 import logging
 from typing import NoReturn
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 
 from spectres.extensions.mi_health.auth import require_user_id
 from spectres.extensions.mi_health.credentials import CredentialProtectionError
-from spectres.extensions.mi_health.schemas import BindingStatusResponse, QRChallengePollResponse, QRChallengeResponse, SyncResponse
+from spectres.extensions.mi_health.schemas import (
+    BindingStatusResponse,
+    QRChallengePollResponse,
+    QRChallengeResponse,
+    SyncRunResponse,
+    SyncStatusResponse,
+)
 from spectres.extensions.mi_health.service import (
     BindingExistsError,
     ChallengeNotFoundError,
@@ -15,6 +21,7 @@ from spectres.extensions.mi_health.service import (
     MiHealthSessionService,
     MiHealthSyncService,
     NotBoundError,
+    SyncInProgressError,
 )
 from spectres.extensions.mi_health.xiaomi import AuthenticationRequiredError, ChallengeExpiredError, OwnerActionRequiredError, XiaomiError
 
@@ -63,13 +70,13 @@ def create_router(*, bindings: MiHealthBindingService, sessions: MiHealthSession
     @router.delete(
         "/binding",
         status_code=status.HTTP_204_NO_CONTENT,
-        description="Delete the current owner's binding and all Mi Fitness health data; the caller must confirm this destructive operation.",
+        description="Delete the current owner's binding, run history, and all Mi Fitness health data; the caller must confirm this destructive operation.",
     )
-    def unbind(request: Request) -> Response:
+    async def unbind(request: Request) -> Response:
         user_id = require_user_id(request)
         try:
-            bindings.unbind(user_id)
-        except NotBoundError as exc:
+            await sync.unbind(user_id)
+        except (NotBoundError, SyncInProgressError) as exc:
             _raise_safe(exc)
         logger.info("Mi Health account unbound", extra={"event": "mi_health_unbound", "user_id": user_id})
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -94,19 +101,23 @@ def create_router(*, bindings: MiHealthBindingService, sessions: MiHealthSession
         logger.info("Mi Health connection verified", extra={"event": "mi_health_session_verified", "user_id": user_id})
         return result
 
-    @router.post("/sync", response_model=SyncResponse)
-    async def synchronize(request: Request) -> SyncResponse:
-        """Synchronize the current owner's confirmed Mi Fitness contribution."""
+    @router.post("/sync", response_model=SyncRunResponse, status_code=status.HTTP_202_ACCEPTED)
+    async def synchronize(background_tasks: BackgroundTasks, request: Request) -> SyncRunResponse:
+        """Create a current-process run and synchronize after returning its snapshot."""
         user_id = require_user_id(request)
         try:
-            results = await sync.sync(user_id)
-        except (XiaomiError, CredentialProtectionError, NotBoundError) as exc:
+            run = await sync.start(user_id)
+        except (CredentialProtectionError, NotBoundError, AuthenticationRequiredError, SyncInProgressError) as exc:
             _raise_safe(exc)
-        logger.info(
-            "Mi Health synchronization completed",
-            extra={"event": "mi_health_sync_completed", "user_id": user_id, "provider": "mi_fitness", "streams": len(results)},
-        )
-        return SyncResponse.model_validate({"streams": [result.__dict__ for result in results]})
+        background_tasks.add_task(sync.execute, user_id, run.id)
+        logger.info("Mi Health synchronization queued", extra={"event": "mi_health_sync_queued", "user_id": user_id, "run_id": run.id})
+        return SyncRunResponse.model_validate(run, from_attributes=True)
+
+    @router.get("/sync/status", response_model=SyncStatusResponse)
+    async def get_sync_status(request: Request) -> SyncStatusResponse:
+        """Read the owner's current-process runs and durable checkpoints locally."""
+        user_id = require_user_id(request)
+        return SyncStatusResponse.model_validate(sync.status(user_id), from_attributes=True)
 
     return router
 
@@ -122,6 +133,8 @@ def _raise_safe(exc: Exception) -> NoReturn:
         code, http_status, message = "not_bound", status.HTTP_404_NOT_FOUND, "Mi Health is not bound"
     elif isinstance(exc, BindingExistsError):
         code, http_status, message = "binding_exists", status.HTTP_409_CONFLICT, "Mi Health is already bound"
+    elif isinstance(exc, SyncInProgressError):
+        code, http_status, message = "sync_in_progress", status.HTTP_409_CONFLICT, "Mi Health synchronization is already active"
     elif isinstance(exc, OwnerActionRequiredError):
         code, http_status, message = "owner_action_required", status.HTTP_409_CONFLICT, "Xiaomi requires owner action; start a new QR challenge"
     elif isinstance(exc, AuthenticationRequiredError):

@@ -61,10 +61,7 @@ class MiHealthSessionService:
         try:
             await self._xiaomi.verify_profile(current)
         except HealthUnauthorizedError:
-            try:
-                await self.renew(user_id)
-            except (AuthenticationRequiredError, OwnerActionRequiredError):
-                raise
+            await self.renew(user_id)
             with self._bindings.session_factory() as session:
                 binding = session.get(MiHealthBinding, user_id)
                 if binding is None:

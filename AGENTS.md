@@ -1,13 +1,13 @@
 # AGENTS.md — Spectres Runtime
 
-> Guidance for coding agents. Last updated: 2026-11-16.
+> Guidance for coding agents. Last updated: 2026-11-17.
 
 ## 1. Project Context
 
 Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents, tools, memory, scheduled work, and extension APIs. The Client and Edge are separate projects.
 
 - **Stack**: Python 3.13, Agno AgentOS, FastAPI, PostgreSQL, Alembic, pydantic-settings, and `uv`.
-- **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, static extension loading with administrator-controlled global enablement, Agno Workflows, and native scheduled tasks. ETF Grid Trading is the reference Extension; Mi Health implements China-region QR account binding, encrypted credential storage, bounded renewal, Profile verification, and owner-triggered Mi Fitness synchronization into Core-owned provider-neutral health tables.
+- **Implemented**: one Team Leader agent exposed through AG-UI, built-in tools, JWT authentication and authorization, per-user isolation, structured logging, static extension loading with administrator-controlled global enablement, Agno Workflows, and native scheduled tasks. ETF Grid Trading is the reference Extension; Mi Health implements China-region QR account binding, encrypted credential storage, bounded renewal, Profile verification, and owner-triggered Mi Fitness synchronization into Core-owned provider-neutral health tables with current-process per-owner run snapshots and durable stream checkpoints.
 - **Not implemented**: Team/Slave orchestration, long-term memory, knowledge/RAG, tool ACL, judgment-based automation, notification delivery, health recommendations, automated health synchronization, and Edge proxying. Do not describe these as existing behavior.
 - **Source of truth**: [`docs/architecture/system-architecture.md`](docs/architecture/system-architecture.md) describes current behavior and target design; [`docs/adr/`](docs/adr/) records decisions; [`docs/plan/`](docs/plan/) tracks milestones. Root `README.md` is a human-facing project guide, not the coding-agent architecture reference. Update affected documentation when behavior changes.
 
@@ -17,6 +17,7 @@ Spectres Runtime is the middle layer of a personal AI assistant: it hosts agents
 - Future Master/Slave orchestration uses Agno `Team` in `coordinate` mode. Do not add a custom orchestration dispatcher.
 - Prefer Agno primitives over custom equivalents. In particular, use the AgentOS scheduler, native `/schedules` API, and extension Workflows; do not add a custom scheduler, Action abstraction, dispatch registry, or parallel schedule API.
 - Conversation state is isolated by `session_id`; user-level data aggregates by `user_id`.
+- Mi Health synchronization uses per-owner event-loop locks and current-process run snapshots; exactly one Runtime process/event loop is supported, and durable checkpoints remain separate.
 - Runtime never controls hardware directly. Device operations must go through the authenticated, encrypted Edge channel. Client UI rendering and model training are out of scope.
 - Keep APIs versioned and preserve existing public contracts unless a breaking change is explicitly requested.
 
@@ -83,7 +84,7 @@ Before finishing a code change, run the relevant tests and the standard quality 
 - `src/spectres/extensions/activation.py` — REST, Toolkit, and Workflow activation guards
 - `src/spectres/scheduler.py` — system-schedule registration
 - `src/spectres/extensions/etf_grid/` — reference vertical-slice extension
-- `src/spectres/extensions/mi_health/` — QR account binding, session lifecycle, Mi Fitness mapping, and owner-triggered sync
+- `src/spectres/extensions/mi_health/` — QR account binding, session lifecycle, Mi Fitness mapping, volatile sync runs, durable checkpoints, and owner-triggered sync
 - `docs/research/mi-health/` — Mi Fitness protocol research and Git-ignored local artifacts; not production behavior
 - `tests/` — unit and integration coverage
 

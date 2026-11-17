@@ -4,7 +4,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -92,6 +92,14 @@ class HealthRepository:
     def checkpoint(self, user_id: str, provider: str, stream: str) -> HealthIngestionState | None:
         """Read one owner/provider/stream checkpoint."""
         return self._session.get(HealthIngestionState, (user_id, provider, stream))
+
+    def checkpoints(self, user_id: str, provider: str) -> list[HealthIngestionState]:
+        """Read all checkpoints for one owner and provider."""
+        statement = select(HealthIngestionState).where(
+            HealthIngestionState.user_id == user_id,
+            HealthIngestionState.provider == provider,
+        )
+        return list(self._session.scalars(statement))
 
     def mark_started(self, user_id: str, provider: str, stream: str, *, now: datetime) -> int:
         """Record an attempt and return the revision required for its commit."""
@@ -200,6 +208,14 @@ class HealthIngestionService:
             if state is not None:
                 session.expunge(state)
             return state
+
+    def checkpoints(self, user_id: str, provider: str) -> list[HealthIngestionState]:
+        """Read detached checkpoints for one owner's provider status."""
+        with self._session_factory() as session:
+            states = self.repository(session).checkpoints(user_id, provider)
+            for state in states:
+                session.expunge(state)
+            return states
 
     def mark_started(self, user_id: str, provider: str, stream: str) -> int:
         """Persist a stream attempt start and return its optimistic revision."""

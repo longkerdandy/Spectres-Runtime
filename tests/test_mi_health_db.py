@@ -1,6 +1,7 @@
 """Real-PostgreSQL tests for Mi Health binding, rotation, and ownership."""
 
 import base64
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -15,12 +16,14 @@ from spectres.extensions.base import ExtensionContext
 from spectres.extensions.mi_health import extension
 from spectres.extensions.mi_health.config import MiHealthConfig
 from spectres.extensions.mi_health.credentials import CredentialCipher
-from spectres.extensions.mi_health.models import MiHealthBase, MiHealthBinding, MiHealthQrAttempt
+from spectres.extensions.mi_health.models import MiHealthBase, MiHealthBinding, MiHealthQrAttempt, MiHealthSyncRun
 from spectres.extensions.mi_health.service import (
     BindingExistsError,
     ChallengeNotFoundError,
     MiHealthBindingService,
     MiHealthSessionService,
+    MiHealthSyncService,
+    SyncInProgressError,
 )
 from spectres.extensions.mi_health.xiaomi import (
     AuthenticationRequiredError,
@@ -106,6 +109,22 @@ def _binding(session_factory: sessionmaker[Session], user_id: str) -> MiHealthBi
         return binding
 
 
+def _add_legacy_run(session_factory: sessionmaker[Session], user_id: str, run_id: str) -> None:
+    now = datetime.now(UTC)
+    with session_factory() as session, session.begin():
+        session.add(
+            MiHealthSyncRun(
+                id=run_id,
+                user_id=user_id,
+                trigger_type="manual",
+                status="succeeded",
+                streams=[],
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+
 async def test_qr_binding_encrypts_credentials_and_deletes_attempt(services: tuple[Any, ...]) -> None:
     """A complete QR flow stores ciphertext and removes transient polling material."""
     bindings, _, xiaomi, session_factory = services
@@ -177,13 +196,15 @@ async def test_unbind_deletes_only_the_current_owner(services: tuple[Any, ...]) 
 
 
 async def test_unbind_deletes_only_current_owner_mi_fitness_health_data(services: tuple[Any, ...]) -> None:
-    """Provider cleanup preserves another provider and another owner's history."""
+    """Provider and legacy-run cleanup preserve other providers and owners."""
     bindings, _, _, session_factory = services
     ingestion = HealthIngestionService(session_factory)
     await _bind(bindings, "alice")
     await _bind(bindings, "bob")
     for user_id, provider in (("alice", "mi_fitness"), ("alice", "other"), ("bob", "mi_fitness")):
         ingestion.upsert(user_id, provider, ProfileSnapshot(height_cm=Decimal("170")))
+    _add_legacy_run(session_factory, "alice", "legacy-alice")
+    _add_legacy_run(session_factory, "bob", "legacy-bob")
 
     bindings.unbind("alice")
 
@@ -191,6 +212,8 @@ async def test_unbind_deletes_only_current_owner_mi_fitness_health_data(services
         assert session.get(HealthProfile, ("alice", "mi_fitness")) is None
         assert session.get(HealthProfile, ("alice", "other")) is not None
         assert session.get(HealthProfile, ("bob", "mi_fitness")) is not None
+        assert session.get(MiHealthSyncRun, "legacy-alice") is None
+        assert session.get(MiHealthSyncRun, "legacy-bob") is not None
 
 
 async def test_unbind_rolls_back_health_and_binding_on_composite_failure(services: tuple[Any, ...], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -321,3 +344,124 @@ async def test_concurrent_renewals_are_serialized(services: tuple[Any, ...]) -> 
     assert [result.status for result in results] == ["authenticated", "authenticated"]
     assert xiaomi.renew.await_count == 2
     assert _binding(session_factory, "alice").status == "authenticated"
+
+
+async def test_active_sync_blocks_unbind_and_inactive_unbind_clears_volatile_state(
+    services: tuple[Any, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unbind shares the execution lock and clears snapshots only after deletion."""
+    bindings, sessions, xiaomi, session_factory = services
+    await _bind(bindings, "alice")
+    sync = MiHealthSyncService(
+        bindings=bindings,
+        sessions=sessions,
+        xiaomi=xiaomi,
+        ingestion=HealthIngestionService(session_factory),
+    )
+    run = await sync.start("alice")
+
+    with pytest.raises(SyncInProgressError):
+        await sync.unbind("alice")
+    assert bindings.status("alice").status == "authenticated"
+    assert sync.status("alice").active_run is not None
+
+    monkeypatch.setattr(sync, "sync", AsyncMock(return_value=[]))
+    await sync.execute("alice", run.id)
+    assert sync.status("alice").last_run is not None
+    _add_legacy_run(session_factory, "alice", "legacy-active-unbind")
+    await sync.unbind("alice")
+
+    final = sync.status("alice")
+    assert final.active_run is None and final.last_run is None
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(MiHealthSyncRun)) == 0
+        assert session.get(MiHealthBinding, "alice") is None
+
+
+async def test_manual_run_executes_sync_and_restores_current_process_status(
+    services: tuple[Any, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real run traverses provider adapters and checkpoints without run-table writes."""
+    import spectres.extensions.mi_health.service.sync as sync_module
+
+    bindings, sessions, xiaomi, session_factory = services
+    await _bind(bindings, "alice")
+    xiaomi.read_profile = AsyncMock(return_value={})
+    xiaomi.read_daily = AsyncMock(return_value={"data_list": [], "has_more": False, "next_key": None})
+    xiaomi.read_raw = AsyncMock(return_value={"data_list": [], "has_more": False, "next_key": None})
+    xiaomi.read_workouts = AsyncMock(return_value={"sport_records": [], "has_more": False, "next_key": None})
+    monkeypatch.setattr(sync_module, "_BACKFILL_SECONDS", 40)
+    monkeypatch.setattr(sync_module, "_WINDOW_SECONDS", 40)
+    ingestion = HealthIngestionService(session_factory)
+    sync = MiHealthSyncService(
+        bindings=bindings,
+        sessions=sessions,
+        xiaomi=xiaomi,
+        ingestion=ingestion,
+        clock=lambda: 200,
+    )
+
+    run = await sync.start("alice")
+    initial = sync.status("alice")
+    assert initial.active_run is not None and initial.active_run.id == run.id
+    assert initial.last_run is None
+    assert len(initial.streams) == 8
+    assert all(item.status == "never_synced" for item in initial.streams)
+
+    await sync.execute("alice", run.id)
+
+    final = sync.status("alice")
+    assert final.active_run is None
+    assert final.last_run is not None and final.last_run.status == "succeeded"
+    assert len(final.last_run.streams) == 8
+    assert all(item.status == "succeeded" for item in final.last_run.streams)
+    assert all(item.status == "succeeded" for item in final.streams)
+    assert all(item.backfill_completed for item in final.streams)
+    assert "service-one" not in repr(final)
+    restarted = MiHealthSyncService(bindings=bindings, sessions=sessions, xiaomi=xiaomi, ingestion=ingestion)
+    restarted_status = restarted.status("alice")
+    assert restarted_status.active_run is None and restarted_status.last_run is None
+    assert all(item.status == "succeeded" for item in restarted_status.streams)
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(MiHealthSyncRun)) == 0
+
+
+async def test_http_background_run_stores_safe_terminal_failure_in_memory(
+    services: tuple[Any, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real FastAPI background path returns 202 and exposes safe terminal state."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from spectres.extensions.mi_health.api import create_router
+
+    bindings, sessions, xiaomi, session_factory = services
+    await _bind(bindings, "alice")
+    ingestion = HealthIngestionService(session_factory)
+    sync = MiHealthSyncService(bindings=bindings, sessions=sessions, xiaomi=xiaomi, ingestion=ingestion)
+    monkeypatch.setattr(sync, "sync", AsyncMock(side_effect=ProviderUnavailableError("private-http-sentinel")))
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def identity(request: Any, call_next: Any) -> Any:
+        request.state.user_id = "alice"
+        request.state.is_internal_service = False
+        return await call_next(request)
+
+    app.include_router(create_router(bindings=bindings, sessions=sessions, sync=sync))
+    client = TestClient(app)
+    response = client.post("/api/v1/extensions/mi-health/sync")
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+
+    status = client.get("/api/v1/extensions/mi-health/sync/status")
+    assert status.status_code == 200
+    body = status.json()
+    assert body["active_run"] is None
+    assert body["last_run"]["status"] == "failed"
+    assert body["last_run"]["error_code"] == "provider_unavailable"
+    assert all(item["status"] == "skipped" for item in body["last_run"]["streams"])
+    assert "private-http-sentinel" not in response.text + status.text

@@ -77,7 +77,7 @@ def test_empty_schema_reaches_independent_heads_repeatedly_with_matching_models(
     with Session(isolated_engine) as session:
         assert session.scalar(text("SELECT version_num FROM runtime_schema_version")) == "0002_personal_health"
         assert session.scalar(text("SELECT version_num FROM etf_grid_schema_version")) == "0001_etf_grid_baseline"
-        assert session.scalar(text("SELECT version_num FROM mi_health_schema_version")) == "0001_mi_health_baseline"
+        assert session.scalar(text("SELECT version_num FROM mi_health_schema_version")) == "0002_mi_health_sync_runs"
     _assert_model_shape(isolated_engine, ExtensionStateBase.metadata)
     _assert_model_shape(isolated_engine, HealthBase.metadata)
     _assert_model_shape(isolated_engine, EtfGridBase.metadata)

@@ -1,14 +1,15 @@
 """Synthetic bounded-window, pagination, retry, and sync privacy tests."""
 
+import asyncio
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import spectres.extensions.mi_health.service.sync as sync_module
 from spectres.extensions.mi_health.config import MiHealthConfig
-from spectres.extensions.mi_health.service import MiHealthBindingService, MiHealthSessionService, MiHealthSyncService
+from spectres.extensions.mi_health.service import MiHealthBindingService, MiHealthSessionService, MiHealthSyncService, NotBoundError, SyncInProgressError, SyncStreamResult
 from spectres.extensions.mi_health.xiaomi import HealthSession, HealthUnauthorizedError, ProviderUnavailableError, XiaomiClient
 from spectres.health.ingestion import CheckpointConflictError, HealthIngestionService
 from spectres.health.models import HealthIngestionState
@@ -39,6 +40,9 @@ def _service(
     ingestion = MagicMock(spec=HealthIngestionService)
     ingestion.checkpoint.return_value = state
     ingestion.mark_started.return_value = 0
+    db_session = MagicMock()
+    db_session.get.return_value = MagicMock(status="authenticated")
+    bindings.session_factory.return_value.__enter__.return_value = db_session
     service = MiHealthSyncService(bindings=bindings, sessions=sessions, xiaomi=xiaomi, ingestion=ingestion, clock=lambda: 200)
     monkeypatch.setattr(service, "_health_session", lambda user_id: _SESSION)
     monkeypatch.setattr(sync_module, "_STREAMS", streams)
@@ -194,3 +198,185 @@ async def test_sync_summary_and_logs_exclude_raw_health_sentinel(monkeypatch: py
     assert results[0].status == "failed"
     assert "private-sentinel" not in repr(results)
     assert "private-sentinel" not in caplog.text
+
+
+async def test_same_owner_start_conflicts_without_queue_and_success_releases_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A second start is rejected immediately and a completed run permits another."""
+    service, _, _, _ = _service(monkeypatch, streams=("profile",))
+    run = await service.start("alice")
+
+    with pytest.raises(SyncInProgressError):
+        await service.start("alice")
+    assert service.status("alice").active_run is not None
+
+    await service.execute("alice", run.id)
+    last = service.status("alice").last_run
+    assert last is not None and last.status == "succeeded"
+    second = await service.start("alice")
+    assert second.id != run.id
+    current = service.status("alice")
+    assert current.active_run is not None and current.active_run.id == second.id
+    assert current.last_run is not None and current.last_run.id == run.id
+
+
+async def test_different_owners_have_independent_locks_and_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One owner's active execution does not block another owner."""
+    service, _, _, _ = _service(monkeypatch, streams=("profile",))
+    alice = await service.start("alice")
+    bob = await service.start("bob")
+
+    await asyncio.gather(service.execute("alice", alice.id), service.execute("bob", bob.id))
+
+    alice_last = service.status("alice").last_run
+    bob_last = service.status("bob").last_run
+    assert alice_last is not None and alice_last.id == alice.id
+    assert bob_last is not None and bob_last.id == bob.id
+
+
+async def test_execute_records_independent_stream_outcomes_and_partial_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A volatile run records each stream independently before aggregate completion."""
+    service, xiaomi, _, _ = _service(monkeypatch, streams=("daily_activity", "daily_heart_rate"), state=_state())
+
+    async def read(session: object, *, key: str, **kwargs: Any) -> dict[str, Any]:
+        if key == "steps":
+            raise ProviderUnavailableError("synthetic provider failure")
+        return {"data_list": [], "has_more": False, "next_key": None}
+
+    xiaomi.read_daily.side_effect = read
+    run = await service.start("alice")
+    await service.execute("alice", run.id)
+
+    last = service.status("alice").last_run
+    assert last is not None and last.status == "partially_failed"
+    assert [(item.stream, item.status) for item in last.streams] == [("daily_activity", "failed"), ("daily_heart_rate", "succeeded")]
+    assert last.streams[0].failure_stage == "provider_read"
+    assert last.streams[0].error_code == "provider_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("error", "error_code"),
+    [
+        (ProviderUnavailableError("private-sentinel"), "provider_unavailable"),
+        (RuntimeError("private-sentinel"), "sync_failed"),
+    ],
+)
+async def test_execute_failure_releases_lock_with_safe_terminal_state(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+    error_code: str,
+) -> None:
+    """Expected and unexpected background failures release the lock without leaks."""
+    service, _, _, _ = _service(monkeypatch, streams=("profile",))
+    monkeypatch.setattr(service, "sync", AsyncMock(side_effect=error))
+    run = await service.start("alice")
+
+    await service.execute("alice", run.id)
+
+    last = service.status("alice").last_run
+    assert last is not None and last.status == "failed" and last.error_code == error_code
+    assert all(item.status == "skipped" for item in last.streams)
+    assert "private-sentinel" not in caplog.text
+    await service.start("alice")
+
+
+async def test_binding_validation_failure_releases_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rejected start does not leave its owner locked."""
+    service, _, _, _ = _service(monkeypatch, streams=("profile",))
+    bindings = cast(MagicMock, service._bindings)
+    db_session = bindings.session_factory.return_value.__enter__.return_value
+    db_session.get.return_value = None
+
+    with pytest.raises(NotBoundError):
+        await service.start("alice")
+    db_session.get.return_value = MagicMock(status="authenticated")
+    run = await service.start("alice")
+
+    assert service.status("alice").active_run is not None
+    await service.execute("alice", run.id)
+
+
+async def test_failed_unbind_preserves_runs_and_successful_unbind_clears_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Volatile presentation changes only after the binding transaction succeeds."""
+    service, _, _, _ = _service(monkeypatch, streams=("profile",))
+    run = await service.start("alice")
+    await service.execute("alice", run.id)
+    bindings = cast(MagicMock, service._bindings)
+    bindings.unbind.side_effect = RuntimeError("synthetic unbind failure")
+
+    with pytest.raises(RuntimeError, match="synthetic unbind failure"):
+        await service.unbind("alice")
+    assert service.status("alice").last_run is not None
+
+    bindings.unbind.side_effect = None
+    await service.unbind("alice")
+    final = service.status("alice")
+    assert final.active_run is None and final.last_run is None
+
+
+async def test_stale_or_mismatched_run_id_performs_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only the server-created current active id can enter synchronization."""
+    service, _, _, _ = _service(monkeypatch, streams=("profile",))
+    execute_sync = AsyncMock(return_value=[SyncStreamResult("profile", "succeeded", 1, None)])
+    monkeypatch.setattr(service, "sync", execute_sync)
+    run = await service.start("alice")
+
+    await service.execute("alice", "stale-run")
+    await service.execute("bob", run.id)
+    execute_sync.assert_not_awaited()
+    assert service.status("alice").active_run is not None
+
+    await service.execute("alice", run.id)
+    execute_sync.assert_awaited_once_with("alice", run_id=run.id)
+
+
+async def test_status_exposes_active_progress_then_latest_terminal_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Status reads observe running stream progress without acquiring the owner lock."""
+    service, xiaomi, _, _ = _service(monkeypatch, streams=("profile",))
+    provider_started = asyncio.Event()
+    finish_provider = asyncio.Event()
+
+    async def read_profile(session: object) -> dict[str, Any]:
+        provider_started.set()
+        await finish_provider.wait()
+        return {}
+
+    xiaomi.read_profile.side_effect = read_profile
+    run = await service.start("alice")
+    execution = asyncio.create_task(service.execute("alice", run.id))
+    await provider_started.wait()
+
+    active = service.status("alice").active_run
+    assert active is not None and active.status == "running"
+    assert active.streams[0].status == "running"
+    finish_provider.set()
+    await execution
+
+    final = service.status("alice")
+    assert final.active_run is None
+    assert final.last_run is not None and final.last_run.status == "succeeded"
+
+
+async def test_fresh_service_clears_runs_but_retains_durable_checkpoint_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A restarted coordinator has no run history but still exposes Core checkpoints."""
+    from datetime import UTC, datetime
+
+    state = _state()
+    state.last_succeeded_at = datetime(2026, 11, 17, tzinfo=UTC)
+    service, xiaomi, ingestion, sessions = _service(monkeypatch, streams=("profile", "daily_activity"), state=state)
+    ingestion.checkpoints.return_value = [state]
+    run = await service.start("alice")
+    await service.execute("alice", run.id)
+    assert service.status("alice").last_run is not None
+    xiaomi.read_profile.reset_mock()
+    xiaomi.read_daily.reset_mock()
+
+    fresh = MiHealthSyncService(bindings=service._bindings, sessions=sessions, xiaomi=xiaomi, ingestion=ingestion)
+    result = fresh.status("alice")
+
+    assert result.active_run is None
+    assert result.last_run is None
+    assert [(item.stream, item.status) for item in result.streams] == [("profile", "never_synced"), ("daily_activity", "succeeded")]
+    assert result.streams[1].last_succeeded_at == state.last_succeeded_at
+    assert result.streams[1].last_successful_window_end == datetime.fromtimestamp(100, UTC)
+    xiaomi.read_daily.assert_not_awaited()
