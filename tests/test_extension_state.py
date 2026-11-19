@@ -7,7 +7,7 @@ import pytest
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.state import ExtensionStateService
 
-pytestmark = pytest.mark.db
+pytestmark = [pytest.mark.integration, pytest.mark.db]
 
 
 def _service(*names: str) -> ExtensionStateService:

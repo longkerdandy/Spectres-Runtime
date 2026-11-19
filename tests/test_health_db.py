@@ -235,3 +235,36 @@ def test_database_rejects_negative_workout_measurements(services: tuple[HealthIn
         )
         with pytest.raises(IntegrityError):
             session.flush()
+
+
+def test_daily_summary_date_range_is_inclusive_and_newest_first(services: tuple[HealthIngestionService, HealthQueryService, sessionmaker[Session]]) -> None:
+    """start_day and end_day bound history inclusively and results stay in reverse day order."""
+    ingestion, queries, _ = services
+    for day in range(10, 15):
+        ingestion.upsert("alice", "mi_fitness", DailySummary(day=date(2026, 11, day), steps=day))
+
+    rows = queries.daily_summaries("alice", start_day=date(2026, 11, 11), end_day=date(2026, 11, 13))
+
+    assert [row.day.day for row in rows] == [13, 12, 11]
+    assert queries.daily_summaries("alice", start_day=date(2026, 11, 15)) == []
+
+
+@pytest.mark.parametrize("limit", [0, 1001])
+def test_history_limit_out_of_range_is_rejected(services: tuple[HealthIngestionService, HealthQueryService, sessionmaker[Session]], limit: int) -> None:
+    """History queries reject limits outside 1..1000 for every history stream."""
+    _, queries, _ = services
+    for query in (queries.sleep_sessions, queries.body_measurements, queries.workouts):
+        with pytest.raises(ValueError, match="between 1 and 1000"):
+            query("alice", limit=limit)
+
+
+def test_history_limit_caps_newest_rows(services: tuple[HealthIngestionService, HealthQueryService, sessionmaker[Session]]) -> None:
+    """limit=1 keeps only the most recent non-deleted workout."""
+    ingestion, queries, _ = services
+    ingestion.upsert("alice", "mi_fitness", _workout("v1:workout:sid:sport:old"))
+    newer = _workout("v1:workout:sid:sport:new")
+    ingestion.upsert("alice", "mi_fitness", newer.model_copy(update={"started_at": _NOW, "ended_at": _NOW + timedelta(hours=1)}))
+
+    rows = queries.workouts("alice", limit=1)
+
+    assert [row.source_record_id for row in rows] == ["v1:workout:sid:sport:new"]

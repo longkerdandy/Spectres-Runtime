@@ -8,6 +8,8 @@ import pytest
 
 from spectres.tools.kimi_web_search import MAX_OUTPUT_CHARACTERS, MAX_RESULTS, KimiWebSearchTools
 
+pytestmark = pytest.mark.unit
+
 TEST_BASE_URL = "https://kimi.example.com/search"
 TEST_API_KEY = "test-secret-key"
 SearchMode = Literal["sync", "async"]

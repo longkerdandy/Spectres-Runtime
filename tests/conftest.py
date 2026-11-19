@@ -1,14 +1,32 @@
 """Shared pytest configuration for the Spectres Runtime test suite."""
 
 import os
-from collections.abc import Iterator
 
-import pytest
-
+# Configure the environment before any spectres module builds its settings.
 # Point the settings loader at the committed test environment file.
 os.environ.setdefault("SPECTRES_ENV_FILE", ".env.test")
 # Keep external Agno telemetry disabled throughout the test process.
 os.environ["AGNO_TELEMETRY"] = "false"
+
+from collections.abc import Iterator
+
+import pytest
+from fastapi.testclient import TestClient
+
+from tests.support import DEV_JWT_AUDIENCE, DEV_JWT_KEY, JwtApplication
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Require exactly one of unit/integration, and integration for db/llm tests."""
+    invalid: list[str] = []
+    for item in items:
+        markers = {name for name in ("unit", "integration", "db", "llm") if item.get_closest_marker(name) is not None}
+        is_unit, is_integration = "unit" in markers, "integration" in markers
+        if is_unit == is_integration or (markers & {"db", "llm"} and not is_integration):
+            invalid.append(f"{item.nodeid}: {sorted(markers) or 'no markers'}")
+    if invalid:
+        raise pytest.UsageError("Tests must be marked unit or integration (db/llm imply integration):\n" + "\n".join(invalid))
 
 
 def _reset_test_database() -> None:
@@ -55,3 +73,25 @@ def reset_database_for_db_tests(request: pytest.FixtureRequest) -> None:
     if request.node.get_closest_marker("db") is None:
         return
     _reset_test_database()
+
+
+@pytest.fixture
+def jwt_application(monkeypatch: pytest.MonkeyPatch) -> Iterator[JwtApplication]:
+    """Build the full application with development JWT authentication enabled."""
+    from spectres import main as main_module
+    from spectres.config import settings
+
+    monkeypatch.setattr(settings, "jwt_verification_key", DEV_JWT_KEY)
+    monkeypatch.setattr(settings, "jwt_audience", DEV_JWT_AUDIENCE)
+    monkeypatch.setattr(settings, "jwt_algorithm", "HS256")
+    agent_os, extensions, extension_state = main_module.create_agent_os()
+    app = agent_os.get_app()
+    main_module.mount_extension_routers(app, extensions, extension_state)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield JwtApplication(client, extensions)
+
+
+@pytest.fixture
+def jwt_client(jwt_application: JwtApplication) -> TestClient:
+    """Return the client of the JWT-authenticated full application."""
+    return jwt_application.client

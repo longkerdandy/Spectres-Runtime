@@ -7,8 +7,9 @@ import pytest
 
 from spectres.scheduler import ScheduleSpec, register_schedules
 
+pytestmark = pytest.mark.unit
 
-@pytest.mark.unit
+
 class TestRegisterSchedules:
     """register_schedules creates missing rows and preserves existing rows."""
 

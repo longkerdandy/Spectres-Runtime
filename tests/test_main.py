@@ -1,29 +1,38 @@
 """Unit tests for the Spectres Runtime AgentOS entry point."""
 
 from collections.abc import AsyncIterator
-from typing import Any
+from types import ModuleType
+from typing import Any, NamedTuple, cast
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.unit
+
+
+class MockedMain(NamedTuple):
+    """The ``spectres.main`` module with its external dependencies replaced."""
+
+    module: ModuleType
+    db: MagicMock
+
 
 @pytest.fixture
-def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
-    """Return a fresh AgentOS app with mocked external dependencies."""
+def mocked_main(monkeypatch: pytest.MonkeyPatch) -> MockedMain:
+    """Patch database, extensions, agent, schedules, and logging used by ``create_agent_os``."""
 
     async def _fake_arun(*args: Any, **kwargs: Any) -> AsyncIterator[None]:
         # Empty async generator: AG-UI emits RUN_STARTED / RUN_FINISHED on its own.
         if False:
             yield None
 
-    # No spec: agno 3.x touches db attributes (e.g. `id`) beyond the
-    # PostgresDb class interface, and a spec'd mock rejects them.
+    # No spec: agno touches db attributes (e.g. `id`) beyond the PostgresDb
+    # class interface, and a spec'd mock rejects them.
     mock_db = MagicMock()
-    # A fresh thread has no persisted session; agno 3.x's user-scope check
-    # probes db.get_session() and refuses the run if a row with a different
-    # owner comes back.
+    # A fresh thread has no persisted session; agno's user-scope check probes
+    # db.get_session() and refuses the run if a different owner comes back.
     mock_db.get_session.return_value = None
     mock_agent = MagicMock()
     mock_agent.id = "team-leader"
@@ -31,28 +40,38 @@ def spectres_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     mock_agent.db = mock_db
     mock_agent.arun = _fake_arun
 
-    # Patch the source modules first so a first-time import of spectres.main
-    # (module-level create_agent_os() runs at import) picks up the mocks...
-    monkeypatch.setattr("spectres.db.postgres.get_postgres_db", lambda: mock_db)
-    monkeypatch.setattr("spectres.extensions.loader.load_extensions", lambda *args, **kwargs: [])
-    monkeypatch.setattr("spectres.agents.team_leader.create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
-    # Keep the real logging setup out of unit tests (it would create logs/ and
-    # rewire the root logger); its wiring is covered in tests/test_logging.py.
-    monkeypatch.setattr("spectres.logging.configure_logging", lambda *args, **kwargs: None)
-
-    # ...then patch the module namespace itself: spectres.main binds the
-    # `from ... import` names at import time, and an earlier test module may
-    # already have imported it, in which case the source-module patches are
-    # no longer visible to create_agent_os().
+    replacements: dict[str, Any] = {
+        "get_postgres_db": lambda: mock_db,
+        "load_extensions": lambda *args, **kwargs: [],
+        "create_team_leader_agent": lambda db, extra_tools=None: mock_agent,
+        "register_schedules": lambda *args, **kwargs: None,
+        # Logging wiring is covered by test_logging; keep the root logger untouched here.
+        "configure_logging": lambda *args, **kwargs: None,
+    }
+    source_modules = {
+        "get_postgres_db": "spectres.db.postgres",
+        "load_extensions": "spectres.extensions.loader",
+        "create_team_leader_agent": "spectres.agents.team_leader",
+        "register_schedules": "spectres.scheduler",
+        "configure_logging": "spectres.logging",
+    }
+    # Patch source modules first so a first-time import of spectres.main (which
+    # builds the app at import) sees the mocks, then patch the names already
+    # bound in spectres.main by an earlier import.
+    for name, replacement in replacements.items():
+        monkeypatch.setattr(f"{source_modules[name]}.{name}", replacement)
     import spectres.main as main_module
 
-    monkeypatch.setattr(main_module, "get_postgres_db", lambda: mock_db)
-    monkeypatch.setattr(main_module, "load_extensions", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
-    monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
+    for name, replacement in replacements.items():
+        monkeypatch.setattr(main_module, name, replacement)
+    return MockedMain(main_module, mock_db)
 
-    agent_os, _contributions, _extension_state = main_module.create_agent_os()
-    return agent_os.get_app()
+
+@pytest.fixture
+def spectres_app(mocked_main: MockedMain) -> FastAPI:
+    """Return a fresh AgentOS app with mocked external dependencies."""
+    agent_os, _contributions, _extension_state = mocked_main.module.create_agent_os()
+    return cast(FastAPI, agent_os.get_app())
 
 
 @pytest.fixture
@@ -120,72 +139,34 @@ def test_cors_preflight_rejects_unlisted_origin(test_client: TestClient) -> None
     assert response.headers.get("access-control-allow-origin") != "http://evil.example.com"
 
 
-def test_shutdown_lifespan_closes_postgres_db(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_shutdown_lifespan_closes_postgres_db(mocked_main: MockedMain, monkeypatch: pytest.MonkeyPatch) -> None:
     """Exiting the FastAPI lifespan closes the PostgresDb singleton via AgentOS."""
-
-    async def _fake_arun(*args: Any, **kwargs: Any) -> AsyncIterator[None]:
-        if False:
-            yield None
-
-    mock_db = MagicMock()
-    mock_db.get_session.return_value = None
-    mock_agent = MagicMock()
-    mock_agent.id = "team-leader"
-    mock_agent.name = "Team Leader Agent"
-    mock_agent.db = mock_db
-    mock_agent.arun = _fake_arun
-
-    # Patch the source modules in case this test triggers the first
-    # spectres.main import of the session (its module-level create_agent_os()
-    # binds names at import time), then patch the module namespace itself so
-    # the explicit create_agent_os() call below sees the mocks regardless of
-    # import order.
-    monkeypatch.setattr("spectres.db.postgres.get_postgres_db", lambda: mock_db)
-    monkeypatch.setattr("spectres.extensions.loader.load_extensions", lambda *args, **kwargs: [])
-    monkeypatch.setattr("spectres.agents.team_leader.create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
-    monkeypatch.setattr("spectres.scheduler.register_schedules", lambda *args, **kwargs: None)
-    monkeypatch.setattr("spectres.logging.configure_logging", lambda *args, **kwargs: None)
-
-    import spectres.main as main_module
-
-    monkeypatch.setattr(main_module, "get_postgres_db", lambda: mock_db)
-    monkeypatch.setattr(main_module, "load_extensions", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: mock_agent)
-    monkeypatch.setattr(main_module, "register_schedules", lambda *args, **kwargs: None)
-    monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
-    # Keep the scheduler poller lifespan out of this test; the assertion targets
-    # only the database shutdown wiring.
     from spectres.config import settings
 
+    # Keep the scheduler poller out of the lifespan; only database shutdown is asserted.
     monkeypatch.setattr(settings, "scheduler_enabled", False)
+    agent_os, _, _ = mocked_main.module.create_agent_os()
 
-    agent_os, _, _ = main_module.create_agent_os()
-    app = agent_os.get_app()
+    with TestClient(agent_os.get_app()):
+        mocked_main.db.close.assert_not_called()
 
-    with TestClient(app):
-        pass
-
-    mock_db.close.assert_called_once()
+    mocked_main.db.close.assert_called_once()
 
 
-def test_agent_os_receives_extension_workflows_and_telemetry_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_agent_os_receives_extension_workflows_and_telemetry_setting(mocked_main: MockedMain, monkeypatch: pytest.MonkeyPatch) -> None:
     """AgentOS receives extension Workflows and the configured telemetry switch."""
     from agno.workflow import Workflow
 
-    import spectres.main as main_module
     from spectres.extensions.base import ExtensionContribution, LoadedExtension
 
+    main_module = mocked_main.module
     workflow = Workflow(id="extension-workflow", steps=[])
-    monkeypatch.setattr(main_module, "get_postgres_db", lambda: MagicMock())
     monkeypatch.setattr(
         main_module,
         "load_extensions",
         lambda *args, **kwargs: [LoadedExtension(id="test_extension", name="Test Extension", description="Test extension", contribution=ExtensionContribution(workflows=[workflow]))],
     )
-    monkeypatch.setattr(main_module, "register_schedules", lambda *args, **kwargs: None)
     monkeypatch.setattr(main_module, "ExtensionStateService", lambda *args, **kwargs: MagicMock())
-    monkeypatch.setattr(main_module, "create_team_leader_agent", lambda db, extra_tools=None: MagicMock())
-    monkeypatch.setattr(main_module, "configure_logging", lambda *args, **kwargs: None)
     agent_os_cls = MagicMock()
     monkeypatch.setattr(main_module, "AgentOS", agent_os_cls)
 

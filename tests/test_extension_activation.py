@@ -71,7 +71,6 @@ def test_enabled_sync_tool_calls_original_entrypoint() -> None:
     assert toolkit.calls == ["sync"]
 
 
-@pytest.mark.asyncio
 async def test_disabled_async_tool_skips_business_call() -> None:
     """The guard supports Agno async functions without executing their body."""
     toolkit = _SampleToolkit()

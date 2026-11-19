@@ -58,15 +58,15 @@ def _json_logger_stream(name: str = "spectres.extensions.etf_grid.test") -> tupl
 class TestTraceContext:
     """The trace id lives in a contextvar and is bound/reset explicitly."""
 
-    def test_default_is_none(self) -> None:
-        """No active trace without a bind."""
+    def test_nested_bind_and_reset(self) -> None:
+        """reset_trace restores the enclosing trace, then the unbound state."""
         assert current_trace_id() is None
-
-    def test_bind_and_reset(self) -> None:
-        """bind_trace sets the id; reset_trace restores the previous value."""
-        token = bind_trace("abc123")
-        assert current_trace_id() == "abc123"
-        reset_trace(token)
+        outer = bind_trace("outer")
+        inner = bind_trace("inner")
+        assert current_trace_id() == "inner"
+        reset_trace(inner)
+        assert current_trace_id() == "outer"
+        reset_trace(outer)
         assert current_trace_id() is None
 
     def test_new_trace_short_and_unique(self) -> None:
@@ -134,13 +134,9 @@ class TestSecretRedaction:
     """Known secret values are scrubbed from messages and extras before emission."""
 
     def test_message_and_args_redacted(self) -> None:
-        """A secret appearing in the message or args is replaced with ***."""
-        stream = io.StringIO()
-        handler = logging.StreamHandler(stream)
-        handler.setFormatter(JsonFormatter())
-        handler.addFilter(SecretRedactionFilter(["sup3r-secret-key"]))
-        logger, _ = _json_logger_stream("spectres.test.redaction")
-        logger.handlers = [handler]
+        """A secret appearing in the message, args, or extras is replaced with ***."""
+        logger, stream = _json_logger_stream("spectres.test.redaction")
+        logger.handlers[0].addFilter(SecretRedactionFilter(["sup3r-secret-key"]))
         logger.error("connecting with key %s failed", "sup3r-secret-key", extra={"detail": "key=sup3r-secret-key"})
         output = stream.getvalue()
         assert "sup3r-secret-key" not in output
@@ -148,12 +144,8 @@ class TestSecretRedaction:
 
     def test_short_values_ignored(self) -> None:
         """Very short 'secrets' are not scrubbed (they would over-match common substrings)."""
-        stream = io.StringIO()
-        handler = logging.StreamHandler(stream)
-        handler.setFormatter(JsonFormatter())
-        handler.addFilter(SecretRedactionFilter(["ai"]))
-        logger, _ = _json_logger_stream("spectres.test.redaction.short")
-        logger.handlers = [handler]
+        logger, stream = _json_logger_stream("spectres.test.redaction.short")
+        logger.handlers[0].addFilter(SecretRedactionFilter(["ai"]))
         logger.info("main remains intact")
         assert "main remains intact" in stream.getvalue()
 

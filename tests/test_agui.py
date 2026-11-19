@@ -12,11 +12,13 @@ from agno.os.interfaces.agui import AGUI
 from agno.os.interfaces.agui.handlers import process_event
 from agno.os.interfaces.agui.state import StreamState
 from agno.os.interfaces.agui.stream import stream_agno_response_as_agui_events
-from agno.run.agent import RunCompletedEvent, RunContentEvent, RunErrorEvent, RunOutputEvent, ToolCallCompletedEvent, ToolCallStartedEvent
+from agno.run.agent import RunCompletedEvent, RunContentEvent, RunErrorEvent, RunEvent, RunOutputEvent, ToolCallCompletedEvent, ToolCallStartedEvent
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from spectres.agui import patch_agui_native_reasoning
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +36,46 @@ def test_run_content_without_reasoning_keeps_default_mapping() -> None:
     assert [event.type for event in events] == [EventType.TEXT_MESSAGE_START, EventType.TEXT_MESSAGE_CONTENT]
     assert isinstance(events[1], TextMessageContentEvent)
     assert events[1].delta == "Answer"
+
+
+def test_patch_is_idempotent() -> None:
+    """Re-installing the patch keeps one wrapper and does not duplicate reasoning events."""
+    from agno.os.interfaces.agui import handlers
+
+    patch_agui_native_reasoning()
+    patch_agui_native_reasoning()
+    state = StreamState(thread_id="thread", run_id="run")
+
+    events = process_event(RunContentEvent(reasoning_content="Thinking"), state)
+
+    assert handlers.HANDLERS[RunEvent.run_content.value] is handlers.on_run_content
+    assert [event.type for event in events] == [EventType.REASONING_START, EventType.REASONING_MESSAGE_START, EventType.REASONING_MESSAGE_CONTENT]
+
+
+def test_reasoning_echoing_content_is_treated_as_text() -> None:
+    """A provider echoing the answer as reasoning content does not open a reasoning span."""
+    state = StreamState(thread_id="thread", run_id="run")
+
+    events = process_event(RunContentEvent(content="Answer", reasoning_content="Answer"), state)
+
+    assert [event.type for event in events] == [EventType.TEXT_MESSAGE_START, EventType.TEXT_MESSAGE_CONTENT]
+
+
+def test_chunk_with_reasoning_and_content_closes_reasoning_before_text() -> None:
+    """One chunk carrying both fields streams reasoning, closes it, then starts the answer."""
+    state = StreamState(thread_id="thread", run_id="run")
+
+    events = process_event(RunContentEvent(content="Answer", reasoning_content="Thinking"), state)
+
+    assert [event.type for event in events] == [
+        EventType.REASONING_START,
+        EventType.REASONING_MESSAGE_START,
+        EventType.REASONING_MESSAGE_CONTENT,
+        EventType.REASONING_MESSAGE_END,
+        EventType.REASONING_END,
+        EventType.TEXT_MESSAGE_START,
+        EventType.TEXT_MESSAGE_CONTENT,
+    ]
 
 
 def test_native_reasoning_streams_before_answer_and_closes_cleanly() -> None:

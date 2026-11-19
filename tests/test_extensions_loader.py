@@ -76,18 +76,12 @@ extension = SimpleNamespace(id={name!r}, name={name!r}, description="Ordered ext
 """
 
 
-def test_scan_skips_packages_without_extension_object(extension_dir: Path, ctx: ExtensionContext) -> None:
-    """Packages without a module-level `extension` object are not extensions."""
+def test_scan_loads_only_packages_with_extension_object(extension_dir: Path, ctx: ExtensionContext) -> None:
+    """Plain modules and packages without a module-level `extension` object are ignored."""
+    (extension_dir / "loose_module.py").write_text("x = 1\n")
     _write_pkg(extension_dir, "not_an_ext", '"""Just a package."""\n')
     _write_pkg(extension_dir, "good_ext", _GOOD)
     assert load_extensions(ctx.settings, ctx.db) == [LoadedExtension(id="good_ext", name="Good Extension", description="Good extension", contribution=ExtensionContribution())]
-
-
-def test_non_package_entries_ignored(extension_dir: Path, ctx: ExtensionContext) -> None:
-    """Plain modules next to packages are ignored."""
-    (extension_dir / "loose_module.py").write_text("x = 1\n")
-    _write_pkg(extension_dir, "good_ext", _GOOD)
-    assert len(load_extensions(ctx.settings, ctx.db)) == 1
 
 
 def test_broken_register_fails_loud_naming_extension(extension_dir: Path, ctx: ExtensionContext, caplog: pytest.LogCaptureFixture) -> None:
@@ -159,25 +153,12 @@ def test_missing_register_fails_loud(extension_dir: Path, ctx: ExtensionContext)
         load_extensions(ctx.settings, ctx.db)
 
 
-def test_real_tree_discovers_etf_grid_manifest() -> None:
-    """The real package tree exposes etf_grid's metadata and register hook."""
-    import spectres.extensions.etf_grid as pkg
-
-    extension = getattr(pkg, "extension", None)
+@pytest.mark.parametrize(("extension_id", "name"), [("etf_grid", "ETF Grid"), ("mi_health", "Mi Health")])
+def test_real_tree_exposes_registration_modules(extension_id: str, name: str) -> None:
+    """Each in-tree Extension package exposes its metadata and register hook."""
+    extension = getattr(importlib.import_module(f"spectres.extensions.{extension_id}"), "extension", None)
     assert extension is not None
-    assert extension.id == "etf_grid"
-    assert extension.name == "ETF Grid"
-    assert extension.description
-    assert callable(extension.register)
-
-
-def test_real_tree_discovers_mi_health_registration_module() -> None:
-    """The real package tree exposes Mi Health metadata and register hook."""
-    import spectres.extensions.mi_health as pkg
-
-    extension = getattr(pkg, "extension", None)
-    assert extension is not None
-    assert extension.id == "mi_health"
-    assert extension.name == "Mi Health"
+    assert extension.id == extension_id
+    assert extension.name == name
     assert extension.description
     assert callable(extension.register)

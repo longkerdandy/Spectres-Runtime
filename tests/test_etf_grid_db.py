@@ -2,15 +2,15 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
-from sqlalchemy import delete
 from sqlalchemy.orm import Session, sessionmaker
 
 from spectres.db.postgres import get_postgres_db
 from spectres.extensions.etf_grid.config import EtfGridConfig
 from spectres.extensions.etf_grid.core.grid import SignalSnapshot
-from spectres.extensions.etf_grid.models import EtfGridBase, EtfGridCandle, EtfGridSignal, EtfGridTrade, EtfGridValuation
+from spectres.extensions.etf_grid.models import EtfGridTrade
 from spectres.extensions.etf_grid.service import (
     EtfGridCandleService,
     EtfGridLedgerService,
@@ -29,34 +29,13 @@ from spectres.extensions.etf_grid.types import (
     TradeSortField,
     ValuationInput,
 )
+from tests.support import migrated_extension_session_factory
 
 pytestmark = [pytest.mark.integration, pytest.mark.db]
 
 
-@pytest.fixture
-def service() -> EtfGridLedgerService:
-    """Provide a ledger service over a freshly created etf_grid_trades table."""
-    engine = get_postgres_db().db_engine
-    EtfGridBase.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    with session_factory() as session, session.begin():
-        session.execute(delete(EtfGridTrade))
-    return EtfGridLedgerService(session_factory=session_factory)
-
-
-@pytest.fixture
-def candle_service() -> EtfGridCandleService:
-    """Provide a candle service over a freshly created etf_grid_candles table."""
-    engine = get_postgres_db().db_engine
-    EtfGridBase.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    with session_factory() as session, session.begin():
-        session.execute(delete(EtfGridCandle))
-    return EtfGridCandleService(session_factory=session_factory)
-
-
 class Services:
-    """Bundle of all four services over one freshly cleaned database."""
+    """Bundle of all four services sharing one session factory."""
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         """Create every service on the shared session factory."""
@@ -68,14 +47,20 @@ class Services:
 
 @pytest.fixture
 def services() -> Services:
-    """Provide all services over freshly created, emptied extension tables."""
-    engine = get_postgres_db().db_engine
-    EtfGridBase.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    with session_factory() as session, session.begin():
-        for table in (EtfGridSignal, EtfGridValuation, EtfGridCandle, EtfGridTrade):
-            session.execute(delete(table))
-    return Services(session_factory)
+    """Provide all services over migrated ETF Grid tables."""
+    return Services(migrated_extension_session_factory("etf_grid"))
+
+
+@pytest.fixture
+def service(services: Services) -> EtfGridLedgerService:
+    """Provide the ledger service."""
+    return services.ledger
+
+
+@pytest.fixture
+def candle_service(services: Services) -> EtfGridCandleService:
+    """Provide the candle service."""
+    return services.candles
 
 
 def _candle(symbol: str, day: int, close: str, volume: int = 1000) -> CandleInput:
@@ -92,118 +77,63 @@ def _candle(symbol: str, day: int, close: str, volume: int = 1000) -> CandleInpu
     )
 
 
+def _record(service: EtfGridLedgerService, **overrides: Any) -> dict[str, Any]:
+    """Record a trade from a valid baseline with selected fields overridden."""
+    values: dict[str, Any] = {
+        "user_id": "alice",
+        "trade_date": date(2026, 9, 8),
+        "symbol": "513120.XSHG",
+        "side": Side.BUY,
+        "price": Decimal("1.2950"),
+        "quantity": 7800,
+        "commission_rate": Decimal("0.001"),
+    }
+    return service.record_trade(**(values | overrides))
+
+
 def test_record_trade_persists_computed_amounts(service: EtfGridLedgerService) -> None:
-    """A recorded buy round-trips with the computed gross/commission/net amounts."""
-    trade = service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 8),
-        symbol="513120.XSHG",
-        side=Side.BUY,
-        price=Decimal("1.2950"),
-        quantity=7800,
-        commission_rate=Decimal("0.001"),
-        note="first grid level",
-        source=Source.AGENT,
-    )
+    """A recorded buy is committed with the computed gross/commission/net amounts."""
+    trade = _record(service, note="first grid level", source=Source.AGENT)
     assert trade["id"] is not None
     assert trade["gross_amount"] == Decimal("10101.00")
     assert trade["commission"] == Decimal("10.10")
     assert trade["net_amount"] == Decimal("10111.10")
     assert trade["source"] == "agent"
     assert trade["created_at"] is not None
+    with Session(get_postgres_db().db_engine) as session:
+        assert session.query(EtfGridTrade).count() == 1
 
 
-def test_record_trade_defaults_source_to_manual(service: EtfGridLedgerService) -> None:
-    """Omitting source records the trade as manual."""
-    trade = service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 8),
-        symbol="513120.XSHG",
-        side=Side.BUY,
-        price=Decimal("1.2950"),
-        quantity=7800,
-        commission_rate=Decimal("0.001"),
-    )
+def test_record_trade_defaults_and_symbol_normalization(service: EtfGridLedgerService) -> None:
+    """Source defaults to manual and both write and read paths normalize symbols."""
+    trade = _record(service, symbol="  513120.xshg ")
     assert trade["source"] == "manual"
-
-
-def test_record_trade_normalizes_symbol(service: EtfGridLedgerService) -> None:
-    """Lowercase/whitespace symbols are normalized to the canonical full code."""
-    trade = service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 8),
-        symbol="  513120.xshg ",
-        side=Side.BUY,
-        price=Decimal("1.2950"),
-        quantity=7800,
-        commission_rate=Decimal("0.001"),
-    )
     assert trade["symbol"] == "513120.XSHG"
-    assert [t["symbol"] for t in service.list_trades(user_id="alice", symbol="513120.XSHG")] == ["513120.XSHG"]
-
-
-def test_list_trades_normalizes_symbol_filter(service: EtfGridLedgerService) -> None:
-    """The read-side symbol filter accepts un-normalized input."""
-    service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 8),
-        symbol="513120.XSHG",
-        side=Side.BUY,
-        price=Decimal("1.2950"),
-        quantity=7800,
-        commission_rate=Decimal("0.001"),
-    )
-    rows = service.list_trades(user_id="alice", symbol=" 513120.xshg ")
-    assert [t["symbol"] for t in rows] == ["513120.XSHG"]
+    assert [t["symbol"] for t in service.list_trades(user_id="alice", symbol=" 513120.xshg ")] == ["513120.XSHG"]
 
 
 def test_list_trades_orders_by_symbol_date_id_and_filters(service: EtfGridLedgerService) -> None:
     """list_trades defaults to the (symbol, trade_date, id) replay-canonical order."""
     for symbol, day in [("513330.XSHG", 10), ("513120.XSHG", 8), ("513330.XSHG", 9)]:
-        service.record_trade(
-            user_id="alice",
-            trade_date=date(2026, 9, day),
-            symbol=symbol,
-            side=Side.BUY,
-            price=Decimal("1.0000"),
-            quantity=100,
-            commission_rate=Decimal("0.001"),
-        )
-    ordered = [
-        (t["symbol"], t["trade_date"].day)
-        for t in service.list_trades(
-            user_id="alice",
-        )
-    ]
+        _record(service, symbol=symbol, trade_date=date(2026, 9, day), price=Decimal("1.0000"), quantity=100)
+    ordered = [(t["symbol"], t["trade_date"].day) for t in service.list_trades(user_id="alice")]
     assert ordered == [("513120.XSHG", 8), ("513330.XSHG", 9), ("513330.XSHG", 10)]
     filtered = service.list_trades(user_id="alice", symbol="513330.XSHG")
     assert [(t["symbol"], t["trade_date"].day) for t in filtered] == [("513330.XSHG", 9), ("513330.XSHG", 10)]
 
 
-def _seed_grid_rows(service: EtfGridLedgerService) -> None:
-    """Insert rows whose default order differs from trade_date order."""
-    for symbol, day, price in [("513330.XSHG", 8, "1.00"), ("513120.XSHG", 10, "2.00"), ("513330.XSHG", 9, "3.00")]:
-        service.record_trade(
-            user_id="alice",
-            trade_date=date(2026, 9, day),
-            symbol=symbol,
-            side=Side.BUY,
-            price=Decimal(price),
-            quantity=100,
-            commission_rate=Decimal("0.001"),
-        )
-
-
 def test_list_trades_single_field_descending(service: EtfGridLedgerService) -> None:
-    """trade_date DESC returns the rows in global reverse date order."""
-    _seed_grid_rows(service)
+    """trade_date DESC returns rows in global reverse date order."""
+    for symbol, day in [("513330.XSHG", 8), ("513120.XSHG", 10), ("513330.XSHG", 9)]:
+        _record(service, symbol=symbol, trade_date=date(2026, 9, day), quantity=100)
     rows = service.list_trades(user_id="alice", order_by=[SortSpec(TradeSortField.TRADE_DATE, SortDirection.DESC)])
-    assert [(t["symbol"], t["trade_date"].day) for t in rows] == [("513120.XSHG", 10), ("513330.XSHG", 9), ("513330.XSHG", 8)]
+    assert [(row["symbol"], row["trade_date"].day) for row in rows] == [("513120.XSHG", 10), ("513330.XSHG", 9), ("513330.XSHG", 8)]
 
 
 def test_list_trades_multi_field_mixed(service: EtfGridLedgerService) -> None:
     """trade_date DESC + symbol ASC applies both keys in order."""
-    _seed_grid_rows(service)
+    for symbol, day in [("513330.XSHG", 8), ("513120.XSHG", 10), ("513330.XSHG", 9), ("513120.XSHG", 9)]:
+        _record(service, symbol=symbol, trade_date=date(2026, 9, day), quantity=100)
     rows = service.list_trades(
         user_id="alice",
         order_by=[
@@ -211,21 +141,13 @@ def test_list_trades_multi_field_mixed(service: EtfGridLedgerService) -> None:
             SortSpec(TradeSortField.SYMBOL, SortDirection.ASC),
         ],
     )
-    assert [(t["trade_date"].day, t["symbol"]) for t in rows] == [(10, "513120.XSHG"), (9, "513330.XSHG"), (8, "513330.XSHG")]
+    assert [(t["trade_date"].day, t["symbol"]) for t in rows] == [(10, "513120.XSHG"), (9, "513120.XSHG"), (9, "513330.XSHG"), (8, "513330.XSHG")]
 
 
 def test_list_trades_stable_id_suffix(service: EtfGridLedgerService) -> None:
     """Rows sharing the sort key fall back to insertion (id) order."""
     for price in ["1.00", "2.00", "3.00"]:
-        service.record_trade(
-            user_id="alice",
-            trade_date=date(2026, 9, 8),
-            symbol="513330.XSHG",
-            side=Side.BUY,
-            price=Decimal(price),
-            quantity=100,
-            commission_rate=Decimal("0.001"),
-        )
+        _record(service, symbol="513330.XSHG", price=Decimal(price), quantity=100)
     rows = service.list_trades(user_id="alice", order_by=[SortSpec(TradeSortField.TRADE_DATE)])
     assert [t["price"] for t in rows] == [Decimal("1.00"), Decimal("2.00"), Decimal("3.00")]
     assert [t["id"] for t in rows] == sorted(t["id"] for t in rows)
@@ -233,45 +155,10 @@ def test_list_trades_stable_id_suffix(service: EtfGridLedgerService) -> None:
 
 def test_get_positions_replays_each_symbol(service: EtfGridLedgerService) -> None:
     """get_positions replays the ledger per symbol, including sells."""
-    service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 8, 19),
-        symbol="513330.XSHG",
-        side=Side.BUY,
-        price=Decimal("0.4100"),
-        quantity=24300,
-        commission_rate=Decimal("0.001"),
-        commission=Decimal("9.96"),
-        note="opening position backfill",
-    )
-    service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 9),
-        symbol="513330.XSHG",
-        side=Side.BUY,
-        price=Decimal("0.3590"),
-        quantity=27700,
-        commission_rate=Decimal("0.001"),
-        commission=Decimal("9.94"),
-    )
-    service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 11),
-        symbol="513120.XSHG",
-        side=Side.BUY,
-        price=Decimal("1.2300"),
-        quantity=8000,
-        commission_rate=Decimal("0.001"),
-    )
-    service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 15),
-        symbol="513120.XSHG",
-        side=Side.SELL,
-        price=Decimal("1.3000"),
-        quantity=4000,
-        commission_rate=Decimal("0.001"),
-    )
+    _record(service, trade_date=date(2026, 8, 19), symbol="513330.XSHG", price=Decimal("0.4100"), quantity=24300, commission=Decimal("9.96"))
+    _record(service, trade_date=date(2026, 9, 9), symbol="513330.XSHG", price=Decimal("0.3590"), quantity=27700, commission=Decimal("9.94"))
+    _record(service, trade_date=date(2026, 9, 11), price=Decimal("1.2300"), quantity=8000)
+    _record(service, trade_date=date(2026, 9, 15), side=Side.SELL, price=Decimal("1.3000"), quantity=4000)
 
     positions = service.get_positions(user_id="alice")
     assert set(positions) == {"513120.XSHG", "513330.XSHG"}
@@ -291,43 +178,21 @@ def test_get_positions_replays_each_symbol(service: EtfGridLedgerService) -> Non
 def test_get_positions_empty(service: EtfGridLedgerService) -> None:
     """An empty ledger yields no positions."""
     assert service.get_positions(user_id="alice") == {}
+    assert service.get_position("513120.XSHG", user_id="alice") is None
 
 
 def test_ledger_and_positions_are_owner_scoped(service: EtfGridLedgerService) -> None:
     """The same symbol has independent ledgers and positions for two users."""
     for user_id, quantity in (("alice", 100), ("bob", 250)):
-        service.record_trade(
-            user_id=user_id,
-            trade_date=date(2026, 9, 8),
-            symbol="513120.XSHG",
-            side=Side.BUY,
-            price=Decimal("1.0000"),
-            quantity=quantity,
-            commission_rate=Decimal("0.001"),
-        )
+        _record(service, user_id=user_id, price=Decimal("1.0000"), quantity=quantity)
 
     assert service.count_trades(user_id="alice") == 1
     assert service.count_trades(user_id="bob") == 1
     assert service.list_trades(user_id="alice")[0]["quantity"] == 100
     assert service.list_trades(user_id="bob")[0]["quantity"] == 250
-    assert service.get_position("513120.XSHG", user_id="alice") is not None
     assert service.get_position("513120.XSHG", user_id="alice").shares == 100  # type: ignore[union-attr]
     assert service.get_position("513120.XSHG", user_id="bob").shares == 250  # type: ignore[union-attr]
-
-
-def test_session_is_usable_after_record(service: EtfGridLedgerService) -> None:
-    """record_trade commits its own transaction and leaves no dangling state."""
-    service.record_trade(
-        user_id="alice",
-        trade_date=date(2026, 9, 8),
-        symbol="513120.XSHG",
-        side=Side.BUY,
-        price=Decimal("1.2950"),
-        quantity=7800,
-        commission_rate=Decimal("0.001"),
-    )
-    with Session(get_postgres_db().db_engine) as session:
-        assert session.query(EtfGridTrade).count() == 1
+    assert service.get_positions(user_id="carol") == {}
 
 
 class TestUpsertCandles:
@@ -340,6 +205,17 @@ class TestUpsertCandles:
         rows = candle_service.list_candles("513330.XSHG")
         assert [(r["trade_date"].day, r["close"]) for r in rows] == [(8, Decimal("0.4000")), (9, Decimal("0.4100"))]
         assert all(r["fetched_at"] is not None for r in rows)
+
+    def test_empty_batch_writes_nothing(self, candle_service: EtfGridCandleService) -> None:
+        """An empty batch is a no-op that reports zero rows."""
+        assert candle_service.upsert_candles([]) == 0
+        assert candle_service.list_candles("513330.XSHG") == []
+
+    def test_zero_volume_is_accepted_and_persisted(self, candle_service: EtfGridCandleService) -> None:
+        """Zero volume is a valid boundary and round-trips through real storage."""
+        assert candle_service.upsert_candles([_candle("513330.XSHG", 8, "0.4000", volume=0)]) == 1
+        rows = candle_service.list_candles("513330.XSHG")
+        assert [row["volume"] for row in rows] == [0]
 
     def test_conflict_overwrites_ohlcv_and_refreshes_fetched_at(self, candle_service: EtfGridCandleService) -> None:
         """A second write of the same key overwrites OHLCV (qfq self-healing)."""
@@ -373,39 +249,27 @@ class TestUpsertCandles:
 
 
 class TestListCandles:
-    """list_candles ordering and limit push-down against real Postgres."""
+    """list_candles ordering, limit push-down, and symbol filtering against real Postgres."""
 
-    def test_default_chronological(self, candle_service: EtfGridCandleService) -> None:
-        """Default order is trade_date ascending."""
-        candle_service.upsert_candles([_candle("513330.XSHG", 9, "0.41"), _candle("513330.XSHG", 8, "0.40")])
-        assert [r["trade_date"].day for r in candle_service.list_candles("513330.XSHG")] == [8, 9]
+    @pytest.mark.parametrize(
+        ("descending", "limit", "expected_days"),
+        [
+            (False, None, [8, 9, 10]),
+            (True, None, [10, 9, 8]),
+            (False, 2, [8, 9]),
+            (True, 1, [10]),
+        ],
+    )
+    def test_ordering_and_limit(self, candle_service: EtfGridCandleService, descending: bool, limit: int | None, expected_days: list[int]) -> None:
+        """Rows are chronological by default; limit applies after the requested ordering."""
+        candle_service.upsert_candles([_candle("513330.XSHG", day, "0.40") for day in (9, 10, 8)])
+        rows = candle_service.list_candles("513330.XSHG", descending=descending, limit=limit)
+        assert [r["trade_date"].day for r in rows] == expected_days
 
-    def test_descending(self, candle_service: EtfGridCandleService) -> None:
-        """descending=True returns newest first."""
-        candle_service.upsert_candles([_candle("513330.XSHG", 8, "0.40"), _candle("513330.XSHG", 9, "0.41")])
-        assert [r["trade_date"].day for r in candle_service.list_candles("513330.XSHG", descending=True)] == [9, 8]
-
-    def test_limit(self, candle_service: EtfGridCandleService) -> None:
-        """Limit caps the result, applied after the ordering."""
-        candle_service.upsert_candles([_candle("513330.XSHG", day, "0.40") for day in (8, 9, 10)])
-        assert [r["trade_date"].day for r in candle_service.list_candles("513330.XSHG", limit=2)] == [8, 9]
-
-    def test_descending_limit_one_returns_latest(self, candle_service: EtfGridCandleService) -> None:
-        """Descending + limit=1 yields the single most recent candle."""
-        candle_service.upsert_candles([_candle("513330.XSHG", day, "0.40") for day in (8, 9, 10)])
-        rows = candle_service.list_candles("513330.XSHG", descending=True, limit=1)
-        assert [r["trade_date"].day for r in rows] == [10]
-
-    def test_symbol_isolation(self, candle_service: EtfGridCandleService) -> None:
-        """list_candles only returns the requested symbol."""
+    def test_symbol_filter_is_isolated_and_normalized(self, candle_service: EtfGridCandleService) -> None:
+        """list_candles accepts un-normalized input and returns only the requested symbol."""
         candle_service.upsert_candles([_candle("513330.XSHG", 8, "0.40"), _candle("513120.XSHG", 8, "1.20")])
-        assert [r["symbol"] for r in candle_service.list_candles("513330.XSHG")] == ["513330.XSHG"]
-
-    def test_symbol_filter_normalizes(self, candle_service: EtfGridCandleService) -> None:
-        """list_candles accepts un-normalized symbol input."""
-        candle_service.upsert_candles([_candle("513330.XSHG", 8, "0.40")])
-        rows = candle_service.list_candles(" 513330.xshg ")
-        assert [r["symbol"] for r in rows] == ["513330.XSHG"]
+        assert [r["symbol"] for r in candle_service.list_candles(" 513330.xshg ")] == ["513330.XSHG"]
 
 
 def _snapshot(symbol: str, day: int, orders: tuple[OrderAdvice, ...] = (), level: int = 0) -> SignalSnapshot:

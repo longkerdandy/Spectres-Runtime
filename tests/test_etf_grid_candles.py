@@ -42,15 +42,11 @@ class TestUpsertCandlesValidation:
     """upsert_candles rejects invalid input before touching the database."""
 
     @pytest.mark.parametrize("field", ["open", "high", "low", "close"])
-    def test_zero_price_rejected(self, field: str) -> None:
-        """A zero price in any OHLC field is rejected."""
+    @pytest.mark.parametrize("price", [Decimal("0"), Decimal("-0.4050")])
+    def test_non_positive_price_rejected(self, field: str, price: Decimal) -> None:
+        """A zero or negative price in any OHLC field is rejected."""
         with pytest.raises(ValueError, match="candle prices must be positive"):
-            service().upsert_candles([candle(**{field: Decimal("0")})])
-
-    def test_negative_price_rejected(self) -> None:
-        """A negative price is rejected."""
-        with pytest.raises(ValueError, match="candle prices must be positive"):
-            service().upsert_candles([candle(close=Decimal("-0.4050"))])
+            service().upsert_candles([candle(**{field: price})])
 
     def test_negative_volume_rejected(self) -> None:
         """A negative volume is rejected."""

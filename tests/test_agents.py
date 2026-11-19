@@ -10,6 +10,8 @@ from agno.models.openai.like import OpenAILike
 from spectres.agents.team_leader import create_team_leader_agent
 from spectres.config import settings
 
+pytestmark = pytest.mark.unit
+
 
 def test_create_team_leader_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     """The Team Leader Agent factory returns an Agent configured from settings."""

@@ -66,11 +66,45 @@ def test_credential_cipher_round_trip_and_owner_binding() -> None:
         cipher.decrypt(user_id="alice", purpose="service_token", envelope=envelope)
 
 
-def test_credential_cipher_fails_closed_without_a_key() -> None:
-    """Missing key produces a safe error without a plaintext echo."""
+@pytest.mark.parametrize(
+    "key",
+    [None, "", "not base64!", base64.urlsafe_b64encode(bytes(16)).decode("ascii")],
+    ids=["missing", "empty", "not-base64", "wrong-length"],
+)
+def test_credential_cipher_fails_closed_on_missing_or_invalid_key(key: str | None) -> None:
+    """Missing or malformed keys produce a safe error without a plaintext echo."""
     with pytest.raises(CredentialProtectionError) as exc_info:
-        CredentialCipher(None).encrypt(user_id="alice", purpose="pass_token", value="do-not-leak")
+        CredentialCipher(key).encrypt(user_id="alice", purpose="pass_token", value="do-not-leak")
     assert "do-not-leak" not in str(exc_info.value)
+
+
+def _tampered_ciphertext(envelope: str) -> str:
+    """Flip one ciphertext byte while keeping the envelope well-formed."""
+    payload = json.loads(envelope)
+    raw = bytearray(base64.urlsafe_b64decode(payload["ciphertext"]))
+    raw[0] ^= 1
+    payload["ciphertext"] = base64.urlsafe_b64encode(bytes(raw)).decode("ascii")
+    return json.dumps(payload)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda envelope: "not json",
+        lambda envelope: "[]",
+        lambda envelope: json.dumps(json.loads(envelope) | {"v": 2}),
+        lambda envelope: json.dumps({"v": 1}),
+        lambda envelope: json.dumps(json.loads(envelope) | {"nonce": 12}),
+        _tampered_ciphertext,
+    ],
+    ids=["not-json", "not-object", "unknown-version", "missing-fields", "non-string-nonce", "tampered-ciphertext"],
+)
+def test_credential_cipher_rejects_malformed_envelopes(mutate: Any) -> None:
+    """Corrupt, foreign-version, or tampered envelopes all fail with one safe error."""
+    cipher = CredentialCipher(_KEY)
+    envelope = cipher.encrypt(user_id="alice", purpose="pass_token", value="synthetic-secret")
+    with pytest.raises(CredentialProtectionError, match="cannot be decrypted"):
+        cipher.decrypt(user_id="alice", purpose="pass_token", envelope=mutate(envelope))
 
 
 async def test_qr_challenge_and_poll_validate_hosts_and_preserve_nonce() -> None:

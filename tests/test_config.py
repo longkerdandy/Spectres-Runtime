@@ -8,6 +8,8 @@ from sqlalchemy import create_engine as sa_create_engine
 
 from spectres.config import Settings, _environment_files
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def base_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -96,26 +98,18 @@ class TestSettingsEnvironment:
 class TestWebSearchSettings:
     """Explicit backend selection and provider credentials."""
 
-    def test_backend_defaults_to_kimi(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
-        """Kimi is the default search backend when no selector is provided."""
-        monkeypatch.delenv("WEB_SEARCH_BACKEND", raising=False)
-
-        settings = Settings(_env_file=None)  # type: ignore[call-arg]
-
-        assert settings.web_search_backend == "kimi"
-
-    def test_backend_can_select_tavily(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
-        """The selector accepts the Tavily backend."""
-        monkeypatch.setenv("WEB_SEARCH_BACKEND", "tavily")
-
-        settings = Settings(_env_file=None)  # type: ignore[call-arg]
-
-        assert settings.web_search_backend == "tavily"
+    @pytest.mark.parametrize(("value", "expected"), [(None, "kimi"), ("kimi", "kimi"), ("tavily", "tavily")])
+    def test_backend_selection(self, monkeypatch: pytest.MonkeyPatch, base_env: None, value: str | None, expected: str) -> None:
+        """Kimi is the default backend and the selector accepts each supported backend."""
+        if value is None:
+            monkeypatch.delenv("WEB_SEARCH_BACKEND", raising=False)
+        else:
+            monkeypatch.setenv("WEB_SEARCH_BACKEND", value)
+        assert Settings(_env_file=None).web_search_backend == expected  # type: ignore[call-arg]
 
     def test_unknown_backend_is_rejected(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
         """Unsupported backend names fail configuration validation."""
         monkeypatch.setenv("WEB_SEARCH_BACKEND", "unknown")
-
         with pytest.raises(ValidationError):
             Settings(_env_file=None)  # type: ignore[call-arg]
 
@@ -123,48 +117,31 @@ class TestWebSearchSettings:
         """Kimi is disabled by default and uses the managed search endpoint."""
         monkeypatch.delenv("KIMI_WEB_SEARCH_API_KEY", raising=False)
         monkeypatch.delenv("KIMI_WEB_SEARCH_BASE_URL", raising=False)
-
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
-
         assert settings.kimi_web_search_api_key is None
         assert settings.kimi_web_search_base_url == "https://api.kimi.com/coding/v1/search"
-
-    def test_kimi_overrides(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
-        """Kimi credentials and compatible endpoint overrides are loaded."""
-        monkeypatch.setenv("KIMI_WEB_SEARCH_API_KEY", "kimi-key")
-        monkeypatch.setenv("KIMI_WEB_SEARCH_BASE_URL", "https://kimi.example.com/search")
-
-        settings = Settings(_env_file=None)  # type: ignore[call-arg]
-
-        assert settings.kimi_web_search_api_key == "kimi-key"
-        assert settings.kimi_web_search_base_url == "https://kimi.example.com/search"
 
     def test_blank_kimi_key_is_disabled(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
         """A blank Kimi credential remains falsy for backend selection."""
         monkeypatch.setenv("KIMI_WEB_SEARCH_API_KEY", "")
-
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
-
         assert not settings.kimi_web_search_api_key
 
-    def test_tavily_setting_is_unchanged(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
-        """Tavily configuration remains available independently of Kimi."""
-        monkeypatch.setenv("KIMI_WEB_SEARCH_API_KEY", "")
+    def test_provider_overrides(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
+        """Kimi credentials, the compatible endpoint override, and the Tavily key load independently."""
+        monkeypatch.setenv("KIMI_WEB_SEARCH_API_KEY", "kimi-key")
+        monkeypatch.setenv("KIMI_WEB_SEARCH_BASE_URL", "https://kimi.example.com/search")
         monkeypatch.setenv("TAVILY_API_KEY", "tavily-key")
-
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
-
+        assert settings.kimi_web_search_api_key == "kimi-key"
+        assert settings.kimi_web_search_base_url == "https://kimi.example.com/search"
         assert settings.tavily_api_key == "tavily-key"
 
 
 class TestOptionalLlmParams:
     """TEAM_LEADER_LLM_TEMPERATURE / MAX_COMPLETION_TOKENS are truly optional."""
 
-    def test_absent_defaults_to_none(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        base_env: None,
-    ) -> None:
+    def test_absent_defaults_to_none(self, monkeypatch: pytest.MonkeyPatch, base_env: None) -> None:
         """Commenting out both variables yields None (the model default applies)."""
         monkeypatch.delenv("TEAM_LEADER_LLM_TEMPERATURE")
         monkeypatch.delenv("TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS")
@@ -172,22 +149,16 @@ class TestOptionalLlmParams:
         assert settings.team_leader_llm_temperature is None
         assert settings.team_leader_llm_max_completion_tokens is None
 
-    def test_valid_values_parsed(
-        self,
-        base_env: None,
-    ) -> None:
+    def test_valid_values_parsed(self, base_env: None) -> None:
         """Numeric strings are parsed into float and int."""
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
         assert settings.team_leader_llm_temperature == 0.5
         assert settings.team_leader_llm_max_completion_tokens == 100
 
-    def test_invalid_value_raises(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        base_env: None,
-    ) -> None:
-        """A non-numeric value is rejected with a ValidationError."""
-        monkeypatch.setenv("TEAM_LEADER_LLM_TEMPERATURE", "abc")
+    @pytest.mark.parametrize(("name", "value"), [("TEAM_LEADER_LLM_TEMPERATURE", "abc"), ("TEAM_LEADER_LLM_MAX_COMPLETION_TOKENS", "1.5")])
+    def test_invalid_value_raises(self, monkeypatch: pytest.MonkeyPatch, base_env: None, name: str, value: str) -> None:
+        """Non-numeric temperatures and non-integer token limits are rejected."""
+        monkeypatch.setenv(name, value)
         with pytest.raises(ValidationError):
             Settings(_env_file=None)  # type: ignore[call-arg]
 
@@ -198,71 +169,43 @@ class TestSettingsValidation:
     @pytest.mark.parametrize(
         ("input_value", "expected"),
         [
+            (None, None),
             ("", None),
             ('{"X-Custom": "value"}', {"X-Custom": "value"}),
         ],
     )
-    def test_extra_headers_parsing(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        base_env: None,
-        input_value: str,
-        expected: dict[str, str] | None,
-    ) -> None:
-        """TEAM_LEADER_LLM_EXTRA_HEADERS accepts a JSON string or empty string."""
-        monkeypatch.setenv("TEAM_LEADER_LLM_EXTRA_HEADERS", input_value)
-        settings = Settings(_env_file=None)  # type: ignore[call-arg]
-        assert settings.team_leader_llm_extra_headers == expected
+    def test_extra_headers_parsing(self, monkeypatch: pytest.MonkeyPatch, base_env: None, input_value: str | None, expected: dict[str, str] | None) -> None:
+        """TEAM_LEADER_LLM_EXTRA_HEADERS is optional and accepts a JSON object or an empty string."""
+        if input_value is None:
+            monkeypatch.delenv("TEAM_LEADER_LLM_EXTRA_HEADERS")
+        else:
+            monkeypatch.setenv("TEAM_LEADER_LLM_EXTRA_HEADERS", input_value)
+        assert Settings(_env_file=None).team_leader_llm_extra_headers == expected  # type: ignore[call-arg]
 
-    def test_extra_headers_invalid_raises(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        base_env: None,
-    ) -> None:
-        """TEAM_LEADER_LLM_EXTRA_HEADERS rejects non-JSON strings."""
-        monkeypatch.setenv("TEAM_LEADER_LLM_EXTRA_HEADERS", "not-json")
+    @pytest.mark.parametrize("input_value", ["not-json", '["X-Custom"]', '{"X-Custom": {"nested": "value"}}'])
+    def test_extra_headers_invalid_raises(self, monkeypatch: pytest.MonkeyPatch, base_env: None, input_value: str) -> None:
+        """Non-JSON input and JSON that is not a flat string mapping are rejected."""
+        monkeypatch.setenv("TEAM_LEADER_LLM_EXTRA_HEADERS", input_value)
         with pytest.raises(ValidationError):
             Settings(_env_file=None)  # type: ignore[call-arg]
-
-    def test_extra_headers_absent_defaults_to_none(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        base_env: None,
-    ) -> None:
-        """TEAM_LEADER_LLM_EXTRA_HEADERS defaults to None when commented out."""
-        monkeypatch.delenv("TEAM_LEADER_LLM_EXTRA_HEADERS")
-        settings = Settings(_env_file=None)  # type: ignore[call-arg]
-        assert settings.team_leader_llm_extra_headers is None
 
     @pytest.mark.parametrize(
         ("input_value", "expected"),
         [
+            (None, None),
             ("", None),
             ("http://localhost:3000", ["http://localhost:3000"]),
             ("http://a.example.com, http://b.example.com", ["http://a.example.com", "http://b.example.com"]),
+            (" http://a.example.com ,, ", ["http://a.example.com"]),
         ],
     )
-    def test_cors_allowed_origins_parsing(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        base_env: None,
-        input_value: str,
-        expected: list[str] | None,
-    ) -> None:
-        """CORS_ALLOWED_ORIGINS accepts a comma-separated string or empty string."""
-        monkeypatch.setenv("CORS_ALLOWED_ORIGINS", input_value)
-        settings = Settings(_env_file=None)  # type: ignore[call-arg]
-        assert settings.cors_allowed_origins == expected
-
-    def test_cors_absent_defaults_to_none(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        base_env: None,
-    ) -> None:
-        """CORS_ALLOWED_ORIGINS defaults to None when commented out."""
-        monkeypatch.delenv("CORS_ALLOWED_ORIGINS")
-        settings = Settings(_env_file=None)  # type: ignore[call-arg]
-        assert settings.cors_allowed_origins is None
+    def test_cors_allowed_origins_parsing(self, monkeypatch: pytest.MonkeyPatch, base_env: None, input_value: str | None, expected: list[str] | None) -> None:
+        """CORS_ALLOWED_ORIGINS is optional and parses a comma-separated list, dropping blank entries."""
+        if input_value is None:
+            monkeypatch.delenv("CORS_ALLOWED_ORIGINS")
+        else:
+            monkeypatch.setenv("CORS_ALLOWED_ORIGINS", input_value)
+        assert Settings(_env_file=None).cors_allowed_origins == expected  # type: ignore[call-arg]
 
     def test_database_url_property(
         self,
@@ -344,3 +287,24 @@ def test_test_local_environment_overrides_base(
     assert settings.db_user == "local_user"
     assert settings.db_pass == "local_password"
     assert settings.db_database == "spectres_runtime_test"
+
+
+class TestJwtSettings:
+    """Settings-level validation for the JWT configuration."""
+
+    @pytest.mark.parametrize("name", ["JWT_AUDIENCE", "JWT_ISSUER"])
+    def test_claim_check_without_verification_material_rejected(self, monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+        """An audience or issuer configured without key material fails validation."""
+        monkeypatch.setenv(name, "https://spectres.runtime/api")
+        monkeypatch.delenv("JWT_VERIFICATION_KEY", raising=False)
+        monkeypatch.delenv("JWT_JWKS_FILE", raising=False)
+        with pytest.raises(ValidationError, match="JWT_AUDIENCE/JWT_ISSUER"):
+            Settings()  # type: ignore[call-arg]
+
+    def test_auth_enabled_only_with_verification_material(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """jwt_auth_enabled flips only when key material appears."""
+        monkeypatch.delenv("JWT_VERIFICATION_KEY", raising=False)
+        monkeypatch.delenv("JWT_JWKS_FILE", raising=False)
+        assert Settings().jwt_auth_enabled is False  # type: ignore[call-arg]
+        monkeypatch.setenv("JWT_VERIFICATION_KEY", "test-only-verification-key-not-a-secret-0123456789abcdef")
+        assert Settings().jwt_auth_enabled is True  # type: ignore[call-arg]

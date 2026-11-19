@@ -16,7 +16,7 @@ from spectres.extensions.base import ExtensionContext
 from spectres.extensions.mi_health import extension
 from spectres.extensions.mi_health.config import MiHealthConfig
 from spectres.extensions.mi_health.credentials import CredentialCipher
-from spectres.extensions.mi_health.models import MiHealthBase, MiHealthBinding, MiHealthQrAttempt, MiHealthSyncRun
+from spectres.extensions.mi_health.models import MiHealthBinding, MiHealthQrAttempt, MiHealthSyncRun
 from spectres.extensions.mi_health.service import (
     BindingExistsError,
     ChallengeNotFoundError,
@@ -37,6 +37,7 @@ from spectres.extensions.mi_health.xiaomi import (
 from spectres.health.contracts import ProfileSnapshot
 from spectres.health.ingestion import HealthIngestionService
 from spectres.health.models import HealthProfile
+from tests.support import migrated_extension_session_factory
 
 pytestmark = [pytest.mark.integration, pytest.mark.db]
 _KEY = base64.urlsafe_b64encode(bytes(range(32))).decode("ascii")
@@ -72,10 +73,8 @@ def _health_session(user_id: str, device_id: str, suffix: str = "one") -> Health
 
 @pytest.fixture
 def services() -> tuple[MiHealthBindingService, MiHealthSessionService, XiaomiClient, sessionmaker[Session]]:
-    """Build real services over clean Mi Health tables with synthetic transport."""
-    engine = get_postgres_db().db_engine
-    MiHealthBase.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
+    """Build real services over migrated Mi Health tables with synthetic transport."""
+    session_factory = migrated_extension_session_factory("mi_health")
     xiaomi = MagicMock(spec=XiaomiClient)
     xiaomi.create_qr_challenge = AsyncMock(
         side_effect=lambda *, device_id: QrChallenge(
